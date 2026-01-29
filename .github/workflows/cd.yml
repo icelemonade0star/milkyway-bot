@@ -6,6 +6,7 @@ on:
     types:
       - completed
     branches: [main]
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   deploy:
