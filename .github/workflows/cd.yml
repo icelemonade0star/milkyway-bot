@@ -28,15 +28,21 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    # Buildx 설정
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     # 이미지 빌드 및 푸시
     - name: Build and push image
-      run: |
-        docker build \
-        --build-arg PYTHON_VERSION=${{ steps.get_version.outputs.version }} \
-        -t ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:${{ github.sha }} \
-        -t ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:${{ github.sha }}
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:latest
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:${{ github.sha }}
+          ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:latest
+        build-args: |
+          PYTHON_VERSION=${{ steps.get_version.outputs.version }}
         
     # 개인 서버에 배포
     - name: Deploy to Ubuntu Server
@@ -49,7 +55,7 @@ jobs:
         script: |
             cd /app/milkywayBot
             git pull origin main
-            docker-compose pull
-            docker-compose down
-            docker-compose up -d --force-recreate
+            docker compose pull
+            docker compose down
+            docker compose up -d --force-recreate
             sleep 10
