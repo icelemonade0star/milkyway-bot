@@ -9,7 +9,7 @@ Palworld server project for Streamer EunHaYun
 py -3.13 -m venv .venv
 
 2. 가상 환경 활성화
-venv\Scripts\activate
+.venv\Scripts\activate
 
 3. fastapi 설치
 pip install fastapi uvicorn

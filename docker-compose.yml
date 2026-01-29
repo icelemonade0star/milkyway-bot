@@ -1,0 +1,81 @@
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./fastapi.conf:/etc/nginx/conf.d/fastapi.conf:ro
+      - ./certbot/conf:/etc/letsencrypt
+      #  - /etc/letsencrypt:/etc/letsencrypt:ro  # 호스트 실제 경로 직접 마운트
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - web
+    environment:
+    - TZ=Asia/Seoul
+    networks:
+      - app-network
+
+  web:
+    # image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+    image: ${DOCKERHUB_USERNAME}/milkyway_bot:latest
+    expose:
+      - 8000
+    volumes:
+      - ./logs:/app/logs  # 컨테이너 /app/logs → 호스트 ./logs
+    env_file:
+      - .env
+    environment:
+    - TZ=Asia/Seoul
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped 
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    # 갱신 자동화
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; docker compose restart nginx; sleep 48h & wait $${!}; done;'"
+    networks:
+      - app-network
+
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:6
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
