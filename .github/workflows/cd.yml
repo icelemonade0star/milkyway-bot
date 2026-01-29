@@ -52,7 +52,7 @@ jobs:
         host: ${{ secrets.SERVER_HOST }}
         username: deploy
         key: ${{ secrets.SERVER_SSH_KEY }}
-        port: 3224
+        port: 22
         script: |
             cd /app/milkywayBot
             git pull origin main
