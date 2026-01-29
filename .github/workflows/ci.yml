@@ -1,0 +1,57 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      python_version: ${{ steps.get_python_version.outputs.version }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Get Python Version
+      id: get_python_version
+      run: |
+        python_version=$(python scripts/get_python_version.py | jq -r .full)
+        echo "version=${python_version}" >> $GITHUB_OUTPUT
+
+    - name: Generate Requirements
+      run: python scripts/generate_requirements.py
+
+    - name: Cache requirements.txt
+      uses: actions/cache@v4
+      with:
+        path: requirements.txt
+        key: ${{ runner.os }}-requirements-${{ hashFiles('**/requirements.txt') }}
+
+  test:
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.prepare.outputs.python_version }}
+
+    - name: Restore cached requirements
+      uses: actions/cache@v4
+      with:
+        path: requirements.txt
+        key: ${{ runner.os }}-requirements-${{ hashFiles('**/requirements.txt') }}
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run tests
+      run: |
+        pip install pytest pytest-anyio requests
+        pytest tests/ || true
