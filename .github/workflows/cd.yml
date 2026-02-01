@@ -55,7 +55,6 @@ jobs:
         port: 22
         script: |
             cd /app/milkywayBot
-            git pull origin main
             docker compose pull
             docker compose down
             docker compose up -d --force-recreate
