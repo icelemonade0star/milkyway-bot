@@ -36,4 +36,4 @@ python -m app.api.auth.auth
 
 
 pip install python-dotenv
-pip install paramiko==2.12.0 sshtunnel==0.4.0
+pip install paramiko==2.12.0

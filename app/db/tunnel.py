@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 load_dotenv()
 
-class SshTunnelManager:
+class ParamikoTunnel:
     _instance = None
     _transport = None
     _local_port = None
@@ -56,4 +56,4 @@ class SshTunnelManager:
             print("🔒 SSH 터널 종료")
 
 # 싱글톤 인스턴스
-tunnel = SshTunnelManager()
+tunnel = ParamikoTunnel()
