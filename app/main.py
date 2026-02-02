@@ -26,3 +26,7 @@ async def lifespan(app: FastAPI):
 @app.get("/")
 async def root():
     return {"status": "ok", "service": "milkyway-bot"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "milkywaybot"}
