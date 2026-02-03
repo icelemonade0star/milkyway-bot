@@ -1,7 +1,4 @@
-# YunPalWildarrows
-Palworld server project for Streamer EunHaYun
-
-    
+# milkyway-bot
 
 1. 가상 환경 생성
 
