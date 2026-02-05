@@ -1,4 +1,5 @@
 from app.chzzk.auth.chzzk_auth import ChzzkAuth
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import RedirectResponse
@@ -13,18 +14,18 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 # 인증 객체 생성
 # auth = ChzzkAuth()
 
-def get_auth() -> ChzzkAuth:
+def get_auth() -> Any:
     return ChzzkAuth()
 
 
-@auth_router.get("/")
+@auth_router.get("/", response_model=None)
 def auth_redirect():
     # 리다이렉트
     auth = get_auth()
     return RedirectResponse(url=auth.get_auth_url())
 
 
-@auth_router.get("/callback")
+@auth_router.get("/callback", response_model=None)
 def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
