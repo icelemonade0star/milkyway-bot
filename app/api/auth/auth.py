@@ -14,18 +14,18 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 # 인증 객체 생성
 # auth = ChzzkAuth()
 
-def get_auth() -> Any:
+def get_auth() -> ChzzkAuth:
     return ChzzkAuth()
 
 
-@auth_router.get("/", response_model=None)
+@auth_router.get("/")
 def auth_redirect():
     # 리다이렉트
     auth = get_auth()
     return RedirectResponse(url=auth.get_auth_url())
 
 
-@auth_router.get("/callback", response_model=None)
+@auth_router.get("/callback")
 def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
