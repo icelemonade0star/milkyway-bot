@@ -1,7 +1,7 @@
 from app.chzzk.auth.chzzk_auth import ChzzkAuth
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Cookie
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -22,20 +22,27 @@ def get_auth() -> ChzzkAuth:
 def auth_redirect():
     # 리다이렉트
     auth = get_auth()
-    return RedirectResponse(url=auth.get_auth_url())
+    url, state = auth.get_auth_url()
+
+    response = RedirectResponse(url=url)
+    # 쿠키에 state 저장 (유효기간 5분)
+    response.set_cookie(key="oauth_state", value=state, httponly=True, max_age=300)
+
+    return response
 
 
 @auth_router.get("/callback")
 def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
+    oauth_state: str = Cookie(None),
     db: Session = Depends(get_db),
 ):
     chzzk_auth = get_auth()
    
-    if not chzzk_auth.is_valid_state(state):
+    # 쿠키에 저장된 state와 네이버가 보낸 state 비교
+    if not oauth_state or state != oauth_state:
         raise HTTPException(status_code=400, detail="Invalid state")
-
 
     if not chzzk_auth.get_access_token(code, state):
         raise HTTPException(status_code=400, detail="토큰 발급 실패")

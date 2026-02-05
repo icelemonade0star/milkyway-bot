@@ -1,7 +1,7 @@
 import os
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.db.tunnel import ParamikoTunnel
@@ -31,8 +31,8 @@ async def lifespan(app: FastAPI):
     tunnel.stop()
     print("🔒 모든 연결 종료")
 
-def get_db(request: FastAPI = Depends()):
-    db = request.state.SessionLocal()
+def get_db(request: Request):
+    db = request.app.state.SessionLocal()
     try:
         yield db
     finally:
