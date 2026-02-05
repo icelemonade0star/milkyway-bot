@@ -24,7 +24,7 @@ def auth_redirect():
     return RedirectResponse(url=auth.get_auth_url())
 
 
-@auth_router.get("/callback")
+@auth_router.get("/callback", response_model=None)
 def callback_auth(
     code: str = Query(...),
     state: str = Query(...),

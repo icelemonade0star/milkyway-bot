@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.db.tunnel import ParamikoTunnel  # 싱글톤 클래스
+from app.db.tunnel import ParamikoTunnel
 
 tunnel = ParamikoTunnel()  # 싱글톤 인스턴스
 

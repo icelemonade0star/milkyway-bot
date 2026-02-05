@@ -1,5 +1,3 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Depends, Query
 from sqlalchemy.orm import Session
 
