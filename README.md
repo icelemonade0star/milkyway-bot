@@ -18,7 +18,10 @@ uvicorn app.api.auth.auth:app --reload
 
 Socket.IO 서버 및 클라이언트
 pip install websocket-client
-pip install python-socketio==4.6.1
+# chzzkpy사용으로 구현 불필요
+# pip install python-socketio==4.6.1
+
+pip install chzzkpy
 
 db 연결도구
 pip install psycopg2-binary
@@ -29,7 +32,6 @@ pip install sqlalchemy psycopg2-binary
 python -m app.tests.api_test.~파일명~
 python -m app.chzzk.auth.chzzk_auth
 python -m app.api.auth.auth
-
 
 
 pip install python-dotenv
