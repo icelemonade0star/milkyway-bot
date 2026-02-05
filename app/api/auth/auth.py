@@ -29,8 +29,8 @@ def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
-    chzzk_auth: ChzzkAuth = Depends(get_auth)
 ):
+    chzzk_auth = get_auth()
    
     if not chzzk_auth.is_valid_state(state):
         raise HTTPException(status_code=400, detail="Invalid state")
