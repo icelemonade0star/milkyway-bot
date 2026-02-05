@@ -37,8 +37,11 @@ def callback_auth(
         raise HTTPException(status_code=400, detail="Invalid state")
 
 
-    chzzk_auth.get_access_token(code)
-    chzzk_auth.get_user_info()
+    if not chzzk_auth.get_access_token(code, state):
+        raise HTTPException(status_code=400, detail="토큰 발급 실패")
+    
+    if not chzzk_auth.get_user_info():
+        raise HTTPException(status_code=400, detail="유저 정보 조회 실패")
 
 
     print("채널이름 : ",chzzk_auth.channel_name)

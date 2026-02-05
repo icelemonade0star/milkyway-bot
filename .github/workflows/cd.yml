@@ -59,9 +59,7 @@ jobs:
         script: |
             cd /app/milkywayBot
             git pull origin main 
-            docker image rm ${{ secrets.DOCKERHUB_USERNAME }}/milkyway_bot:latest || true
             docker compose pull
             docker compose down
             docker compose up -d --force-recreate
-            docker image prune -f
             sleep 10

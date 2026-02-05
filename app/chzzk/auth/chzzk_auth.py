@@ -23,10 +23,8 @@ class ChzzkAuth:
         self.access_token = None
         self.refresh_token = None
 
-    def is_valid_state(self, state):
-        return state == self.state
-
     def get_auth_url(self):
+        state = secrets.token_urlsafe(16)
         # redirect_url을 URL 인코딩
         encoded_redirect = quote(self.redirect_url)
         
@@ -36,11 +34,11 @@ class ChzzkAuth:
             f"?response_type=code"
             f"&clientId={self.client_id}"
             f"&redirectUri={encoded_redirect}"
-            f"&state={self.state}"
+            f"&state={state}"
         )
-        return auth_url
+        return auth_url, state
         
-    def get_access_token(self, code):
+    def get_access_token(self, code, state):
         headers = {          
             'Content-Type': 'application/json'
         }
@@ -50,7 +48,7 @@ class ChzzkAuth:
             "clientId": self.client_id,
             "clientSecret": self.client_secret,
             "code": code,                       
-            "state": self.state,                     
+            "state": state,                     
             "redirectUri": self.redirect_url        
         }
         

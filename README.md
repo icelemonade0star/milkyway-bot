@@ -18,10 +18,8 @@ uvicorn app.api.auth.auth:app --reload
 
 Socket.IO 서버 및 클라이언트
 pip install websocket-client
-# chzzkpy사용으로 구현 불필요
-# pip install python-socketio==4.6.1
+pip install python-socketio==4.6.1
 
-pip install chzzkpy
 
 db 연결도구
 pip install psycopg2-binary
