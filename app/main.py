@@ -11,7 +11,7 @@ from app.api import routes_chat
 
 # api
 app = FastAPI(title="milkyway bot")
-app.include_router(auth.auth_router, prefix="/auth", tags=["auth"])
+app.include_router(auth.auth_router)
 # app.include_router(routes_chat.router, prefix="/chat", tags=["chat"])
 
 

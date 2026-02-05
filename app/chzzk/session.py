@@ -16,13 +16,12 @@ def create_session_url():
     # 응답 바디에서 url 필드에 소켓 접속용 URL 이 들어있음
     return data["url"]
 
-def subscribe_chat(session_key: str, channel_id: str):
+def subscribe_chat(session_key: str):
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
     }
     params = {
-        "sessionKey": session_key,   # 쿼리 파라미터로 전달해야 함.[web:7]
-        "channelId": channel_id,
+        "sessionKey": session_key
     }
     resp = requests.post(
         f"{OPENAPI_BASE}/open/v1/sessions/events/subscribe/chat",

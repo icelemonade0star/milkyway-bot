@@ -26,7 +26,7 @@ def auth_redirect():
 
 @auth_router.get("/callback")
 def callback_auth(
-     code: str = Query(...),
+    code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
     chzzk_auth: ChzzkAuth = Depends(get_auth)

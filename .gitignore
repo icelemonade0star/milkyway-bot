@@ -143,6 +143,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# 환경변수 파일
+.env
+
 # Spyder project settings
 .spyderproject
 .spyproject
