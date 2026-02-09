@@ -12,23 +12,23 @@ class AuthService:
         치지직 인증 정보를 DB에 저장하고 결과를 반환합니다.
         """
         # 1. 쿼리 로드
-        insert_query_str = query_loader.get_query(
-            "auth_token_insert",
-            channel_id=chzzk_auth.channel_id,
-            channel_name=chzzk_auth.channel_name,
-            access_token=chzzk_auth.access_token,
-            refresh_token=chzzk_auth.refresh_token
-        )
+        insert_query_str = query_loader.get_query("auth_token_insert")
+
+        # 파라미터 딕셔너리 구성
+        params = {
+            "channel_id": chzzk_auth.channel_id,
+            "channel_name": chzzk_auth.channel_name,
+            "access_token": chzzk_auth.access_token,
+            "refresh_token": chzzk_auth.refresh_token
+        }
 
         try:
             # 2. 쿼리 실행
-            result = await self.db.execute(insert_query_str)
+            result = await self.db.execute(insert_query_str, params)
             
-            # 3. 데이터 확정
-            await self.db.commit()
-
-            # 4. 결과값 처리 (RETURNING 절이 있는 쿼리인 경우)
             inserted_data = result.fetchone()
+            await self.db.commit()
+            
             return inserted_data
 
         except Exception as e:
@@ -42,14 +42,15 @@ class AuthService:
         search_pattern = f"%{channel_name}%" if channel_name else None
         
         # 2. 쿼리 로드
-        query_str = query_loader.get_query(
-            "auth_token_list",
-            channel_name=channel_name,
-            channel_name_like=search_pattern
-        )
+        query_str = query_loader.get_query("auth_token_list")
+
+        params = {
+            "channel_name": channel_name,
+            "channel_name_like": search_pattern
+        }
         
         try:
-            result = await self.db.execute(query_str)
+            result = await self.db.execute(query_str, params)
             # 3. 모든 결과 가져오기
             return result.fetchall()
         except Exception as e:
@@ -58,9 +59,6 @@ class AuthService:
         
 
     async def get_token_by_name(self, channel_name: str):
-        query_str = query_loader.get_query(
-            "auth_token_select_by_name",
-            channel_name=channel_name
-        )
-        result = await self.db.execute(query_str)
+        query_str = query_loader.get_query("auth_token_select_by_name")
+        result = await self.db.execute(query_str , {"channel_name": channel_name})
         return result.fetchone()
