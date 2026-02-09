@@ -1,10 +1,8 @@
-from fastapi import FastAPI, Depends, Query
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 
-from app.db.database import lifespan, get_db
+from app.db.database import lifespan
 from app.db.tunnel import tunnel
-from app.api.auth import auth
-from app.api import routes_chat
+from app.api.auth import auth_router
 
 
 # api
@@ -12,7 +10,7 @@ app = FastAPI(
     lifespan=lifespan,
     title="milkyway bot"
     )
-app.include_router(auth.auth_router)
+app.include_router(auth_router.auth_router)
 # app.include_router(routes_chat.router, prefix="/chat", tags=["chat"])
 
 

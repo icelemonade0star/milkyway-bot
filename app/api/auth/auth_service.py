@@ -36,3 +36,31 @@ class AuthService:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
+
+    async def get_auth_list(self, channel_name: str = None):
+        # 1. LIKE 검색을 위한 패턴 생성
+        search_pattern = f"%{channel_name}%" if channel_name else None
+        
+        # 2. 쿼리 로드
+        query_str = query_loader.get_query(
+            "auth_token_list",
+            channel_name=channel_name,
+            channel_name_like=search_pattern
+        )
+        
+        try:
+            result = await self.db.execute(text(query_str))
+            # 3. 모든 결과 가져오기
+            return result.fetchall()
+        except Exception as e:
+            print(f"[DB Error] List fetch failed: {str(e)}")
+            return []
+        
+
+    async def get_token_by_name(self, channel_name: str):
+        query_str = query_loader.get_query(
+            "auth_token_select_by_name",
+            channel_name=channel_name
+        )
+        result = await self.db.execute(text(query_str))
+        return result.fetchone()

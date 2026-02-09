@@ -68,6 +68,27 @@ async def callback_auth(
     }
 
 
+@auth_router.get("/list")
+async def get_auth_token_list(
+    channel_name: str = Query(None, description="검색할 채널 이름 (선택 사항)"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    auth_service = AuthService(db)
+    rows = await auth_service.get_auth_list(channel_name)
+    
+    # 결과를 딕셔너리 리스트로 변환하여 반환
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "channel_id": row.channel_id,
+                "channel_name": row.channel_name,
+                "expires_at": row.expires_at,
+                "created_at": getattr(row, 'created_at', None)
+            } for row in rows
+        ]
+    }
+
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")
 async def authenticate():
