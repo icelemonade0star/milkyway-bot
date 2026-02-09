@@ -22,7 +22,7 @@ class AuthService:
 
         try:
             # 2. 쿼리 실행
-            result = await self.db.execute(text(insert_query_str))
+            result = await self.db.execute(insert_query_str)
             
             # 3. 데이터 확정
             await self.db.commit()
@@ -49,7 +49,7 @@ class AuthService:
         )
         
         try:
-            result = await self.db.execute(text(query_str))
+            result = await self.db.execute(query_str)
             # 3. 모든 결과 가져오기
             return result.fetchall()
         except Exception as e:
@@ -62,5 +62,5 @@ class AuthService:
             "auth_token_select_by_name",
             channel_name=channel_name
         )
-        result = await self.db.execute(text(query_str))
+        result = await self.db.execute(query_str)
         return result.fetchone()
