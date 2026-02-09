@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from app.db.database import get_async_db
 from app.db.query_loader import query_loader
+from app.api.auth.auth_service import AuthService
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,7 +19,7 @@ def get_auth() -> ChzzkAuth:
 
 
 @auth_router.get("/")
-def auth_redirect():
+async def auth_redirect():
     # 리다이렉트
     auth = get_auth()
     url, state = auth.get_auth_url()
@@ -54,36 +55,20 @@ async def callback_auth(
     print("채널 ID : ",chzzk_auth.channel_id)
     print("액세스 토큰 : ",chzzk_auth.access_token)
 
-
-    # db저장
-    insert_query = query_loader.get_query(
-        "auth_token_insert",
-        channel_id=chzzk_auth.channel_id,      # :channel_id
-        channel_name=chzzk_auth.channel_name,  # :channel_name  
-        access_token=chzzk_auth.access_token,  # :access_token
-        refresh_token=chzzk_auth.refresh_token # :refresh_token
-    )
-
-    try:
-        result = await db.execute(text(insert_query))
-        await db.commit()
+    auth_service = AuthService(db)
+    inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
         
-        inserted_data = result.fetchone()
-        
-        if not inserted_data:
-             return {"message": "인증 성공 & DB 저장 완료 (반환값 없음)"}
+    if not inserted_data:
+            return {"message": "인증 성공 & DB 저장 완료 (반환값 없음)"}
 
-        return {
-            "message": "인증 성공 & DB 저장 완료",
-            "채널 이름": inserted_data.channel_name,
-            "만료일": getattr(inserted_data, 'expires_at', 'N/A')
-        }
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"DB 저장 오류: {str(e)}")
+    return {
+        "message": "인증 성공 & DB 저장 완료",
+        "채널 이름": getattr(inserted_data, 'channel_name', chzzk_auth.channel_name),
+        "만료일": getattr(inserted_data, 'expires_at', 'N/A')
+    }
 
 
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")
-def authenticate():
+async def authenticate():
     raise HTTPException(status_code=401, detail="Unauthorized")
