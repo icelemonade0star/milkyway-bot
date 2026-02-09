@@ -58,7 +58,14 @@ jobs:
         port: 22
         script: |
             cd /app/milkywayBot
-            git pull origin main 
+
+            [ -f .env ] && cp .env /tmp/milkyway_env.backup
+            
+            git fetch origin
+            git reset --hard origin/main
+
+            [ -f /tmp/milkyway_env.backup ] && cp /tmp/milkyway_env.backup .env
+            
             docker compose pull
             docker compose down
             docker compose up -d --force-recreate
