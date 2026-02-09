@@ -1,59 +1,55 @@
 import os
+from sshtunnel import SSHTunnelForwarder
 from dotenv import load_dotenv
-import paramiko
-import threading
-from contextlib import contextmanager
 
 load_dotenv()
 
 class ParamikoTunnel:
     _instance = None
-    _transport = None
-    _local_port = None
-    
+    _server = None
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance.init_tunnel()
         return cls._instance
-    
+
     def init_tunnel(self):
         try:
-            self._transport = paramiko.Transport(
-                (os.getenv("SSH_HOST"), int(os.getenv("SSH_PORT")))
+            # SSH 설정
+            ssh_host = os.getenv("SSH_HOST")
+            ssh_port = int(os.getenv("SSH_PORT", 22))
+            ssh_user = os.getenv("SSH_USER")
+            ssh_password = os.getenv("SSH_PASSWORD")
+            ssh_key = os.getenv("SSH_PRIVATE_KEY_PATH")
+
+            # 리모트 DB 설정
+            remote_db_host = "127.0.0.1"
+            remote_db_port = 5432
+
+            # 터널 서버 설정
+            self._server = SSHTunnelForwarder(
+                (ssh_host, ssh_port),
+                ssh_username=ssh_user,
+                ssh_password=ssh_password,
+                ssh_pkey=ssh_key,
+                remote_bind_address=(remote_db_host, remote_db_port),
+                local_bind_address=('127.0.0.1', 0) # 로컬의 남는 포트에 바인딩
             )
             
-            # 비밀번호 또는 키 인증
-            if os.getenv("SSH_PASSWORD"):
-                self._transport.connect(
-                    username=os.getenv("SSH_USER"),
-                    password=os.getenv("SSH_PASSWORD")
-                )
-            else:
-                key = paramiko.RSAKey.from_private_key_file(
-                    os.getenv("SSH_PRIVATE_KEY_PATH")
-                )
-                self._transport.connect(
-                    username=os.getenv("SSH_USER"),
-                    pkey=key
-                )
-            
-            # 로컬 포트 포워딩 (동적 할당)
-            self._local_port = self._transport.request_port_forward("", 0)
-            print(f"✅ SSH 터널 시작됨 - 로컬 포트: {self._local_port}")
+            self._server.start()
+            print(f"✅ SSH 터널 시작됨 - 로컬 포트: {self._server.local_bind_port}")
             
         except Exception as e:
             print(f"❌ SSH 터널 실패: {e}")
-            self._local_port = 5432  # 기본 DB 포트 fallback
-    
+
     @property
     def local_port(self):
-        return self._local_port or 5432
-    
+        return self._server.local_bind_port if self._server else 5432
+
     def stop(self):
-        if self._transport:
-            self._transport.close()
+        if self._server:
+            self._server.stop()
             print("🔒 SSH 터널 종료")
 
-# 싱글톤 인스턴스
 tunnel = ParamikoTunnel()
