@@ -1,12 +1,11 @@
-from app.chzzk.auth.chzzk_auth import ChzzkAuth
-from typing import Any
+from app.api.auth.chzzk_auth import ChzzkAuth
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
-
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.db.query_loader import query_loader
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,11 +31,11 @@ def auth_redirect():
 
 
 @auth_router.get("/callback")
-def callback_auth(
+async def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
     oauth_state: str = Cookie(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     chzzk_auth = get_auth()
    
@@ -44,10 +43,10 @@ def callback_auth(
     if not oauth_state or state != oauth_state:
         raise HTTPException(status_code=400, detail="Invalid state")
 
-    if not chzzk_auth.get_access_token(code, state):
+    if not await chzzk_auth.get_access_token(code, state):
         raise HTTPException(status_code=400, detail="토큰 발급 실패")
     
-    if not chzzk_auth.get_user_info():
+    if not await chzzk_auth.get_user_info():
         raise HTTPException(status_code=400, detail="유저 정보 조회 실패")
 
 
@@ -65,23 +64,23 @@ def callback_auth(
         refresh_token=chzzk_auth.refresh_token # :refresh_token
     )
 
+    try:
+        result = await db.execute(text(insert_query))
+        await db.commit()
+        
+        inserted_data = result.fetchone()
+        
+        if not inserted_data:
+             return {"message": "인증 성공 & DB 저장 완료 (반환값 없음)"}
 
-    result = db.execute(insert_query)
-    db.commit()
-
-
-    if result.rowcount == 0:
-        raise HTTPException(status_code=500, detail="DB 저장 실패")
-
-
-    inserted_data = result.fetchone()
-    print(f"✅ DB 저장 완료! ID: {inserted_data.id}")
-   
-    return {
-        "message": "인증 성공 & DB 저장 완료",
-        "채널 이름": inserted_data.channel_name,
-        "만료일": inserted_data.expires_at
-    }
+        return {
+            "message": "인증 성공 & DB 저장 완료",
+            "채널 이름": inserted_data.channel_name,
+            "만료일": getattr(inserted_data, 'expires_at', 'N/A')
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB 저장 오류: {str(e)}")
 
 
 # 예외처리. 따로 분리할것

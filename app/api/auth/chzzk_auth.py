@@ -1,6 +1,7 @@
-import requests
+import httpx
 import app.config as config
 import secrets
+import asyncio
 
 from urllib.parse import quote
  
@@ -38,7 +39,7 @@ class ChzzkAuth:
         )
         return auth_url, state
         
-    def get_access_token(self, code, state):
+    async def get_access_token(self, code, state):
         headers = {          
             'Content-Type': 'application/json'
         }
@@ -52,37 +53,38 @@ class ChzzkAuth:
             "redirectUri": self.redirect_url        
         }
         
-        try:
-            response = requests.post(self.chzzk_token_url, headers=headers, json=data)
-            
-            if response.status_code == 200:
-                self.access_token = response.json()["content"]["accessToken"]
-                self.refresh_token = response.json()["content"]["refreshToken"]
-                return response.json()
-            else:
-                return f"Error: {response.status_code} - {response.text}"
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(self.chzzk_token_url, headers=headers, json=data)
                 
-        except Exception as e:
-            return f"Error: {str(e)}"
+                if response.status_code == 200:
+                    res_json = response.json()
+                    self.access_token = res_json["content"]["accessToken"]
+                    self.refresh_token = res_json["content"]["refreshToken"]
+                    return res_json
+                return None
+            except Exception as e:
+                print(f"Token Error: {str(e)}")
+                return None
 
-    def get_user_info(self):
+    async def get_user_info(self):
         headers = {          
             'Content-Type': 'application/json',
             "Authorization": f"Bearer {self.access_token}"
         }
         
-        try:
-            response = requests.get(self.chzzk_user_info_url, headers=headers)
-            # print(response.json())
-            if response.status_code == 200:
-                self.channel_id = response.json()["content"]["channelId"]
-                self.channel_name = response.json()["content"]["channelName"]
-                return response.json()
-            else:
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(self.chzzk_user_info_url, headers=headers)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    self.channel_id = res_json["content"]["channelId"]
+                    self.channel_name = res_json["content"]["channelName"]
+                    return res_json
                 return f"Error: {response.status_code} - {response.text}"
                 
-        except Exception as e:
-            return f"Error: {str(e)}"
+            except Exception as e:
+                return f"Error: {str(e)}"
         
 # class ChzzkRequest:
 #     def post_request(url, access_token):
@@ -113,9 +115,18 @@ class ChzzkAuth:
 
 
 if __name__ == "__main__":
-    # 인증 객체 생성
-    print("chzzk_auth.py 테스트")
-    auth = ChzzkAuth()
-    url = auth.get_auth_url()
-    print("client_id 정보 : " , auth.client_id)
-    print("url : " , url) 
+    async def test_main():
+        print("chzzk_auth.py 테스트 시작")
+        auth = ChzzkAuth()
+        
+        # 1. URL 생성 (동기 함수이므로 그대로 호출)
+        url, state = auth.get_auth_url()
+        print("client_id 정보 : ", auth.client_id)
+        print("생성된 URL : ", url)
+        
+        # 2. 토큰 발급 테스트 (실제 code와 state가 있어야 하지만 구조 체크용)
+        result = await auth.get_access_token("SAMPLE_CODE", state)
+        print("토큰 결과 : ", result)
+
+    # 비동기 루프 실행
+    asyncio.run(test_main())
