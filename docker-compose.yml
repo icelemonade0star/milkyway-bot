@@ -31,6 +31,11 @@ services:
       - redis
     networks:
       - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"  # 파일 한 개당 최대 10MB
+        max-file: "3"    # 최대 3개까지만 보관 (총 30MB)
     restart: unless-stopped 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -62,6 +67,11 @@ services:
       resources:
         limits:
           memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:6
@@ -70,6 +80,12 @@ services:
       - redis_data:/data
     networks:
       - app-network
+
+  logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   app-network:
