@@ -8,11 +8,11 @@ from urllib.parse import quote
 from app.api.auth.auth_service import AuthService
  
 class ChzzkAuth:
-    def __init__(self):
+    def __init__(self, auth_service: AuthService):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
         self.redirect_url = config.REDIRECT_URL
-        self.auth_service = AuthService()
+        self.auth_service = auth_service
         
         # 치지직 토큰관련 엔드포인트 URL 정의
         self.chzzk_auth_url = "https://chzzk.naver.com/account-interlock"
@@ -131,7 +131,7 @@ class ChzzkAuth:
         }
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(self.chzzk_base_url, data=params)
+            resp = await client.post(self.chzzk_token_url, data=params)
             if resp.status_code == 200:
                 res_json = resp.json()
                 token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
