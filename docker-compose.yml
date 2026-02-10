@@ -82,12 +82,11 @@ services:
       - redis_data:/data
     networks:
       - app-network
-
-  logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
 
 networks:
   app-network:
