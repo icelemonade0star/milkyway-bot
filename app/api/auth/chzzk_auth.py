@@ -80,9 +80,6 @@ class ChzzkAuth:
             try:
                 response = await client.get(self.chzzk_user_info_url, headers=headers)
                 
-                print(f"[DEBUG] Chzzk API Response Status: {response.status_code}")
-                print(f"[DEBUG] Chzzk API Response Body: {response.text}")
-                
                 if response.status_code == 200:
                     res_json = response.json()
                     self.channel_id = res_json["content"]["channelId"]
@@ -122,26 +119,29 @@ class ChzzkAuth:
     async def refresh_access_token(self, channel_id: str):
         # 1. DB에서 기존 리프레시 토큰 가져오기
         auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
+        print(f"[DEBUG] DB에서 가져온 데이터: {auth_data}")
         if not auth_data or not auth_data.refresh_token:
             print(f"❌ 갱신 불가: {channel_id}의 리프레시 토큰이 없습니다.")
             return None
 
         # 2. 치지직 토큰 갱신 API 호출
-        params = {
+        data = {
             "grant_type": "refresh_token",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "refresh_token": auth_data.refresh_token
         }
 
+        print(f"[DEBUG] 전송 페이로드: RT={auth_data.refresh_token[:10]}..., ID={self.client_id[:5]}...")
+
         async with httpx.AsyncClient() as client:
-            resp = await client.post(self.chzzk_token_url, data=params)
+            resp = await client.post(self.chzzk_token_url, json=data)
             if resp.status_code == 200:
                 res_json = resp.json()
                 token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
                 return token
             else:
-                print(f"❌ 토큰 갱신 실패: {resp.text}")
+                print(f"❌ 토큰 갱신 실패: {resp.status_code} - {resp.text}")
                 return None
     
 
