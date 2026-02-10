@@ -126,10 +126,10 @@ class ChzzkAuth:
 
         # 2. 치지직 토큰 갱신 API 호출
         data = {
-            "grant_type": "refresh_token",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "refresh_token": auth_data.refresh_token
+            "grantType": "refresh_token",
+            "clientId": self.client_id,
+            "clientSecret": self.client_secret,
+            "refreshToken": auth_data.refresh_token
         }
 
         print(f"[DEBUG] 전송 페이로드: RT={auth_data.refresh_token[:10]}..., ID={self.client_id[:5]}...")
