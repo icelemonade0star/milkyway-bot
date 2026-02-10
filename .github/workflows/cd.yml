@@ -69,4 +69,6 @@ jobs:
             docker compose pull
             docker compose down
             docker compose up -d --force-recreate
+            
             sleep 10
+            docker image prune -f
