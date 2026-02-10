@@ -79,6 +79,10 @@ class ChzzkAuth:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(self.chzzk_user_info_url, headers=headers)
+                
+                print(f"[DEBUG] Chzzk API Response Status: {response.status_code}")
+                print(f"[DEBUG] Chzzk API Response Body: {response.text}")
+                
                 if response.status_code == 200:
                     res_json = response.json()
                     self.channel_id = res_json["content"]["channelId"]
