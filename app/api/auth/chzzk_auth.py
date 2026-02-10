@@ -4,12 +4,15 @@ import secrets
 import asyncio
 
 from urllib.parse import quote
+
+from app.api.auth.auth_service import AuthService
  
 class ChzzkAuth:
     def __init__(self):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
         self.redirect_url = config.REDIRECT_URL
+        self.auth_service = AuthService()
         
         # 치지직 토큰관련 엔드포인트 URL 정의
         self.chzzk_auth_url = "https://chzzk.naver.com/account-interlock"
@@ -110,6 +113,32 @@ class ChzzkAuth:
 #         # 실패하면 에러 코드랑 메시지 반환
 #         else:
 #             return {"error": "API request failed", "status_code": response.status_code}
+
+
+    async def refresh_access_token(self, channel_id: str):
+        # 1. DB에서 기존 리프레시 토큰 가져오기
+        auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
+        if not auth_data or not auth_data.refresh_token:
+            print(f"❌ 갱신 불가: {channel_id}의 리프레시 토큰이 없습니다.")
+            return None
+
+        # 2. 치지직 토큰 갱신 API 호출
+        params = {
+            "grant_type": "refresh_token",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": auth_data.refresh_token
+        }
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(self.chzzk_base_url, data=params)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
+                return token
+            else:
+                print(f"❌ 토큰 갱신 실패: {resp.text}")
+                return None
     
 
 

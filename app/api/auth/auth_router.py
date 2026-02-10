@@ -89,6 +89,13 @@ async def get_auth_token_list(
         ]
     }
 
+@auth_router.post("/refresh/{channel_id}")
+async def refresh_token(channel_id: str, db: AsyncSession = Depends(get_async_db)):
+    auth_service = AuthService(db)
+    chzzk_auth = ChzzkAuth(auth_service)
+    new_token = await chzzk_auth.refresh_access_token(channel_id)
+    return {"status": "success", "token": new_token}
+
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")
 async def authenticate():
