@@ -59,12 +59,12 @@ jobs:
         script: |
             cd /app/milkywayBot
 
-            sudo cp .env /tmp/milkyway_env.backup
+            cp .env .env.bak
             
             git fetch origin
             git reset --hard origin/main
 
-            sudo cp /tmp/milkyway_env.backup .env
+            mv .env.bak .env
             
             docker compose pull
             docker compose down
