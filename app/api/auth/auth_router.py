@@ -14,15 +14,14 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 # 인증 객체 생성
 # auth = ChzzkAuth()
 
-def get_auth() -> ChzzkAuth:
-    return ChzzkAuth()
+def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuth:
+    auth_service = AuthService(db)
+    return ChzzkAuth(auth_service)
 
 
 @auth_router.get("/")
-async def auth_redirect():
-    # 리다이렉트
-    auth = get_auth()
-    url, state = auth.get_auth_url()
+async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
+    url, state = chzzk.get_auth_url()
 
     response = RedirectResponse(url=url)
     # 쿠키에 state 저장 (유효기간 5분)
@@ -38,7 +37,7 @@ async def callback_auth(
     oauth_state: str = Cookie(None),
     db: AsyncSession = Depends(get_async_db),
 ):
-    chzzk_auth = get_auth()
+    chzzk_auth = get_chzzk_auth(db)
    
     # 쿠키에 저장된 state와 네이버가 보낸 state 비교
     if not oauth_state or state != oauth_state:
@@ -90,9 +89,10 @@ async def get_auth_token_list(
     }
 
 @auth_router.post("/refresh/{channel_id}")
-async def refresh_token(channel_id: str, db: AsyncSession = Depends(get_async_db)):
-    auth_service = AuthService(db)
-    chzzk_auth = ChzzkAuth(auth_service)
+async def refresh_token(
+    channel_id: str, 
+    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth)
+):
     new_token = await chzzk_auth.refresh_access_token(channel_id)
     return {"status": "success", "token": new_token}
 
