@@ -79,13 +79,16 @@ class AuthService:
         
     async def update_auth_token(self, channel_id: str, data: dict):
         
-        new_access_token = data["accessToken"]
+        new_access_token = data.get("accessToken")
         new_refresh_token = data.get("refreshToken")
-
-        expires_in = data["expiresIn"]
+        expires_in = data.get("expiresIn", 86400) # 기본값 1일(86400초)
         
         # 만료 시간 계산
-        new_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        new_expires_at = datetime.now() + timedelta(seconds=expires_in)
+
+        if not new_access_token:
+            print(f"❌ 업데이트 실패: 응답에 accessToken이 없습니다. (Data: {data})")
+            return None
 
         # 3. DB 업데이트 (여기에 UPDATE 쿼리가 필요합니다)
         await self.update_token(
