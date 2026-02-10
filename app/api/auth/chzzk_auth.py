@@ -90,32 +90,6 @@ class ChzzkAuth:
             except Exception as e:
                 return f"Error: {str(e)}"
         
-# class ChzzkRequest:
-#     def post_request(url, access_token):
-#         # 인증 토큰이랑 데이터 형식을 헤더에 담기
-#         headers = {
-#             'Authorization': f'Bearer {access_token}',  # 내 권한 증명용 토큰
-#             # 'Client-Id': f'{CLIENT_ID}',              # (필요할 때만 주석 해제해서 사용)
-#             # 'Client-Secret': f'{CLIENT_SECRET}',      # (필요할 때만 주석 해제해서 사용)
-#             'Content-Type': 'application/json',         # 보내는 데이터 JSON
-#         }
-        
-#         # 서버에 보낼 파라미터(소켓 세션 키) 설정
-#         params = {
-#             "sessionKey": socketio.session_key
-#         }
-        
-#         # 설정한 주소(url)로 헤더와 파라미터를 실어서 POST 요청 보냄
-#         response = requests.post(url, headers=headers, params=params)
-        
-#         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
-#         if response.status_code == 200:
-#             return response.json() 
-#         # 실패하면 에러 코드랑 메시지 반환
-#         else:
-#             return {"error": "API request failed", "status_code": response.status_code}
-
-
     async def refresh_access_token(self, channel_id: str):
         # 1. DB에서 기존 리프레시 토큰 가져오기
         auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
