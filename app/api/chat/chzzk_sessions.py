@@ -103,7 +103,7 @@ class ChzzkSessions:
                 "detail": response.json() if response.text else "No detail"
             }
         
-    async def send_chat(self, access_token: str, message: str):
+    async def send_chat(access_token: str, message: str):
         
         # 인증 토큰이랑 데이터 형식을 헤더에 담기
         headers = {
@@ -116,17 +116,9 @@ class ChzzkSessions:
             "message": message
         }
 
-        if not self.session_key:
-            print("⚠️ 채팅 전송 실패: 세션 키가 없습니다.")
-            return False
+        uri = f"{config.OPENAPI_BASE}/open/v1/sessions/events/send/chat"
 
-        # 서버에 보낼 파라미터(소켓 세션 키) 설정
-        params = {
-            "sessionKey": self.session_key
-        }
-        uri = f"{self.openapi_base}/open/v1/sessions/events/send/chat"
-
-        response = requests.post(uri, headers=headers, params=params, json=data)
+        response = requests.post(uri, headers=headers, json=data)
         
         if response.status_code == 200:
             print(f"✅ 채팅 전송 성공: {message}")
