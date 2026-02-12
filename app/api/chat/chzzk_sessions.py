@@ -103,11 +103,11 @@ class ChzzkSessions:
                 "detail": response.json() if response.text else "No detail"
             }
         
-    async def send_chat(self, message: str):
-
+    async def send_chat(self, access_token: str, message: str):
+        
         # 인증 토큰이랑 데이터 형식을 헤더에 담기
         headers = {
-            'Authorization': f'Bearer {self.access_token}',
+            'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json', 
         }
 
@@ -124,7 +124,7 @@ class ChzzkSessions:
         params = {
             "sessionKey": self.session_key
         }
-        uri = f"{self.openapi_base}/open/v1/chats/send"
+        uri = f"{self.openapi_base}/open/v1/sessions/events/send/chat"
 
         response = requests.post(uri, headers=headers, params=params, json=data)
         

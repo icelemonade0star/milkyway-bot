@@ -65,12 +65,12 @@ async def on_system(data):
 async def on_chat(data):
     data = json.loads(data)
     print(f"CHAT 이벤트 수신: {data}")
-    print(f"CHAT 타입: {type(data)}")
     
-    # 실제 채팅 내용 파싱 예시
     try:
         message = data.get('content')
         nickname = data.get('profile', {}).get('nickname')
+        channelId = data.get('channelId')
+
         if message and nickname:
             print(f"[{nickname}] {message}")
     except Exception as e:
