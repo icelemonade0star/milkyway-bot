@@ -90,7 +90,8 @@ class ChzzkSessions:
         }
         uri = f"{self.openapi_base}/open/v1/sessions/events/subscribe/chat"
 
-        response = requests.post(uri, headers=headers, params=params)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(uri, headers=headers, params=params)
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
@@ -102,7 +103,8 @@ class ChzzkSessions:
                 "status_code": response.status_code,
                 "detail": response.json() if response.text else "No detail"
             }
-        
+    
+    @staticmethod
     async def send_chat(access_token: str, message: str):
         
         # 인증 토큰이랑 데이터 형식을 헤더에 담기
@@ -116,9 +118,10 @@ class ChzzkSessions:
             "message": message
         }
 
-        uri = f"{config.OPENAPI_BASE}/open/v1/sessions/events/send/chat"
+        uri = f"{config.OPENAPI_BASE}/open/v1/chats/send"
 
-        response = requests.post(uri, headers=headers, json=data)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(uri, headers=headers, json=data)
         
         if response.status_code == 200:
             print(f"✅ 채팅 전송 성공: {message}")
