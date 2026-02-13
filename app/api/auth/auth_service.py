@@ -1,8 +1,13 @@
+from fastapi import Depends
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from app.db.query_loader import query_loader
+
+from app.db.database import get_async_db
+
 
 class AuthService:
     def __init__(self, db: AsyncSession):
@@ -109,3 +114,7 @@ class AuthService:
         }
         await self.db.execute(query_obj, params)
         await self.db.commit()
+
+
+async def get_auth_service(db: AsyncSession = Depends(get_async_db)):
+    return AuthService(db)

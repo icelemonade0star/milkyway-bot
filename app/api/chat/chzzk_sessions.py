@@ -5,18 +5,27 @@ import asyncio
 
 import app.config as config
 import app.api.chat.handling.socketio as socketio
+from app.api.auth.auth_service import AuthService
 
 class ChzzkSessions:
-    def __init__(self, access_token: str, channel_id: str):
+    def __init__(self, channel_id: str, auth_service: AuthService):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
         self.openapi_base = config.OPENAPI_BASE
 
-        self.access_token = access_token
+        self.auth_service = auth_service
         self.channel_id = channel_id
+        self.access_token = None
         self.socket_url = None
         self.session_key = None
 
+    async def _ensure_token(self):
+        if not self.access_token:
+            auth_data = await self.auth_service.get_auth_token_by_id(self.channel_id)
+            if auth_data:
+                self.access_token = auth_data.access_token
+            else:
+                raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 
     async def create_socket_url(self):
         # 세션 발급을 위한 치지직 API 주소
@@ -73,6 +82,9 @@ class ChzzkSessions:
         return None
     
     async def subscribe_chat(self):
+
+        # 토큰 확인
+        await self._ensure_token()
         
         # 인증 토큰이랑 데이터 형식을 헤더에 담기
         headers = {
@@ -104,12 +116,14 @@ class ChzzkSessions:
                 "detail": response.json() if response.text else "No detail"
             }
     
-    @staticmethod
-    async def send_chat(access_token: str, message: str):
+    async def send_chat(self, message: str):
+
+        # 토큰 확인
+        await self._ensure_token()
         
         # 인증 토큰이랑 데이터 형식을 헤더에 담기
         headers = {
-            'Authorization': f'Bearer {access_token}',
+            'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json', 
         }
 
