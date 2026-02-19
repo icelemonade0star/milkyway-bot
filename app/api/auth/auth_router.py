@@ -58,12 +58,11 @@ async def callback_auth(
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
         
     if not inserted_data:
-            return {"message": "인증 성공 & DB 저장 완료 (반환값 없음)"}
+            return {"message": "인증 성공 & 저장 완료 (반환값 없음)"}
 
     return {
-        "message": "인증 성공 & DB 저장 완료",
-        "채널 이름": getattr(inserted_data, 'channel_name', chzzk_auth.channel_name),
-        "만료일": getattr(inserted_data, 'expires_at', 'N/A')
+        "message": "인증 성공 & 저장 완료",
+        "채널 이름": getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
     }
 
 
