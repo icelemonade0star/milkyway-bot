@@ -68,7 +68,7 @@ class ChzzkChatClient:
             nickname = raw_data.get('profile', {}).get('nickname')
             message = raw_data.get('content')
             # 어느 세션에서 발생한 채팅인지 식별자와 함께 출력
-            self.logger.info(f"💬 [{self.channel_name}] [{nickname}] {message}")
+            self.logger.info(f"💬 [{nickname}] {message}")
 
 
     def get_session_key(self):
