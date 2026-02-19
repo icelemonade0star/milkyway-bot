@@ -42,6 +42,8 @@ async def create_session(
     
     # 세션 생성
     await chzzk_session.create_session()
+    if not chzzk_session.socket_url:
+        return {"status": "error", "message": "세션 생성에 실패했습니다."}
 
     # 세션 매니저에 세션 저장
     session_manager.add_session(channel_id, chzzk_session)
