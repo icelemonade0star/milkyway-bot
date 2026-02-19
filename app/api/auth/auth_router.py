@@ -55,7 +55,9 @@ async def callback_auth(
     print("액세스 토큰 : ",chzzk_auth.access_token)
 
     auth_service = AuthService(db)
+
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
+    
         
     if not inserted_data:
             return {"message": "인증 성공 & 저장 완료 (반환값 없음)"}

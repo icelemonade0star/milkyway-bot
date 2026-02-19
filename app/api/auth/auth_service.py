@@ -18,7 +18,8 @@ class AuthService:
         치지직 인증 정보를 DB에 저장하고 결과를 반환합니다.
         """
         # 1. 쿼리 로드
-        insert_query_obj = query_loader.get_query("auth_token_insert")
+        auth_query = query_loader.get_query("auth_token_insert")
+        config_query = query_loader.get_query("channel_config_insert")
 
         # 파라미터 딕셔너리 구성
         params = {
@@ -30,9 +31,13 @@ class AuthService:
 
         try:
             # 2. 쿼리 실행
-            result = await self.db.execute(insert_query_obj, params)
+            result = await self.db.execute(auth_query, params)
             
             inserted_data = result.fetchone()
+
+            # 채널 설정 초기값 저장 (예: command_prefix는 "!"로 초기화) 
+            await self.db.execute(config_query, {"channel_id": chzzk_auth.channel_id})
+
             await self.db.commit()
             
             return inserted_data
