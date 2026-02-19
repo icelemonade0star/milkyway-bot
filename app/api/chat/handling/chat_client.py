@@ -70,6 +70,10 @@ class ChzzkChatClient:
             # 어느 세션에서 발생한 채팅인지 식별자와 함께 출력
             self.logger.info(f"💬 [{self.channel_name}] [{nickname}] {message}")
 
+
+    def get_session_key(self):
+        return self.session_key
+
     async def connect(self, url):
         try:
             await self.socketio.connect(url, transports=['websocket'])
