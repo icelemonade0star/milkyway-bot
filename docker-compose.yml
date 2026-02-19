@@ -9,13 +9,13 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro  # 호스트 실제 경로 직접 마운트
       - ./certbot/www:/var/www/certbot
     depends_on:
-      - web
+      - api
     environment:
     - TZ=Asia/Seoul
     networks:
       - app-network
 
-  web:
+  api:
     # image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
     image: ${DOCKERHUB_USERNAME}/milkyway_bot:latest
     expose:
