@@ -34,13 +34,13 @@ class ChzzkSessions:
         url = f'{self.openapi_base}/open/v1/sessions/auth/client'
 
         # 토큰 확인
-        await self._ensure_auth()
+        # await self._ensure_auth()
         
         # 내 앱의 ID랑 비밀키로 인증 헤더 구성
         headers = {
-            # 'Client-Id': f'{self.client_id}',
-            # 'Client-Secret': f'{self.client_secret}',
-            'Authorization': f'Bearer {self.access_token}',
+            'Client-Id': f'{self.client_id}',
+            'Client-Secret': f'{self.client_secret}',
+            # 'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json'
         }
         
