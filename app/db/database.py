@@ -4,13 +4,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.db.tunnel import ParamikoTunnel
+from app.api.chat.session_manager import session_manager
 
 tunnel = ParamikoTunnel()  # 싱글톤 인스턴스
+
+AsyncSessionLocal = None
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # STARTUP: SSH 터널 자동 시작
     print("🚀 서버 시작 - SSH 터널 초기화")
+    global AsyncSessionLocal
     
     # DB 생성
     DATABASE_URL = f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@localhost:{tunnel.local_port}/{os.getenv('DB_NAME')}"    
@@ -39,7 +45,7 @@ async def lifespan(app: FastAPI):
     app.state.tunnel = tunnel
     
     yield
-    
+    await session_manager.close_all() # 세션 정리 추가
     # SHUTDOWN: 비동기 엔진 종료
     await engine.dispose()
     tunnel.stop()
@@ -52,3 +58,7 @@ async def get_async_db(request: Request):
             # commit은 컨트롤러(router)에서 명시적으로 하거나 여기서 처리
         finally:
             await db.close()
+
+def get_session_factory():
+    global AsyncSessionLocal
+    return AsyncSessionLocal

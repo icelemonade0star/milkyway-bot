@@ -20,6 +20,9 @@ class ChzzkSessions:
         self.socket_url = None
         self.session_key = None
 
+        # HTTP 클라이언트를 하나로 유지
+        self.client = httpx.AsyncClient(timeout=10.0)
+
     async def _ensure_auth(self):
         if not self.access_token:
             auth_data = await self.auth_service.get_auth_token_by_id(self.channel_id)
@@ -45,8 +48,7 @@ class ChzzkSessions:
         }
         
         # 서버에 세션 생성 url 요청
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
+        response = await self.client.get(url, headers=headers)
         
         if response.status_code == 200:
             print("url 정상", response.json())
@@ -109,8 +111,7 @@ class ChzzkSessions:
         }
         uri = f"{self.openapi_base}/open/v1/sessions/events/subscribe/chat"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(uri, headers=headers, params=params)
+        response = await self.client.post(uri, headers=headers, params=params)
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
@@ -141,8 +142,7 @@ class ChzzkSessions:
 
         uri = f"{config.OPENAPI_BASE}/open/v1/chats/send"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(uri, headers=headers, json=data)
+        response = await self.client.post(uri, headers=headers, json=data)
         
         if response.status_code == 200:
             print(f"✅ 채팅 전송 성공: {message}")

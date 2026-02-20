@@ -17,7 +17,7 @@ class RedisConfigService:
         
         cache_key = self.get_cache_key(channel_id)
         
-      # 1. Redis에서 조회
+        # 1. Redis에서 조회
         prefix = await redis_client.get(cache_key)
         if prefix:
             return prefix
@@ -32,11 +32,11 @@ class RedisConfigService:
             await redis_client.set(cache_key, db_prefix, ex=timedelta(days=1))
             return db_prefix
         
-        # 4. DB에도 정보가 없다면 기본값 반환 혹은 신규 생성 로직
+        # 4. DB에도 정보가 없다면 기본값 반환
         return "!"
 
     async def update_command_prefix(self, channel_id: str, new_prefix: str, language: str = "ko", is_active: bool = True):
-        # 1. DB 업데이트 (반드시 await 추가)
+        # 1. DB 업데이트
         await self.chat_service.update_channel_config(
             channel_id=channel_id, 
             command_prefix=new_prefix, 

@@ -79,6 +79,24 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
         
+    async def get_global_commands(self, command: str):
+        """
+        채널 설정 정보를 DB에서 조회하는 메서드
+        """
+        # 1. 쿼리 로드
+        query_obj = query_loader.get_query("get_global_chat_commands_by_command")
+
+        try:
+            # 2. 쿼리 실행
+            result = await self.db.execute(query_obj, {"command": command})
+            
+            config_data = result.fetchone()
+            return config_data
+
+        except Exception as e:
+            print(f"[DB Error] {str(e)}")
+            raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
+        
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
 
