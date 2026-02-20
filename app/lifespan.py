@@ -15,8 +15,8 @@ async def lifespan(app: FastAPI):
     # --- STARTUP ---
     print("🚀 서버 시작")
     
-    # 1. SSH 터널 시작
-    tunnel.start() 
+    # 1. SSH 터널 자동 시작
+    # tunnel.start() 
     
     # 2. DB 엔진 및 세션 팩토리 초기화
     engine = create_db_engine(tunnel.local_port)
