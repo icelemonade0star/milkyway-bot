@@ -4,9 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session_factory
 from app.api.chat.chat_service import ChatService
 
-from app.api.chat.session_manager import session_manager
-
 async def on_message(channel_id: str, message_text: str):
+    from app.api.chat.session_manager import session_manager
     # 1. DB 세션 수동 생성
     async with get_session_factory() as db:
         chat_service = ChatService(db)
