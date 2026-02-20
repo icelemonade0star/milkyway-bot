@@ -1,10 +1,9 @@
 from fastapi import FastAPI
 
-from app.db.database import lifespan
-from app.db.tunnel import tunnel
+from app.lifespan import lifespan
+from app.db.tunnel import ParamikoTunnel
 from app.api.auth import auth_router
 from app.api.chat import chat_router
-
 
 # api
 app = FastAPI(
