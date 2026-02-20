@@ -1,9 +1,32 @@
+import asyncio
+
 class SessionManager:
     def __init__(self):
         self.active_sessions = {}  # {channel_id: ChzzkSessions 인스턴스}
 
     def add_session(self, channel_id, session):
         self.active_sessions[channel_id] = session
+
+
+    async def restore_all_sessions_from_db(self):
+        """
+        서버 시작 시 DB에서 인증 정보를 가진 모든 채널을 불러와 연결을 복구합니다.
+        """
+        from app.api.auth.auth_service import AuthService 
+        channels = await AuthService.get_auth_list()
+
+        tasks = []
+        for ch in channels:
+            tasks.append(self.get_or_create_session(ch.channel_id))
+        
+        # 병렬로 모든 세션 복구 시작
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, res in enumerate(results):
+                if isinstance(res, Exception):
+                    # 어떤 채널(ID)에서 에러가 났는지 로그에 남김
+                    print(f"❌ 세션 복구 실패: {res}")
+            print(f"✅ {len(results)}개의 세션 복구 시도 완료")
 
     async def get_session(self, channel_id: str):
         """세션이 있으면 반환하고, 없으면 생성해서 반환합니다."""
