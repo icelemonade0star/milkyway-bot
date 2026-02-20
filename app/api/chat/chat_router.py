@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_async_db
-from app.api.auth.auth_service import AuthService
 from app.api.chat.chzzk_sessions import ChzzkSessions
 from app.api.chat.session_manager import session_manager
 
@@ -12,12 +10,9 @@ chat_router = APIRouter(prefix="/chat", tags=["chat"])
 @chat_router.get("/send")
 async def send_chat_message(
     channel_id: str,
-    message: str,
-    db: AsyncSession = Depends(get_async_db)
+    message: str
 ):
-    auth_service = AuthService(db)
-    # 1. 세션 인스턴스 생성 (auth_service를 주입)
-    chzzk_session = ChzzkSessions(channel_id, auth_service)
+    chzzk_session = await session_manager.get_session(channel_id)
 
     # 2. 채팅 전송 (인자 수정: message만 전달)
     result = await chzzk_session.send_chat(message)
@@ -30,15 +25,13 @@ async def send_chat_message(
 
 @chat_router.get("/create/session")
 async def create_session(
-    channel_id: str,
-    db: AsyncSession = Depends(get_async_db)
+    channel_id: str
 ):
     # 이미 연결된 세션이 있는지 확인
     if session_manager.get_session(channel_id):
         return {"status": "already_exists", "message": "이미 활성화된 세션입니다."}
 
-    auth_service = AuthService(db)
-    chzzk_session = ChzzkSessions(channel_id, auth_service)
+    chzzk_session = ChzzkSessions(channel_id)
     
     # 세션 생성
     await chzzk_session.create_session()
@@ -66,8 +59,6 @@ async def close_session(channel_id: str):
     if not session:
         return {"status": "error", "message": "활성화된 세션이 없습니다."}
     
-    await session.disconnect()
-    # 매니저에서 제거
-    del session_manager.active_sessions[channel_id]
+    await session_manager.remove_session(channel_id)
     
     return {"status": "success", "message": f"{channel_id} 세션이 종료되었습니다."}

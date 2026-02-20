@@ -6,14 +6,14 @@ import asyncio
 import app.config as config
 import app.api.chat.handling.chat_client as chat_client
 from app.api.auth.auth_service import AuthService
+from app.db.database import get_session_factory
 
 class ChzzkSessions:
-    def __init__(self, channel_id: str, auth_service: AuthService):
+    def __init__(self, channel_id: str):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
         self.openapi_base = config.OPENAPI_BASE
 
-        self.auth_service = auth_service
         self.channel_id = channel_id
         self.channel_name = None
         self.access_token = None
@@ -23,12 +23,25 @@ class ChzzkSessions:
         # HTTP 클라이언트를 하나로 유지
         self.client = httpx.AsyncClient(timeout=10.0)
 
-    async def _ensure_auth(self):
-        if not self.access_token:
-            auth_data = await self.auth_service.get_auth_token_by_id(self.channel_id)
+    async def _ensure_auth(self, force_refresh=False):
+
+        # 이미 토큰이 있고, 강제 갱신이 아니면 패스
+        if self.access_token and not force_refresh:
+            return
+        
+
+        factory = get_session_factory()
+        if not factory:
+            raise Exception("DB 세션 팩토리가 초기화되지 않았습니다.")
+
+        async with factory() as db:
+            auth_service = AuthService(db)
+            auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
+
             if auth_data:
                 self.access_token = auth_data.access_token
                 self.channel_name = auth_data.channel_name
+                print(f"🔑 [{self.channel_id}] 토큰 갱신 완료")
             else:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 

@@ -4,7 +4,6 @@ from app.api.chat.chzzk_sessions import ChzzkSessions
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session_factory
 from app.api.chat.chat_service import ChatService
-from app.api.auth.auth_service import AuthService
 
 from app.api.chat.session_manager import session_manager
 
@@ -18,7 +17,7 @@ async def on_message(channel_id: str, message_text: str):
         prefix = await redis_service.get_command_prefix(channel_id)
         
         if message_text.startswith(prefix):
-            session = await session_manager.get_session(channel_id, db)
+            session = await session_manager.get_session(channel_id)
             parts = message_text[len(prefix):].split()
             if not parts:
                 return # 접두사만 있는 경우
