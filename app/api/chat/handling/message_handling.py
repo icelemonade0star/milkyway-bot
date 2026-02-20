@@ -17,7 +17,8 @@ async def on_message(channel_id: str, message_text: str):
         return
 
     # 3. 명령어 파싱 및 실행.
-    async with get_session_factory() as db:
+    session_factory = get_session_factory()
+    async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         parts = message_text[len(prefix):].split()
         if not parts:
