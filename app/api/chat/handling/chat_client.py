@@ -2,7 +2,7 @@ import socketio
 import json
 import asyncio
 import logging
-import app.api.chat.handling.message_handling as message_handling
+from app.api.chat.handling import message_handling
 
 from pathlib import Path
 
