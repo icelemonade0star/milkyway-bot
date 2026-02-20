@@ -8,12 +8,13 @@ class SessionManager:
         self.active_sessions[channel_id] = session
 
 
-    async def restore_all_sessions_from_db(self):
+    async def restore_all_sessions_from_db(self, db_session):
         """
         서버 시작 시 DB에서 인증 정보를 가진 모든 채널을 불러와 연결을 복구합니다.
         """
         from app.api.auth.auth_service import AuthService 
-        channels = await AuthService.get_auth_list()
+        auth_service = AuthService(db_session)
+        channels = await auth_service.get_auth_list()
 
         tasks = []
         for ch in channels:

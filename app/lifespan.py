@@ -31,7 +31,8 @@ async def lifespan(app: FastAPI):
     app.state.SessionLocal = session_factory
 
     # 4. 세션 매니저 초기화 및 DB에서 세션 복구 시도
-    await session_manager.restore_all_sessions_from_db()
+    async with session_factory() as db_session:
+        await session_manager.restore_all_sessions_from_db(db_session)
     
     yield
     
