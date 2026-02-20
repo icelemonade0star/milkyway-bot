@@ -1,5 +1,5 @@
 ARG PYTHON_VERSION
-FROM python:${PYTHON_VERSION}-slim as builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 WORKDIR /app
 ENV PYTHONPATH=/app
@@ -13,7 +13,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 프로덕션 스테이지
-FROM python:${PYTHON_VERSION}-slim
+ARG PYTHON_VERSION
+FROM python:${PYTHON_VERSION}-slim AS final
 
 WORKDIR /app
 ENV PYTHONPATH=/app
