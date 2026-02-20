@@ -1,5 +1,4 @@
 from app.redis.redis_service import RedisConfigService
-from app.api.chat.chzzk_sessions import ChzzkSessions
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session_factory
@@ -28,7 +27,7 @@ async def on_message(channel_id: str, message_text: str):
             # 3. 명령어 실행
             await on_command(db, session, channel_id, command, args)
 
-async def on_command(db: AsyncSession, session: ChzzkSessions, channel_id: str, command: str, args: list):
+async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list):
     chat_service = ChatService(db)
     
     # 글로벌 명령어 조회 (이것도 나중엔 Redis에 캐싱할 수 있음)
