@@ -27,24 +27,28 @@ async def send_chat_message(
 async def create_session(
     channel_id: str
 ):
-    # 이미 연결된 세션이 있는지 확인
-    if session_manager.get_session(channel_id):
-        return {"status": "already_exists", "message": "이미 활성화된 세션입니다."}
+    try:
+        # 매니저에게 세션을 요청 (없으면 알아서 만들어서 줌)
+        session, created = await session_manager.get_or_create_session(channel_id)
+        
+        if not created:
+            return {
+                "status": "already_exists", 
+                "message": "이미 활성화된 세션입니다.",
+                "channel_id": channel_id
+            }
 
-    chzzk_session = ChzzkSessions(channel_id)
-    
-    # 세션 생성
-    await chzzk_session.create_session()
-    if not chzzk_session.socket_url:
-        return {"status": "error", "message": "세션 생성에 실패했습니다."}
+        return {
+            "status": "success", 
+            "message": "세션 생성 및 채팅 구독이 시작되었습니다.",
+            "channel_id": channel_id
+        }
 
-    # 세션 매니저에 세션 저장
-    session_manager.add_session(channel_id, chzzk_session)
-    
-    # 채팅 구독 시작
-    await chzzk_session.subscribe_chat()
-
-    return {"status": "success", "message": "세션 생성 및 채팅 구독이 시작되었습니다."}
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"세션 생성 중 오류 발생: {str(e)}"
+        }
 
 @chat_router.get("/active-sessions")
 async def get_active_sessions():
