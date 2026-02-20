@@ -1,4 +1,4 @@
-ARG PYTHON_VERSION
+ARG PYTHON_VERSION=3.13.9
 FROM python:${PYTHON_VERSION}-slim AS builder
 
 WORKDIR /app
@@ -13,7 +13,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 프로덕션 스테이지
-ARG PYTHON_VERSION
 FROM python:${PYTHON_VERSION}-slim AS final
 
 WORKDIR /app
