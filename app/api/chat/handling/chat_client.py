@@ -2,6 +2,7 @@ import socketio
 import json
 import asyncio
 import logging
+import app.api.chat.handling.message_handling as message_handling
 
 from pathlib import Path
 
@@ -65,12 +66,15 @@ class ChzzkChatClient:
         @self.socketio.on('CHAT')
         async def on_chat(data):
             raw_data = json.loads(data)
+            channelId = raw_data.get('channelId')
             nickname = raw_data.get('profile', {}).get('nickname')
             message = raw_data.get('content')
             role = raw_data.get('profile', {}).get('userRoleCode')
             # 어느 세션에서 발생한 채팅인지 식별자와 함께 출력
             self.logger.info(f"💬{role} : [{nickname}] {message}")
 
+            # 핸들러로 메시지 전달
+            await message_handling.on_message(channelId, message)
 
     def get_session_key(self):
         return self.session_key
