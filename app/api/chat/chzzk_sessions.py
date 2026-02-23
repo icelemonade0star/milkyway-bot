@@ -44,18 +44,40 @@ class ChzzkSessions:
             else:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 
+    async def _refresh_token(self):
+        """401 에러 발생 시 토큰을 갱신하고 메모리에 반영합니다."""
+        print(f"🔄 [{self.channel_id}] API 401 응답 감지. 토큰 갱신 시도...")
+        
+        # 순환 참조 방지를 위해 함수 내부에서 import
+        from app.api.auth.chzzk_auth import ChzzkAuth
+        
+        factory = get_session_factory()
+        if not factory:
+            print("⚠️ DB 세션 팩토리가 없습니다.")
+            return False
+
+        async with factory() as db:
+            auth_service = AuthService(db)
+            chzzk_auth = ChzzkAuth(auth_service)
+            
+            new_token = await chzzk_auth.refresh_access_token(self.channel_id)
+            
+            if new_token:
+                self.access_token = new_token
+                print(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
+                return True
+            else:
+                print(f"❌ [{self.channel_id}] 토큰 갱신 실패")
+                return False
+
     async def create_socket_url(self):
         # 세션 발급을 위한 치지직 API 주소
         url = f'{self.openapi_base}/open/v1/sessions/auth/client'
 
-        # 토큰 확인
-        await self._ensure_auth()
-        
         # 내 앱의 ID랑 비밀키로 인증 헤더 구성
         headers = {
             'Client-Id': f'{self.client_id}',
             'Client-Secret': f'{self.client_secret}',
-            # 'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json'
         }
         
@@ -75,6 +97,9 @@ class ChzzkSessions:
             self.socket_url = None
         
     async def create_session(self):
+
+        # 채널 이름 등 정보를 얻기 위해 인증 정보 확인 (소켓 연결 전 필수)
+        await self._ensure_auth()
 
         # 소켓 URL이 없으면 새로 생성
         if not self.socket_url:
@@ -122,6 +147,12 @@ class ChzzkSessions:
         uri = f"{self.openapi_base}/open/v1/sessions/events/subscribe/chat"
 
         response = await self.client.post(uri, headers=headers, params=params)
+
+        # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
+        if response.status_code == 401:
+            if await self._refresh_token():
+                headers['Authorization'] = f'Bearer {self.access_token}'
+                response = await self.client.post(uri, headers=headers, params=params)
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
@@ -153,6 +184,12 @@ class ChzzkSessions:
         uri = f"{self.openapi_base}/open/v1/chats/send"
 
         response = await self.client.post(uri, headers=headers, json=data)
+
+        # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
+        if response.status_code == 401:
+            if await self._refresh_token():
+                headers['Authorization'] = f'Bearer {self.access_token}'
+                response = await self.client.post(uri, headers=headers, json=data)
         
         if response.status_code == 200:
             print(f"✅ 채팅 전송 성공: {message}")

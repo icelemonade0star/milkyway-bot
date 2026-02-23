@@ -60,15 +60,12 @@ jobs:
             cd /app/milkywayBot
 
             cp .env .env.bak
-            
             git fetch origin
             git reset --hard origin/main
-
             mv .env.bak .env
             
             docker compose pull
-            docker compose down --remove-orphans
-            docker compose up -d --force-recreate
+            docker compose up -d --remove-orphans
             
             sleep 10
             docker image prune -f
