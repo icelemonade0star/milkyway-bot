@@ -117,23 +117,3 @@ class ChzzkAuth:
             else:
                 print(f"❌ 토큰 갱신 실패: {resp.status_code} - {resp.text}")
                 return None
-    
-
-
-
-if __name__ == "__main__":
-    async def test_main():
-        print("chzzk_auth.py 테스트 시작")
-        auth = ChzzkAuth()
-        
-        # 1. URL 생성 (동기 함수이므로 그대로 호출)
-        url, state = auth.get_auth_url()
-        print("client_id 정보 : ", auth.client_id)
-        print("생성된 URL : ", url)
-        
-        # 2. 토큰 발급 테스트 (실제 code와 state가 있어야 하지만 구조 체크용)
-        result = await auth.get_access_token("SAMPLE_CODE", state)
-        print("토큰 결과 : ", result)
-
-    # 비동기 루프 실행
-    asyncio.run(test_main())
