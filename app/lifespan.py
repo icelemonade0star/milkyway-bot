@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -6,6 +7,7 @@ from app.db.database import create_db_engine
 import app.db.database as db_module
 from app.db.tunnel import ParamikoTunnel
 from app.api.chat.session_manager import session_manager
+from app.tasks import token_refresh_task
 
 # 터널 인스턴스 생성
 tunnel = ParamikoTunnel()
@@ -31,10 +33,15 @@ async def lifespan(app: FastAPI):
     async with session_factory() as db_session:
         await session_manager.restore_all_sessions_from_db(db_session)
     
+    # 토큰 자동 갱신 백그라운드 작업 시작
+    refresh_task = asyncio.create_task(token_refresh_task(session_factory))
+    
     yield
     
     # --- SHUTDOWN ---
     print("🔒 리소스 정리 시작")
+    # 백그라운드 작업 취소
+    refresh_task.cancel()
     await session_manager.close_all()
     await engine.dispose()
     tunnel.stop()

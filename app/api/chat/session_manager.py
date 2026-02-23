@@ -77,4 +77,11 @@ class SessionManager:
             await session.client.aclose()
         self.active_sessions.clear()
 
+    async def update_session_token(self, channel_id: str, new_access_token: str):
+        """실행 중인 세션의 액세스 토큰을 갱신합니다."""
+        if channel_id in self.active_sessions:
+            session = self.active_sessions[channel_id]
+            session.access_token = new_access_token
+            print(f"🔄 [SessionManager] {channel_id}의 인메모리 토큰이 갱신되었습니다.")
+
 session_manager = SessionManager()

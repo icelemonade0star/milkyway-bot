@@ -58,6 +58,18 @@ class AuthService:
             print(f"[DB Error] List fetch failed: {str(e)}")
             return []
         
+    async def get_expiring_tokens(self, limit_minutes: int = 30):
+        """만료 시간이 limit_minutes 이내로 남은 토큰들을 조회합니다."""
+        threshold = datetime.now() + timedelta(minutes=limit_minutes)
+        
+        stmt = select(AuthToken).where(AuthToken.expires_at <= threshold)
+        
+        try:
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"[DB Error] Expiring tokens fetch failed: {str(e)}")
+            return []
 
     async def get_auth_token_by_id(self, channel_id: str = None):
         try:
