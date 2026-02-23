@@ -45,7 +45,17 @@ async def on_message(channel_id: str, message_text: str, role: str):
 async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str):
     chat_service = ChatService(db)
     
-    # 글로벌 명령어 조회
+    # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
+    custom_cmd = await chat_service.get_chat_command(channel_id, command)
+    if custom_cmd and custom_cmd.is_active:
+        if custom_cmd.type == 'global':
+            # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입
+            command = custom_cmd.response
+        else:
+            await session.send_chat(custom_cmd.response)
+            return
+
+    # 2. 글로벌 명령어 조회
     result = await chat_service.get_global_commands(command)
 
     if result and result.is_active:
@@ -68,7 +78,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     response_message = f"기본 명령어: {', '.join(cmd_names)}"
                     await session.send_chat(response_message)
             
-            elif result.command == "개인서버명령어":
+            elif result.command == "채널명령어":
                 # 채널 전용 커스텀 명령어 조회
                 channel_cmds = await chat_service.get_channel_commands(channel_id)
                 if channel_cmds:
@@ -122,9 +132,3 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 redis_service = RedisConfigService()
                 await redis_service.update_command_prefix(channel_id, new_prefix)
                 await session.send_chat(f"접두사가 '{new_prefix}'로 변경되었습니다.")
-
-    else:
-        # 글로벌 명령어가 아닐 경우, 채널 커스텀 명령어 확인 및 실행
-        custom_cmd = await chat_service.get_chat_command(channel_id, command)
-        if custom_cmd and custom_cmd.is_active:
-             await session.send_chat(custom_cmd.response)

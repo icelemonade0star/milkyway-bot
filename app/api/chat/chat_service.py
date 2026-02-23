@@ -129,6 +129,11 @@ class ChatService:
             if existing:
                 return False
             
+            # 글로벌 명령어 중복 확인
+            global_cmd = await self.get_global_commands(command)
+            if global_cmd:
+                return False
+
             new_cmd = ChatCommand(channel_id=channel_id, command=command, response=response)
             self.db.add(new_cmd)
             await self.db.commit()
