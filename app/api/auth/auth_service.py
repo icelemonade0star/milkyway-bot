@@ -23,7 +23,8 @@ class AuthService:
                 channel_id=chzzk_auth.channel_id,
                 channel_name=chzzk_auth.channel_name,
                 access_token=chzzk_auth.access_token,
-                refresh_token=chzzk_auth.refresh_token
+                refresh_token=chzzk_auth.refresh_token,
+                expires_at=chzzk_auth.expires_at
             ))
             
             # 2. 채널 설정 초기값 생성 (이미 존재하면 무시)

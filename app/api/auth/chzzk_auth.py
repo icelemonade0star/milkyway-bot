@@ -2,6 +2,7 @@ import httpx
 import app.config as config
 import secrets
 import asyncio
+from datetime import datetime, timedelta
 
 from urllib.parse import quote
 
@@ -26,6 +27,7 @@ class ChzzkAuth:
         self.channel_name = None
         self.access_token = None
         self.refresh_token = None
+        self.expires_at = None
 
     def get_auth_url(self):
         state = secrets.token_urlsafe(16)
@@ -64,6 +66,10 @@ class ChzzkAuth:
                     res_json = response.json()
                     self.access_token = res_json["content"]["accessToken"]
                     self.refresh_token = res_json["content"]["refreshToken"]
+                    
+                    # 만료 시간 계산 및 저장 (기본값 1일)
+                    expires_in = res_json["content"].get("expiresIn", 86400)
+                    self.expires_at = datetime.now() + timedelta(seconds=expires_in)
                     return res_json
                 return None
             except Exception as e:
