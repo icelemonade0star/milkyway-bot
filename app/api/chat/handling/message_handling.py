@@ -136,6 +136,13 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("사용법: 접두사수정 [새접두사]")
                     return
                 new_prefix = args[0]
+
+                # 접두사 화이트리스트 검증
+                allowed_prefixes = "!@#$%^&*"
+                if len(new_prefix) != 1 or new_prefix not in allowed_prefixes:
+                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {allowed_prefixes}")
+                    return
+
                 # RedisConfigService를 통해 DB와 Redis 모두 업데이트
                 redis_service = RedisConfigService()
                 await redis_service.update_command_prefix(channel_id, new_prefix)
