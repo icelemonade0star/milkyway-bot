@@ -69,7 +69,7 @@ class ChatService:
         
     async def get_global_commands(self, command: str):
         """
-        채널 설정 정보를 DB에서 조회하는 메서드
+        특정 글로벌 명령어를 DB에서 조회하는 메서드
         """
         try:
             # ORM Select

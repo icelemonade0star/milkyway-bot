@@ -1,7 +1,7 @@
 from app.api.auth.chzzk_auth import ChzzkAuth
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_async_db
@@ -28,7 +28,7 @@ async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
     return response
 
 
-@auth_router.get("/callback")
+@auth_router.get("/callback", response_class=HTMLResponse)
 async def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
@@ -56,14 +56,50 @@ async def callback_auth(
 
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
     
-        
-    if not inserted_data:
-            return {"message": "인증 성공 & 저장 완료 (반환값 없음)"}
+    channel_name = getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
 
-    return {
-        "message": "인증 성공 & 저장 완료",
-        "채널 이름": getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
-    }
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>인증 완료 - Milkyway Bot</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                background-color: #f4f7f6;
+                display: flex;
+                justify_content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }}
+            .container {{
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                text-align: center;
+                max-width: 400px;
+                width: 90%;
+            }}
+            h1 {{ color: #2c3e50; margin-bottom: 10px; }}
+            p {{ color: #7f8c8d; margin-bottom: 30px; line-height: 1.5; }}
+            .btn {{ background-color: #00c73c; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; }}
+            .btn:hover {{ background-color: #00b035; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>✨ 인증 성공!</h1>
+            <p><strong>{channel_name}</strong>님, 환영합니다.<br>이제 봇이 정상적으로 연동되었습니다.</p>
+            <button class="btn" onclick="window.close()">창 닫기</button>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 
 @auth_router.get("/list")

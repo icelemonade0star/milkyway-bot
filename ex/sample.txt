@@ -1,4 +1,0 @@
-["DONATION","{\"donationType\":\"CHAT\",\"channelId\":\"a1cc8354c72c76a8e8f9b6c63062ccfb\",\"donatorChannelId\":\"c095b8dad88dc65c137db467e6bc47e8\",\"donatorNickname\":\"까 도\",\"payAmount\":1000,\"donationText\":\"영도데이? 으흐흐\",\"emojis\":{},\"eventSentAt\":\"2026-02-03T18:58:43.386709144\"}"]
-
-
- {'channelId': '617e3e0c567246c4abd534701051b4bb', 'senderChannelId': 'c095b8dad88dc65c137db467e6bc47e8', 'profile': {'nickname': '까 도', 'verifiedMark': False, 'badges': [], 'userRoleCode': 'common_user'}, 'content': 'test chat', 'emojis': {}, 'messageTime': 1768665529315, 'eventSentAt': '2026-01-18T00:58:49.350673016'}
