@@ -1,10 +1,11 @@
 import redis.asyncio as redis
 from datetime import timedelta
+import app.config as config
 
 from app.db.database import get_session_factory
 from app.api.chat.chat_service import ChatService
 
-redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
+redis_client = redis.Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, decode_responses=True)
 
 class RedisConfigService:
     def __init__(self):
@@ -20,12 +21,18 @@ class RedisConfigService:
         cache_key = self.get_cache_key(channel_id)
         
         # 1. Redis에서 조회
-        prefix = await redis_client.get(cache_key)
-        if prefix:
-            return prefix
+        try:
+            prefix = await redis_client.get(cache_key)
+            if prefix:
+                return prefix
+        except Exception as e:
+            print(f"⚠️ Redis 조회 실패 (DB 조회로 전환): {e}")
         
         # 2. Redis에 없으면 DB에서 조회
         session_factory = get_session_factory()
+        if not session_factory:
+            return "!"
+            
         async with session_factory() as db:
             chat_service = ChatService(db)
             config_data = await chat_service.get_channel_config(channel_id)
@@ -34,7 +41,10 @@ class RedisConfigService:
                 db_prefix = config_data.command_prefix
 
                 # 3. 조회한 데이터를 Redis에 적재
-                await redis_client.set(cache_key, db_prefix, ex=timedelta(days=1))
+                try:
+                    await redis_client.set(cache_key, db_prefix, ex=timedelta(days=1))
+                except Exception as e:
+                    print(f"⚠️ Redis 저장 실패: {e}")
                 return db_prefix
         
         # 4. DB에도 정보가 없다면 기본값 반환
@@ -43,6 +53,9 @@ class RedisConfigService:
     async def update_command_prefix(self, channel_id: str, new_prefix: str, language: str = "ko", is_active: bool = True):
         # 1. DB 업데이트
         session_factory = get_session_factory()
+        if not session_factory:
+            return
+            
         async with session_factory() as db:
             chat_service = ChatService(db)
             await chat_service.update_channel_config(
@@ -54,4 +67,7 @@ class RedisConfigService:
         
         # 2. Redis 캐시 갱신
         cache_key = self.get_cache_key(channel_id)
-        await redis_client.set(cache_key, new_prefix, ex=timedelta(days=1))
+        try:
+            await redis_client.set(cache_key, new_prefix, ex=timedelta(days=1))
+        except Exception as e:
+            print(f"⚠️ Redis 갱신 실패: {e}")

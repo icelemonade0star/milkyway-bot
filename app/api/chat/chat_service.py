@@ -80,6 +80,18 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
         
+    async def get_all_global_commands(self):
+        """
+        활성화된 모든 글로벌 명령어를 조회합니다.
+        """
+        try:
+            stmt = select(GlobalCommand).where(GlobalCommand.is_active == True)
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"[DB Error] {str(e)}")
+            return []
+
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
 
