@@ -50,7 +50,6 @@ class ChatCommand(Base):
     response = Column(Text, nullable=False, comment="응답 내용")
     type = Column(String, default="text", nullable=False, comment="응답 타입")
     is_active = Column(Boolean, default=True, nullable=False, comment="활성화 여부")
-    display_order = Column(Integer, default=0, nullable=False, comment="표시 순서")
     cooldown_seconds = Column(Integer, default=5, nullable=False, comment="쿨타임(초)")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

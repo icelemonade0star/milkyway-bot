@@ -63,6 +63,7 @@ class ChatService:
             return config
 
         except Exception as e:
+            await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
         
@@ -77,6 +78,7 @@ class ChatService:
             return result.scalar_one_or_none()
 
         except Exception as e:
+            await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
         
@@ -89,6 +91,7 @@ class ChatService:
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
+            await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             return []
             
@@ -100,10 +103,11 @@ class ChatService:
             stmt = select(ChatCommand).where(
                 ChatCommand.channel_id == channel_id, 
                 ChatCommand.is_active == True
-            ).order_by(ChatCommand.display_order.asc())
+            )
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
+            await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             return []
             
@@ -119,6 +123,7 @@ class ChatService:
             result = await self.db.execute(stmt)
             return result.scalar_one_or_none()
         except Exception as e:
+            await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             return None
 
@@ -127,7 +132,7 @@ class ChatService:
             # 중복 체크
             existing = await self.get_chat_command(channel_id, command)
             if existing:
-                return False
+                return await self.update_chat_command(channel_id, command, response)
             
             # 글로벌 명령어 중복 확인
             global_cmd = await self.get_global_commands(command)
