@@ -39,12 +39,16 @@ class SessionManager:
             
         return self.active_sessions[channel_id]
     
-    async def get_or_create_session(self, channel_id: str):
+    async def get_or_create_session(self, channel_id: str, force_recreate: bool = False):
         """
         세션을 반환합니다. 없으면 새로 생성하고 초기화(연결)까지 마칩니다.
         """
         if channel_id in self.active_sessions:
-            return self.active_sessions[channel_id], False
+            if not force_recreate:
+                return self.active_sessions[channel_id], False
+            
+            print(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
+            await self.remove_session(channel_id)
 
         print(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
         

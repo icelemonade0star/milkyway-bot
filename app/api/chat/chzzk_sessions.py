@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+from datetime import datetime
 
 import app.config as config
 import app.api.chat.clients.chat_client as chat_client
@@ -38,9 +39,23 @@ class ChzzkSessions:
             auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
 
             if auth_data:
+                # 만료 시간 확인 (DB에 저장된 시간)
+                # 백그라운드 태스크(13시간)보다 조금 더 여유 있게 14시간(50400초) 전이면 미리 갱신
+                expires_at = auth_data.expires_at
+                now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
+                
+                if (expires_at - now).total_seconds() < 50400:
+                    print(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
+                    from app.api.auth.chzzk_auth import ChzzkAuth
+                    chzzk_auth = ChzzkAuth(auth_service)
+                    new_token = await chzzk_auth.refresh_access_token(self.channel_id)
+                    if new_token:
+                        auth_data.access_token = new_token
+                        print(f"✅ [{self.channel_id}] 선제적 토큰 갱신 완료")
+
                 self.access_token = auth_data.access_token
                 self.channel_name = auth_data.channel_name
-                print(f"🔑 [{self.channel_id}] 토큰 갱신 완료")
+                print(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
             else:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 
@@ -156,9 +171,11 @@ class ChzzkSessions:
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
+            print(f"✅ [{self.channel_id}] 채팅 구독 성공")
             return response.json() 
         # 실패하면 에러 코드랑 메시지 반환
         else:
+            print(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
             return {
                 "error": "API request failed", 
                 "status_code": response.status_code,

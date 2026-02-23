@@ -50,6 +50,26 @@ async def create_session(
             "message": f"세션 생성 중 오류 발생: {str(e)}"
         }
 
+@chat_router.get("/create/session/force")
+async def force_create_session(
+    channel_id: str
+):
+    try:
+        # 매니저에게 세션을 요청 (강제 재생성 옵션 True)
+        session, created = await session_manager.get_or_create_session(channel_id, force_recreate=True)
+        
+        return {
+            "status": "success", 
+            "message": "세션이 강제로 재생성 및 채팅 구독이 시작되었습니다.",
+            "channel_id": channel_id
+        }
+
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"세션 강제 생성 중 오류 발생: {str(e)}"
+        }
+
 @chat_router.get("/active-sessions")
 async def get_active_sessions():
     return {
