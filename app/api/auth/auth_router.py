@@ -70,7 +70,7 @@ async def callback_auth(
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                 background-color: #f4f7f6;
                 display: flex;
-                justify_content: center;
+                justify-content: center; 
                 align-items: center;
                 height: 100vh;
                 margin: 0;
@@ -78,23 +78,35 @@ async def callback_auth(
             .container {{
                 background: white;
                 padding: 40px;
-                border-radius: 12px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                border-radius: 16px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
                 text-align: center;
                 max-width: 400px;
-                width: 90%;
+                width: 85%;
+                margin: auto; 
             }}
-            h1 {{ color: #2c3e50; margin-bottom: 10px; }}
-            p {{ color: #7f8c8d; margin-bottom: 30px; line-height: 1.5; }}
-            .btn {{ background-color: #00c73c; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; }}
+            h1 {{ color: #2c3e50; margin-bottom: 16px; font-size: 24px; }}
+            p {{ color: #576574; margin-bottom: 32px; line-height: 1.6; font-size: 16px; }}
+            .channel-name {{ color: #00c73c; font-weight: bold; }}
+            .btn {{ 
+                background-color: #00c73c; 
+                color: white; 
+                border: none; 
+                padding: 14px 28px; 
+                border-radius: 8px; 
+                font-size: 16px; 
+                font-weight: 600;
+                cursor: pointer; 
+                transition: background 0.2s;
+                width: 100%;
+            }}
             .btn:hover {{ background-color: #00b035; }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1>✨ 인증 성공!</h1>
-            <p><strong>{channel_name}</strong>님, 환영합니다.<br>이제 봇이 정상적으로 연동되었습니다.</p>
-            <button class="btn" onclick="window.close()">창 닫기</button>
+            <p><span class="channel-name">{channel_name}</span>님, 환영합니다.<br>이제 봇이 정상적으로 연동되었습니다.</p>
         </div>
     </body>
     </html>
