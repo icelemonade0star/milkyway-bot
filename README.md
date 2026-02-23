@@ -1,4 +1,4 @@
-# 🌌 Milkyway Bot (은하수 봇)
+# 🌌 Milkyway Bot (밀키웨이 봇)
 
 **Milkyway Bot**은 치지직(Chzzk) 스트리밍 플랫폼을 위한 고성능 비동기 챗봇입니다.  
 FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능한 구조를 통해 다양한 플랫폼 지원을 목표로 하고 있습니다.
