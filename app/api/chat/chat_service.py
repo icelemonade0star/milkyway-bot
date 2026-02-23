@@ -3,7 +3,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
-from app.db.models import ChannelConfig, GlobalCommand
+from app.db.models import ChannelConfig, GlobalCommand, ChatCommand
 from app.db.database import get_async_db
 
 class ChatService:
@@ -85,12 +85,86 @@ class ChatService:
         활성화된 모든 글로벌 명령어를 조회합니다.
         """
         try:
-            stmt = select(GlobalCommand).where(GlobalCommand.is_active == True)
+            stmt = select(GlobalCommand).where(GlobalCommand.is_active == True).order_by(GlobalCommand.display_order.asc())
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
             print(f"[DB Error] {str(e)}")
             return []
+            
+    async def get_channel_commands(self, channel_id: str):
+        """
+        특정 채널의 활성화된 커스텀 명령어 목록을 조회합니다.
+        """
+        try:
+            stmt = select(ChatCommand).where(
+                ChatCommand.channel_id == channel_id, 
+                ChatCommand.is_active == True
+            ).order_by(ChatCommand.display_order.asc())
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"[DB Error] {str(e)}")
+            return []
+            
+    async def get_chat_command(self, channel_id: str, command: str):
+        """
+        특정 채널의 특정 커스텀 명령어를 조회합니다.
+        """
+        try:
+            stmt = select(ChatCommand).where(
+                ChatCommand.channel_id == channel_id, 
+                ChatCommand.command == command
+            )
+            result = await self.db.execute(stmt)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            print(f"[DB Error] {str(e)}")
+            return None
+
+    async def add_chat_command(self, channel_id: str, command: str, response: str):
+        try:
+            # 중복 체크
+            existing = await self.get_chat_command(channel_id, command)
+            if existing:
+                return False
+            
+            new_cmd = ChatCommand(channel_id=channel_id, command=command, response=response)
+            self.db.add(new_cmd)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] {str(e)}")
+            return False
+
+    async def update_chat_command(self, channel_id: str, command: str, response: str):
+        try:
+            cmd_obj = await self.get_chat_command(channel_id, command)
+            if not cmd_obj:
+                return False
+            
+            cmd_obj.response = response
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] {str(e)}")
+            return False
+
+    async def delete_chat_command(self, channel_id: str, command: str):
+        try:
+            cmd_obj = await self.get_chat_command(channel_id, command)
+            if not cmd_obj:
+                return False
+            
+            await self.db.delete(cmd_obj)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] {str(e)}")
+            return False
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
