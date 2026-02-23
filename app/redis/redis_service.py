@@ -71,3 +71,23 @@ class RedisConfigService:
             await redis_client.set(cache_key, new_prefix, ex=timedelta(days=1))
         except Exception as e:
             print(f"⚠️ Redis 갱신 실패: {e}")
+
+    async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
+        """
+        쿨타임 체크 및 설정.
+        쿨타임 중이면 True 반환, 아니면 쿨타임 설정 후 False 반환.
+        """
+        if cooldown_seconds <= 0:
+            return False
+            
+        cache_key = f"cooldown:{channel_id}:{command}"
+        
+        try:
+            if await redis_client.get(cache_key):
+                return True
+            
+            await redis_client.set(cache_key, "1", ex=cooldown_seconds)
+            return False
+        except Exception as e:
+            print(f"⚠️ Redis 쿨타임 체크 실패: {e}")
+            return False # 에러 시 쿨타임 없이 실행 허용

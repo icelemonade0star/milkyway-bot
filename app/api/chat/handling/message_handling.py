@@ -40,14 +40,18 @@ async def on_message(channel_id: str, message_text: str, role: str):
     async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         if session:
-            await on_command(db, session, channel_id, command, args, role)
+            await on_command(db, session, channel_id, command, args, role, redis_service)
 
-async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str):
+async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService):
     chat_service = ChatService(db)
     
     # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
     custom_cmd = await chat_service.get_chat_command(channel_id, command)
     if custom_cmd and custom_cmd.is_active:
+        # 쿨타임 체크
+        if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
+            return
+
         if custom_cmd.type == 'global':
             # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입
             command = custom_cmd.response
@@ -59,6 +63,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
     result = await chat_service.get_global_commands(command)
 
     if result and result.is_active:
+        # 쿨타임 체크
+        if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds):
+            return
+
         if result.type == "text":
             # 텍스트 응답 전송
             await session.send_chat(result.response)
