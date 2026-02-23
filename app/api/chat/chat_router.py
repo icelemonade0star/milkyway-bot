@@ -8,7 +8,7 @@ chat_router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @chat_router.get("/send")
-async def send_chat_message(
+async def send_message(
     channel_id: str,
     message: str
 ):

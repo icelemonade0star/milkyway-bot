@@ -1,7 +1,6 @@
-import os
-
 from fastapi import Request
 from sqlalchemy.ext.asyncio import create_async_engine
+import app.config as config
 
 AsyncSessionLocal = None
 
@@ -18,7 +17,7 @@ def get_session_factory():
     return AsyncSessionLocal
 
 def create_db_engine(local_port):
-    DATABASE_URL = f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@localhost:{local_port}/{os.getenv('DB_NAME')}"
+    DATABASE_URL = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASSWORD}@localhost:{local_port}/{config.DB_NAME}"
     return create_async_engine(
         DATABASE_URL, 
         pool_size=10,       # 챗봇 동시 접속자가 많다면 조금 늘려주세요

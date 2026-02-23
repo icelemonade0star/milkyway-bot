@@ -3,10 +3,8 @@ from app.api.auth.chzzk_auth import ChzzkAuth
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
 from app.db.database import get_async_db
-from app.db.query_loader import query_loader
 from app.api.auth.auth_service import AuthService
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])

@@ -1,10 +1,8 @@
-import requests
 import httpx
-import json
 import asyncio
 
 import app.config as config
-import app.api.chat.handling.chat_client as chat_client
+import app.api.chat.clients.chat_client as chat_client
 from app.api.auth.auth_service import AuthService
 from app.db.database import get_session_factory
 
@@ -19,6 +17,7 @@ class ChzzkSessions:
         self.access_token = None
         self.socket_url = None
         self.session_key = None
+        self.socket_client = None # 소켓 클라이언트 인스턴스 저장
 
         # HTTP 클라이언트를 하나로 유지
         self.client = httpx.AsyncClient(timeout=10.0)
@@ -83,25 +82,23 @@ class ChzzkSessions:
 
         if not self.socket_url: return
 
-        chatClient = chat_client.ChzzkChatClient(self.channel_name)
+        # 세션 키 수신을 대기할 Future 객체 생성
+        session_key_future = asyncio.Future()
+        
+        # 클라이언트에 Future 전달
+        self.socket_client = chat_client.ChzzkChatClient(self.channel_name, session_key_future)
 
         # 소켓 연결
-        await chatClient.connect(self.socket_url)
+        await self.socket_client.connect(self.socket_url)
         
-        # 세션 키 대기 (Timeout 5초로 확장 및 로그 구체화)
-        timeout = 5.0
-        start_time = asyncio.get_event_loop().time()
-        
-        while asyncio.get_event_loop().time() - start_time < timeout:
-            current_key = chatClient.get_session_key()
-            if current_key:
-                self.session_key = current_key
-                print(f"✨ 세션 키 확인 완료: {current_key}")
-                return current_key
-            await asyncio.sleep(0.2)
-        
-        print("⚠️ 세션 키 확인 실패: 타임아웃")
-        return None
+        try:
+            # Future가 완료될 때까지 최대 5초 대기 (Polling 제거)
+            self.session_key = await asyncio.wait_for(session_key_future, timeout=5.0)
+            print(f"✨ 세션 키 확인 완료: {self.session_key}")
+            return self.session_key
+        except asyncio.TimeoutError:
+            print("⚠️ 세션 키 확인 실패: 타임아웃")
+            return None
     
     async def subscribe_chat(self):
 
@@ -153,7 +150,7 @@ class ChzzkSessions:
             "message": message
         }
 
-        uri = f"{config.OPENAPI_BASE}/open/v1/chats/send"
+        uri = f"{self.openapi_base}/open/v1/chats/send"
 
         response = await self.client.post(uri, headers=headers, json=data)
         

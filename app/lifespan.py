@@ -15,10 +15,7 @@ async def lifespan(app: FastAPI):
     # --- STARTUP ---
     print("🚀 서버 시작")
     
-    # 1. SSH 터널 자동 시작
-    # tunnel.start() 
-    
-    # 2. DB 엔진 및 세션 팩토리 초기화
+    # DB 엔진 및 세션 팩토리 초기화
     engine = create_db_engine(tunnel.local_port)
     session_factory = async_sessionmaker(
         bind=engine,
@@ -26,11 +23,11 @@ async def lifespan(app: FastAPI):
         expire_on_commit=False
     )
     
-    # 3. 전역 및 앱 상태 주입
+    # 전역 및 앱 상태 주입
     db_module.AsyncSessionLocal = session_factory
     app.state.SessionLocal = session_factory
 
-    # 4. 세션 매니저 초기화 및 DB에서 세션 복구 시도
+    # 세션 매니저 초기화 및 DB에서 세션 복구 시도
     async with session_factory() as db_session:
         await session_manager.restore_all_sessions_from_db(db_session)
     

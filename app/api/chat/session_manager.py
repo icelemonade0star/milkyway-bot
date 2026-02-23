@@ -1,4 +1,5 @@
 import asyncio
+from app.api.chat.chzzk_sessions import ChzzkSessions
 
 class SessionManager:
     def __init__(self):
@@ -32,8 +33,6 @@ class SessionManager:
     async def get_session(self, channel_id: str):
         """세션이 있으면 반환하고, 없으면 생성해서 반환합니다."""
         if channel_id not in self.active_sessions:
-            from app.api.chat.chzzk_sessions import ChzzkSessions
-            
             print(f"🆕 [{channel_id}] 새 세션 생성 및 캐싱")
             session = ChzzkSessions(channel_id)
             self.active_sessions[channel_id] = session
@@ -47,7 +46,6 @@ class SessionManager:
         if channel_id in self.active_sessions:
             return self.active_sessions[channel_id], False
 
-        from app.api.chat.chzzk_sessions import ChzzkSessions
         print(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
         
         new_session = ChzzkSessions(channel_id)
@@ -67,11 +65,15 @@ class SessionManager:
         """특정 채널 세션 종료 및 제거"""
         session = self.active_sessions.pop(channel_id, None)
         if session:
+            if session.socket_client:
+                await session.socket_client.disconnect()
             await session.client.aclose() # httpx 클라이언트 닫기
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""
         for session in self.active_sessions.values():
+            if session.socket_client:
+                await session.socket_client.disconnect()
             await session.client.aclose()
         self.active_sessions.clear()
 

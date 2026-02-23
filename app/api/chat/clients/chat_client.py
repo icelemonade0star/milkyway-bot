@@ -2,12 +2,15 @@ import socketio
 import json
 import asyncio
 import logging
+
+from .base import BaseChatClient
 from app.api.chat.handling import message_handling
 
 from pathlib import Path
 
-class ChzzkChatClient:
-    def __init__(self, channel_name):
+class ChzzkChatClient(BaseChatClient):
+
+    def __init__(self, channel_name, session_key_future: asyncio.Future = None):
         # 각 인스턴스마다 고유한 식별자와 소켓 클라이언트를 가짐
         self.channel_name = channel_name  
         self.socketio = socketio.AsyncClient(
@@ -16,6 +19,7 @@ class ChzzkChatClient:
             reconnection_attempts=5 # 재연결 시도 횟수
             )
         self.session_key = None
+        self.session_key_future = session_key_future
 
         self.logger = logging.getLogger(f"Chzzk.{self.channel_name}")
         self.logger.setLevel(logging.DEBUG)
@@ -62,11 +66,15 @@ class ChzzkChatClient:
             if event_type == "connected":
                 self.session_key = event_data.get("sessionKey")
                 self.logger.info(f"🔑 세션 키 저장: {self.session_key}")
+                
+                # 세션 키를 기다리는 Future가 있다면 결과 설정 (Polling 제거)
+                if self.session_key_future and not self.session_key_future.done():
+                    self.session_key_future.set_result(self.session_key)
 
         @self.socketio.on('CHAT')
         async def on_chat(data):
             raw_data = json.loads(data)
-            channelId = raw_data.get('channelId')
+            channel_id = raw_data.get('channelId')
             nickname = raw_data.get('profile', {}).get('nickname')
             message = raw_data.get('content')
             role = raw_data.get('profile', {}).get('userRoleCode')
@@ -74,31 +82,15 @@ class ChzzkChatClient:
             self.logger.info(f"💬{role} : [{nickname}] {message}")
 
             # 핸들러로 메시지 전달
-            await message_handling.on_message(channelId, message)
+            await message_handling.on_message(channel_id, message)
 
     def get_session_key(self):
         return self.session_key
 
     async def connect(self, url):
-        try:
-            await self.socketio.connect(url, transports=['websocket'])
-            self.logger.info(f"연결 시도 중: {url}")
-        except Exception as e:
-            self.logger.error(f"연결 실패: {e}")
+        await self.socketio.connect(url, transports=['websocket'])
+        self.logger.info(f"연결 성공: {url}")
 
     async def disconnect(self):
         await self.socketio.disconnect()
         self.logger.info("연결이 종료되었습니다.")
-
-# --- 실행 예시 ---
-async def main():
-    # 여러 명의 유저 세션을 동시에 관리
-    user_a = ChzzkChatClient(channel_name="User_A")
-    user_b = ChzzkChatClient(channel_name="User_B")
-
-    await asyncio.gather(
-        user_a.connect("치지직_소켓_URL"),
-        user_b.connect("치지직_소켓_URL")
-    )
-
-    # 계속 유지...

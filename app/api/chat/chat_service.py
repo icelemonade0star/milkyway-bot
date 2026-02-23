@@ -1,9 +1,9 @@
 from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
 from fastapi import HTTPException
-
-from app.db.query_loader import query_loader
+from app.db.models import ChannelConfig, GlobalCommand
 from app.db.database import get_async_db
 
 class ChatService:
@@ -14,17 +14,15 @@ class ChatService:
         """
         채널 설정 정보를 DB에 저장하는 메서드
         """
-        # 1. 쿼리 로드
-        insert_query_obj = query_loader.get_query("channel_config_insert")
-
         try:
-            # 2. 쿼리 실행
-            result = await self.db.execute(insert_query_obj, {"channel_id": channel_id})
+            # ORM: 없으면 생성, 있으면 무시 (get_or_create 패턴)
+            config = await self.db.get(ChannelConfig, channel_id)
+            if not config:
+                config = ChannelConfig(channel_id=channel_id)
+                self.db.add(config)
+                await self.db.commit()
             
-            inserted_data = result.fetchone()
-            await self.db.commit()
-            
-            return inserted_data
+            return config
 
         except Exception as e:
             # 에러 발생 시 롤백
@@ -36,24 +34,18 @@ class ChatService:
         """
         채널 설정 정보를 DB에 업데이트하는 메서드
         """
-        # 1. 쿼리 로드
-        update_query_obj = query_loader.get_query("channel_config_insert_update")
-
-        params = {
-            "channel_id": channel_id,
-            "command_prefix": command_prefix,
-            "language": language,
-            "is_active": is_active
-        }
-
         try:
-            # 2. 쿼리 실행
-            result = await self.db.execute(update_query_obj, params)
-            
-            updated_data = result.fetchone()
+            # ORM Update
+            stmt = (
+                update(ChannelConfig)
+                .where(ChannelConfig.channel_id == channel_id)
+                .values(command_prefix=command_prefix, language=language, is_active=is_active)
+                .execution_options(synchronize_session="fetch") # 현재 세션의 객체도 업데이트
+            )
+            await self.db.execute(stmt)
             await self.db.commit()
             
-            return updated_data
+            return await self.get_channel_config(channel_id)
 
         except Exception as e:
             # 에러 발생 시 롤백
@@ -65,15 +57,10 @@ class ChatService:
         """
         채널 설정 정보를 DB에서 조회하는 메서드
         """
-        # 1. 쿼리 로드
-        query_obj = query_loader.get_query("get_channel_config_by_id")
-
         try:
-            # 2. 쿼리 실행
-            result = await self.db.execute(query_obj, {"channel_id": channel_id})
-            
-            config_data = result.fetchone()
-            return config_data
+            # ORM Get
+            config = await self.db.get(ChannelConfig, channel_id)
+            return config
 
         except Exception as e:
             print(f"[DB Error] {str(e)}")
@@ -83,15 +70,11 @@ class ChatService:
         """
         채널 설정 정보를 DB에서 조회하는 메서드
         """
-        # 1. 쿼리 로드
-        query_obj = query_loader.get_query("get_global_chat_commands_by_command")
-
         try:
-            # 2. 쿼리 실행
-            result = await self.db.execute(query_obj, {"command": command})
-            
-            config_data = result.fetchone()
-            return config_data
+            # ORM Select
+            stmt = select(GlobalCommand).where(GlobalCommand.command == command)
+            result = await self.db.execute(stmt)
+            return result.scalar_one_or_none()
 
         except Exception as e:
             print(f"[DB Error] {str(e)}")

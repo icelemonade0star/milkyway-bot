@@ -1,8 +1,5 @@
-import os
 from sshtunnel import SSHTunnelForwarder
-from dotenv import load_dotenv
-
-load_dotenv()
+import app.config as config
 
 class ParamikoTunnel:
     _instance = None
@@ -16,23 +13,16 @@ class ParamikoTunnel:
 
     def init_tunnel(self):
         try:
-            # SSH 설정
-            ssh_host = os.getenv("SSH_HOST")
-            ssh_port = int(os.getenv("SSH_PORT", 22))
-            ssh_user = os.getenv("SSH_USER")
-            ssh_password = os.getenv("SSH_PASSWORD")
-            ssh_key = os.getenv("SSH_PRIVATE_KEY_PATH")
-
             # 리모트 DB 설정
-            remote_db_host = "127.0.0.1"
-            remote_db_port = 5432
+            remote_db_host = config.DB_HOST or "127.0.0.1"
+            remote_db_port = int(config.DB_PORT)
 
             # 터널 서버 설정
             self._server = SSHTunnelForwarder(
-                (ssh_host, ssh_port),
-                ssh_username=ssh_user,
-                ssh_password=ssh_password,
-                ssh_pkey=ssh_key,
+                (config.SSH_HOST, config.SSH_PORT),
+                ssh_username=config.SSH_USER,
+                ssh_password=config.SSH_PASSWORD,
+                ssh_pkey=config.SSH_PRIVATE_KEY_PATH,
                 remote_bind_address=(remote_db_host, remote_db_port),
                 local_bind_address=('127.0.0.1', 0) # 로컬의 남는 포트에 바인딩
             )
