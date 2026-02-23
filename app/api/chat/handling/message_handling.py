@@ -8,7 +8,7 @@ from app.api.chat.chat_service import ChatService
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
 
-async def on_message(channel_id: str, message_text: str):
+async def on_message(channel_id: str, message_text: str, role: str):
     # 순환 참조 방지를 위해 함수 내부에서 import
     from app.api.chat.session_manager import session_manager
    
@@ -40,9 +40,9 @@ async def on_message(channel_id: str, message_text: str):
     async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         if session:
-            await on_command(db, session, channel_id, command, args)
+            await on_command(db, session, channel_id, command, args, role)
 
-async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list):
+async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str):
     chat_service = ChatService(db)
     
     # 글로벌 명령어 조회
@@ -55,6 +55,11 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             
         elif result.type == "system":
             # 시스템 명령어 처리
+            # 관리자 권한이 필요한 명령어 목록
+            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정"]
+            if result.command in admin_commands and role == 'common_user':
+                return
+
             if result.command == "명령어":
                 # 모든 활성 글로벌 명령어 조회
                 all_cmds = await chat_service.get_all_global_commands()
@@ -75,7 +80,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             
             elif result.command == "명령어등록":
                 if len(args) < 2:
-                    await session.send_chat("사용법: !명령어등록 [명령어] [내용]")
+                    await session.send_chat("사용법: 명령어등록 [명령어] [내용]")
                     return
                 new_cmd = args[0]
                 new_response = " ".join(args[1:])
@@ -87,7 +92,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
             elif result.command == "명령어수정":
                 if len(args) < 2:
-                    await session.send_chat("사용법: !명령어수정 [명령어] [내용]")
+                    await session.send_chat("사용법: 명령어수정 [명령어] [내용]")
                     return
                 target_cmd = args[0]
                 new_response = " ".join(args[1:])
@@ -99,7 +104,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
             elif result.command == "명령어삭제":
                 if len(args) < 1:
-                    await session.send_chat("사용법: !명령어삭제 [명령어]")
+                    await session.send_chat("사용법: 명령어삭제 [명령어]")
                     return
                 target_cmd = args[0]
                 success = await chat_service.delete_chat_command(channel_id, target_cmd)
@@ -110,7 +115,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
             elif result.command == "접두사수정":
                 if len(args) < 1:
-                    await session.send_chat("사용법: !접두사수정 [새접두사]")
+                    await session.send_chat("사용법: 접두사수정 [새접두사]")
                     return
                 new_prefix = args[0]
                 # RedisConfigService를 통해 DB와 Redis 모두 업데이트

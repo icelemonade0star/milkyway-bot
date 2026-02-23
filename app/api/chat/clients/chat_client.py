@@ -82,7 +82,7 @@ class ChzzkChatClient(BaseChatClient):
             self.logger.info(f"💬{role} : [{nickname}] {message}")
 
             # 핸들러로 메시지 전달
-            await message_handling.on_message(channel_id, message)
+            await message_handling.on_message(channel_id, message, role)
 
     def get_session_key(self):
         return self.session_key
