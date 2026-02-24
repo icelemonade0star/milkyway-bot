@@ -10,7 +10,6 @@ redis_client = redis.Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, decod
 
 class RedisConfigService:
     def __init__(self):
-        # self.chat_service = chat_service
         pass
 
     @staticmethod
@@ -51,7 +50,7 @@ class RedisConfigService:
         # 4. DB에도 정보가 없다면 기본값 반환
         return "!"
 
-    async def update_command_prefix(self, channel_id: str, new_prefix: str, language: str = "ko", is_active: bool = True):
+    async def update_command_prefix(self, channel_id: str, new_prefix: str):
         # 1. DB 업데이트
         session_factory = get_session_factory()
         if not session_factory:
@@ -59,6 +58,12 @@ class RedisConfigService:
             
         async with session_factory() as db:
             chat_service = ChatService(db)
+            
+            # 기존 설정을 조회하여 보존
+            current_config = await chat_service.get_channel_config(channel_id)
+            language = current_config.language if current_config else "ko"
+            is_active = current_config.is_active if current_config else True
+
             await chat_service.update_channel_config(
                 channel_id=channel_id, 
                 command_prefix=new_prefix, 
@@ -80,18 +85,9 @@ class RedisConfigService:
         cache_key = f"greetings:{channel_id}"
         
         try:
-            # 1. Redis에서 해당 키워드 조회
-            response = await redis_client.hget(cache_key, message)
-            if response:
-                return response
-            # 1. Redis에서 해당 채널의 모든 인삿말 조회
+            # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
             greetings = await redis_client.hgetall(cache_key)
                 
-            # 2. Redis에 키가 아예 없으면(만료/미로드) DB에서 로드 후 재시도
-            if not await redis_client.exists(cache_key):
-                await self.refresh_greetings_cache(channel_id)
-                # 다시 조회
-                return await redis_client.hget(cache_key, message)
             # 2. 데이터가 없으면(None or Empty) 만료 여부 확인 후 리로드
             if not greetings:
                 if not await redis_client.exists(cache_key):
@@ -105,6 +101,9 @@ class RedisConfigService:
                     # 즉, 독립된 단어로 존재할 때만 반응
                     pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
                     if re.search(pattern, message):
+                        # 쿨타임 체크 (10초)
+                        if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10):
+                            return None
                         return response
                 
         except Exception as e:
