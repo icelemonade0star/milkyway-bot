@@ -200,6 +200,10 @@ class ChzzkSessions:
 
         uri = f"{self.openapi_base}/open/v1/chats/send"
 
+        # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
+        if config.CHAT_DELAY > 0:
+            await asyncio.sleep(config.CHAT_DELAY)
+
         response = await self.client.post(uri, headers=headers, json=data)
 
         # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
