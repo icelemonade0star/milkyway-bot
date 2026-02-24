@@ -1,4 +1,5 @@
 import logging
+import re
 from app.redis.redis_service import RedisConfigService
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +67,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         if text and text[0] in ALLOWED_PREFIXES:
             return text[1:]
         return text
+
+    # 이모티콘 체크 헬퍼 함수
+    def has_chzzk_emoticon(text: str) -> bool:
+        return bool(re.search(r'{:[a-zA-Z0-9_]+:}', text))
 
     # 명령어 인자 파싱 헬퍼 함수 ( | 포함 공백 처리 )
     def parse_command_and_content(args_list):
@@ -156,6 +161,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("명령어와 내용을 모두 입력해주세요.")
                     return
 
+                if has_chzzk_emoticon(new_cmd) or has_chzzk_emoticon(new_response):
+                    await session.send_chat("명령어 또는 내용에 이모티콘을 포함할 수 없습니다.")
+                    return
+
                 success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
                 if success:
                     await session.send_chat(f"명령어 '{new_cmd}'가 등록되었습니다.")
@@ -170,6 +179,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 target_cmd, new_response = parse_command_and_content(args)
                 if not target_cmd or not new_response:
                     await session.send_chat("명령어와 내용을 모두 입력해주세요.")
+                    return
+
+                if has_chzzk_emoticon(new_response):
+                    await session.send_chat("내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
                 success = await chat_service.update_chat_command(channel_id, target_cmd, new_response)
@@ -218,6 +231,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 keyword = strip_prefix(args[0])
                 response = " ".join(args[1:])
                 
+                if has_chzzk_emoticon(response):
+                    await session.send_chat("인삿말 내용에 이모티콘을 포함할 수 없습니다.")
+                    return
+
                 success = await chat_service.create_greeting(channel_id, keyword, response)
                 if success:
                     await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
@@ -232,6 +249,10 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 keyword = strip_prefix(args[0])
                 response = " ".join(args[1:])
                 
+                if has_chzzk_emoticon(response):
+                    await session.send_chat("인삿말 내용에 이모티콘을 포함할 수 없습니다.")
+                    return
+
                 success = await chat_service.update_greeting(channel_id, keyword, response)
                 if success:
                     await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
@@ -267,5 +288,5 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일, 총 {result_att['total']}회)"
                     await session.send_chat(msg)
                 elif result_att["status"] == "already_checked":
-                    msg = f"@{user_name}님 이미 오늘 출석하셨습니다."
+                    msg = f"@{user_name}님 이미 오늘 출석하셨습니다. (연속 {result_att['streak']}일, 총 {result_att['total']}회)"
                     await session.send_chat(msg)
