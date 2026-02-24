@@ -9,7 +9,7 @@ from app.api.chat import chat_router
 app = FastAPI(
     lifespan=lifespan,
     title="milkyway bot",
-    version = "1.0.0",
+    version = "1.0.1",
     docs_url = "/swagger",
     description = "밀키웨이 봇 API 문서입니다."
     )
