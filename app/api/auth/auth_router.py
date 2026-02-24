@@ -31,9 +31,9 @@ async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
 
 @auth_router.get("/callback", response_class=HTMLResponse)
 async def callback_auth(
+    background_tasks: BackgroundTasks,
     code: str = Query(...),
     state: str = Query(...),
-    background_tasks: BackgroundTasks,
     oauth_state: str = Cookie(None),
     db: AsyncSession = Depends(get_async_db),
 ):
