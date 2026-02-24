@@ -9,7 +9,7 @@ from app.config import ALLOWED_PREFIXES
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
 
-async def on_message(channel_id: str, message_text: str, role: str):
+async def on_message(channel_id: str, message_text: str, role: str, user_id: str, user_name: str):
     # 순환 참조 방지를 위해 함수 내부에서 import
     from app.api.chat.session_manager import session_manager
    
@@ -27,6 +27,12 @@ async def on_message(channel_id: str, message_text: str, role: str):
             # 인삿말 체크 및 응답
             greeting_resp = await redis_service.get_greeting_response(channel_id, message_text.strip())
             if greeting_resp:
+                # 인삿말 감지 시 출석 체크 수행
+                async with session_factory() as db:
+                    chat_service = ChatService(db)
+                    # 출석 로직 실행
+                    await chat_service.process_attendance(channel_id, user_id, user_name)
+
                 session = await session_manager.get_session(channel_id)
                 if session:
                     await session.send_chat(greeting_resp)
@@ -50,9 +56,9 @@ async def on_message(channel_id: str, message_text: str, role: str):
     async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         if session:
-            await on_command(db, session, channel_id, command, args, role, redis_service, prefix)
+            await on_command(db, session, channel_id, command, args, role, redis_service, prefix, user_id, user_name)
 
-async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str):
+async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
     chat_service = ChatService(db)
     
     # 접두사 제거 헬퍼 함수
@@ -60,6 +66,34 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         if text and text[0] in ALLOWED_PREFIXES:
             return text[1:]
         return text
+
+    # 명령어 인자 파싱 헬퍼 함수 ( | 포함 공백 처리 )
+    def parse_command_and_content(args_list):
+        if not args_list:
+            return None, None
+        
+        raw_cmd = args_list[0]
+        idx = 1
+        
+        # 파이프(|)가 포함된 명령어가 공백으로 분리된 경우를 처리
+        # 예: "룰| 규칙", "룰 |규칙", "룰 | 규칙" 등
+        while idx < len(args_list):
+            next_arg = args_list[idx]
+            if raw_cmd.endswith('|') or next_arg.startswith('|'):
+                raw_cmd += next_arg
+                idx += 1
+            else:
+                break
+            
+        cmd_no_prefix = strip_prefix(raw_cmd)
+        # | 기준으로 분리 후 각 항목의 공백 제거 및 빈 항목 필터링
+        cleaned_parts = [p.strip() for p in cmd_no_prefix.split('|') if p.strip()]
+        final_cmd = "|".join(cleaned_parts)
+        
+        # 남은 args를 content로 결합
+        content = " ".join(args_list[idx:]) if idx < len(args_list) else ""
+        
+        return final_cmd, content
 
     # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
     custom_cmd = await chat_service.get_chat_command(channel_id, command)
@@ -116,8 +150,12 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: 명령어등록 [명령어] [내용]")
                     return
-                new_cmd = strip_prefix(args[0])
-                new_response = " ".join(args[1:])
+                
+                new_cmd, new_response = parse_command_and_content(args)
+                if not new_cmd or not new_response:
+                    await session.send_chat("명령어와 내용을 모두 입력해주세요.")
+                    return
+
                 success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
                 if success:
                     await session.send_chat(f"명령어 '{new_cmd}'가 등록되었습니다.")
@@ -128,8 +166,12 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: 명령어수정 [명령어] [내용]")
                     return
-                target_cmd = strip_prefix(args[0])
-                new_response = " ".join(args[1:])
+                
+                target_cmd, new_response = parse_command_and_content(args)
+                if not target_cmd or not new_response:
+                    await session.send_chat("명령어와 내용을 모두 입력해주세요.")
+                    return
+
                 success = await chat_service.update_chat_command(channel_id, target_cmd, new_response)
                 if success:
                     await session.send_chat(f"명령어 '{target_cmd}'가 수정되었습니다.")
@@ -140,7 +182,12 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 1:
                     await session.send_chat("사용법: 명령어삭제 [명령어]")
                     return
-                target_cmd = strip_prefix(args[0])
+                
+                target_cmd, _ = parse_command_and_content(args)
+                if not target_cmd:
+                    await session.send_chat("삭제할 명령어를 입력해주세요.")
+                    return
+
                 success = await chat_service.delete_chat_command(channel_id, target_cmd)
                 if success:
                     await session.send_chat(f"명령어 '{target_cmd}'가 삭제되었습니다.")
@@ -212,3 +259,13 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat(f"등록된 인삿말: {', '.join(keywords)}")
                 else:
                     await session.send_chat("등록된 인삿말이 없습니다.")
+
+        elif result.type == "attendance":
+            result_att = await chat_service.process_attendance(channel_id, user_id, user_name)
+            if result_att:
+                if result_att["status"] == "checked":
+                    msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일, 총 {result_att['total']}회)"
+                    await session.send_chat(msg)
+                elif result_att["status"] == "already_checked":
+                    msg = f"@{user_name}님 이미 오늘 출석하셨습니다."
+                    await session.send_chat(msg)

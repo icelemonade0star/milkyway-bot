@@ -70,3 +70,20 @@ class ChatGreeting(Base):
     __table_args__ = (
         UniqueConstraint('channel_id', 'keyword', name='unique_greeting_per_channel'),
     )
+
+class Attendance(Base):
+    __tablename__ = "attendance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(String(100), ForeignKey("auth_token.channel_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(100), nullable=False, comment="시청자 고유 ID")
+    user_name = Column(String(100), nullable=True, comment="시청자 닉네임")
+    
+    attendance_count = Column(Integer, default=1, nullable=False, comment="총 출석 횟수")
+    last_attendance_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="최근 출석일")
+    streak_count = Column(Integer, default=1, nullable=False, comment="연속 출석 횟수")
+
+    __table_args__ = (
+        # 특정 채널 내에서 유저당 하나의 레코드만 존재하도록 설정
+        UniqueConstraint('channel_id', 'user_id', name='unique_user_per_channel_attendance'),
+    )

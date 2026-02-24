@@ -77,6 +77,7 @@ class ChzzkChatClient(BaseChatClient):
             raw_data = json.loads(data)
             channel_id = raw_data.get('channelId')
             nickname = raw_data.get('profile', {}).get('nickname')
+            user_id = raw_data.get('senderChannelId')
             
             # 봇 자신 및 설정된 다른 봇들의 메시지는 무시
             if nickname in config.BOT_NICKNAMES:
@@ -88,7 +89,7 @@ class ChzzkChatClient(BaseChatClient):
             self.logger.info(f"💬{role} : [{nickname}] {message}")
 
             # 핸들러로 메시지 전달
-            await message_handling.on_message(channel_id, message, role)
+            await message_handling.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
 
     def get_session_key(self):
         return self.session_key

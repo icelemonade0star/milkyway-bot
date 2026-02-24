@@ -3,8 +3,9 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
-from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting
+from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance
 from app.db.database import get_async_db
+from datetime import datetime, timedelta, timezone
 
 class ChatService:
     def __init__(self, db: AsyncSession):
@@ -73,9 +74,21 @@ class ChatService:
         """
         try:
             # ORM Select
+            # 1. 정확히 일치하는 명령어 조회
             stmt = select(GlobalCommand).where(GlobalCommand.command == command)
             result = await self.db.execute(stmt)
-            return result.scalar_one_or_none()
+            exact = result.scalar_one_or_none()
+            if exact:
+                return exact
+
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
+            stmt = select(GlobalCommand).where(GlobalCommand.command.contains('|'))
+            result = await self.db.execute(stmt)
+            for cmd_obj in result.scalars().all():
+                if command in cmd_obj.command.split('|'):
+                    return cmd_obj
+            
+            return None
 
         except Exception as e:
             await self.db.rollback()
@@ -251,6 +264,70 @@ class ChatService:
             await self.db.rollback()
             print(f"[DB Error] Delete greeting failed: {str(e)}")
             return False
+
+    # --- 출석 체크 (Attendance) 관련 메서드 ---
+
+    async def process_attendance(self, channel_id: str, user_id: str, user_name: str):
+        """
+        출석 체크를 수행하고 결과를 반환합니다.
+        return: {
+            "status": "checked" | "already_checked",
+            "streak": 연속출석일,
+            "total": 총출석일,
+            "is_new": 신규출석여부
+        }
+        """
+        try:
+            # 한국 시간(KST) 기준 현재 날짜 계산
+            kst = timezone(timedelta(hours=9))
+            now = datetime.now(kst)
+            today = now.date()
+
+            # 기존 출석 기록 조회
+            stmt = select(Attendance).where(
+                Attendance.channel_id == channel_id,
+                Attendance.user_id == user_id
+            )
+            result = await self.db.execute(stmt)
+            attendance = result.scalar_one_or_none()
+
+            if not attendance:
+                # 첫 출석
+                new_attendance = Attendance(
+                    channel_id=channel_id,
+                    user_id=user_id,
+                    user_name=user_name,
+                    attendance_count=1,
+                    streak_count=1,
+                    last_attendance_at=now
+                )
+                self.db.add(new_attendance)
+                await self.db.commit()
+                return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
+            
+            # 마지막 출석일 확인 (DB에 저장된 시간도 KST로 변환해서 비교 권장)
+            last_date = attendance.last_attendance_at.astimezone(kst).date()
+
+            if last_date == today:
+                return {"status": "already_checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
+            
+            # 어제 출석했으면 연속 출석 유지, 아니면 1로 초기화
+            if last_date == today - timedelta(days=1):
+                attendance.streak_count += 1
+            else:
+                attendance.streak_count = 1
+            
+            attendance.attendance_count += 1
+            attendance.last_attendance_at = now
+            attendance.user_name = user_name # 닉네임 변경 시 업데이트
+            
+            await self.db.commit()
+            return {"status": "checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
+
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Attendance check failed: {str(e)}")
+            return None
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
