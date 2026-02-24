@@ -4,6 +4,7 @@ from app.redis.redis_service import RedisConfigService
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session_factory
 from app.api.chat.chat_service import ChatService
+from app.config import ALLOWED_PREFIXES
 
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
@@ -49,11 +50,17 @@ async def on_message(channel_id: str, message_text: str, role: str):
     async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         if session:
-            await on_command(db, session, channel_id, command, args, role, redis_service)
+            await on_command(db, session, channel_id, command, args, role, redis_service, prefix)
 
-async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService):
+async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str):
     chat_service = ChatService(db)
     
+    # 접두사 제거 헬퍼 함수
+    def strip_prefix(text: str) -> str:
+        if text and text[0] in ALLOWED_PREFIXES:
+            return text[1:]
+        return text
+
     # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
     custom_cmd = await chat_service.get_chat_command(channel_id, command)
     if custom_cmd and custom_cmd.is_active:
@@ -109,7 +116,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: 명령어등록 [명령어] [내용]")
                     return
-                new_cmd = args[0]
+                new_cmd = strip_prefix(args[0])
                 new_response = " ".join(args[1:])
                 success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
                 if success:
@@ -121,7 +128,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: 명령어수정 [명령어] [내용]")
                     return
-                target_cmd = args[0]
+                target_cmd = strip_prefix(args[0])
                 new_response = " ".join(args[1:])
                 success = await chat_service.update_chat_command(channel_id, target_cmd, new_response)
                 if success:
@@ -133,7 +140,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 1:
                     await session.send_chat("사용법: 명령어삭제 [명령어]")
                     return
-                target_cmd = args[0]
+                target_cmd = strip_prefix(args[0])
                 success = await chat_service.delete_chat_command(channel_id, target_cmd)
                 if success:
                     await session.send_chat(f"명령어 '{target_cmd}'가 삭제되었습니다.")
@@ -147,9 +154,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 new_prefix = args[0]
 
                 # 접두사 화이트리스트 검증
-                allowed_prefixes = "!@#$%^&*"
-                if len(new_prefix) != 1 or new_prefix not in allowed_prefixes:
-                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {allowed_prefixes}")
+                if len(new_prefix) != 1 or new_prefix not in ALLOWED_PREFIXES:
+                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {ALLOWED_PREFIXES}")
                     return
 
                 # RedisConfigService를 통해 DB와 Redis 모두 업데이트
@@ -162,7 +168,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: !인사등록 [키워드] [응답]")
                     return
-                keyword = args[0]
+                keyword = strip_prefix(args[0])
                 response = " ".join(args[1:])
                 
                 success = await chat_service.create_greeting(channel_id, keyword, response)
@@ -176,7 +182,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: !인사변경 [키워드] [응답]")
                     return
-                keyword = args[0]
+                keyword = strip_prefix(args[0])
                 response = " ".join(args[1:])
                 
                 success = await chat_service.update_greeting(channel_id, keyword, response)
@@ -190,7 +196,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 1:
                     await session.send_chat("사용법: !인사삭제 [키워드]")
                     return
-                keyword = args[0]
+                keyword = strip_prefix(args[0])
                 
                 success = await chat_service.delete_greeting(channel_id, keyword)
                 if success:

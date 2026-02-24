@@ -28,3 +28,6 @@ SSH_PRIVATE_KEY_PATH = os.getenv("SSH_PRIVATE_KEY_PATH")
 # --- Redis 설정 ---
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+
+# --- 기타 설정 ---
+ALLOWED_PREFIXES = os.getenv("ALLOWED_PREFIXES", "!@#$%^&*")
