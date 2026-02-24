@@ -31,3 +31,5 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 # --- 기타 설정 ---
 ALLOWED_PREFIXES = os.getenv("ALLOWED_PREFIXES", "!@#$%^&*")
+# 여러 봇 닉네임을 쉼표로 구분하여 리스트로 변환 (예: "밀키웨이 봇,싹둑,나이트봇")
+BOT_NICKNAMES = [name.strip() for name in os.getenv("BOT_NICKNAME", "밀키웨이 봇").split(',')]
