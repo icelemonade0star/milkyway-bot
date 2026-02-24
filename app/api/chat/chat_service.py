@@ -100,7 +100,11 @@ class ChatService:
         활성화된 모든 글로벌 명령어를 조회합니다.
         """
         try:
-            stmt = select(GlobalCommand).where(GlobalCommand.is_active == True).order_by(GlobalCommand.display_order.asc())
+            # display_order가 0인 명령어는 목록 조회에서 제외
+            stmt = select(GlobalCommand).where(
+                GlobalCommand.is_active == True,
+                GlobalCommand.display_order != 0
+            ).order_by(GlobalCommand.display_order.asc())
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
