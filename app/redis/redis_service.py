@@ -1,6 +1,7 @@
 import redis.asyncio as redis
 from datetime import timedelta
 import app.config as config
+import re
 
 from app.db.database import get_session_factory
 from app.api.chat.chat_service import ChatService
@@ -74,8 +75,7 @@ class RedisConfigService:
 
     async def get_greeting_response(self, channel_id: str, message: str) -> str:
         """
-        메시지가 인삿말 키워드와 일치하는지 확인하고 응답을 반환합니다.
-        Redis Hash를 사용하여 O(1) 조회.
+        메시지에 인삿말 키워드가 포함되어 있는지 확인하고 응답을 반환합니다.
         """
         cache_key = f"greetings:{channel_id}"
         
@@ -84,12 +84,28 @@ class RedisConfigService:
             response = await redis_client.hget(cache_key, message)
             if response:
                 return response
+            # 1. Redis에서 해당 채널의 모든 인삿말 조회
+            greetings = await redis_client.hgetall(cache_key)
                 
             # 2. Redis에 키가 아예 없으면(만료/미로드) DB에서 로드 후 재시도
             if not await redis_client.exists(cache_key):
                 await self.refresh_greetings_cache(channel_id)
                 # 다시 조회
                 return await redis_client.hget(cache_key, message)
+            # 2. 데이터가 없으면(None or Empty) 만료 여부 확인 후 리로드
+            if not greetings:
+                if not await redis_client.exists(cache_key):
+                    await self.refresh_greetings_cache(channel_id)
+                    greetings = await redis_client.hgetall(cache_key)
+            
+            # 3. 키워드 포함 여부 검사
+            if greetings:
+                for keyword, response in greetings.items():
+                    # (?<!\w)와 (?!\w)를 사용하여 앞뒤가 단어 문자(한글,영문,숫자 등)가 아닌 경우만 매칭
+                    # 즉, 독립된 단어로 존재할 때만 반응
+                    pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
+                    if re.search(pattern, message):
+                        return response
                 
         except Exception as e:
             print(f"⚠️ Redis 인삿말 조회 실패: {e}")
