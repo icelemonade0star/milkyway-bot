@@ -18,8 +18,17 @@ async def on_message(channel_id: str, message_text: str, role: str):
     # 2. Prefix 조회 (Redis -> DB Fallback)
     prefix = await redis_service.get_command_prefix(channel_id)
     
-    # 접두사로 시작하지 않으면 무시
+    # 접두사로 시작하지 않으면 인삿말(Greeting) 체크
     if not message_text.startswith(prefix):
+        # DB 세션 팩토리 확인
+        session_factory = get_session_factory()
+        if session_factory:
+            # 인삿말 체크 및 응답
+            greeting_resp = await redis_service.get_greeting_response(channel_id, message_text.strip())
+            if greeting_resp:
+                session = await session_manager.get_session(channel_id)
+                if session:
+                    await session.send_chat(greeting_resp)
         return
 
     # 3. 명령어 파싱
@@ -74,7 +83,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         elif result.type == "system":
             # 시스템 명령어 처리
             # 관리자 권한이 필요한 명령어 목록
-            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정"]
+            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정", "인사등록", "인사변경", "인사삭제"]
             if result.command in admin_commands and role == 'common_user':
                 return
 
@@ -147,3 +156,53 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 redis_service = RedisConfigService()
                 await redis_service.update_command_prefix(channel_id, new_prefix)
                 await session.send_chat(f"접두사가 '{new_prefix}'로 변경되었습니다.")
+
+            # --- 인삿말 관리 명령어 ---
+            elif result.command == "인사등록":
+                if len(args) < 2:
+                    await session.send_chat("사용법: !인사등록 [키워드] [응답]")
+                    return
+                keyword = args[0]
+                response = " ".join(args[1:])
+                
+                success = await chat_service.create_greeting(channel_id, keyword, response)
+                if success:
+                    await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
+                    await session.send_chat(f"인삿말 '{keyword}'가 등록되었습니다.")
+                else:
+                    await session.send_chat(f"이미 존재하는 인삿말입니다: {keyword}. 변경하려면 !인사변경을 사용하세요.")
+
+            elif result.command == "인사변경":
+                if len(args) < 2:
+                    await session.send_chat("사용법: !인사변경 [키워드] [응답]")
+                    return
+                keyword = args[0]
+                response = " ".join(args[1:])
+                
+                success = await chat_service.update_greeting(channel_id, keyword, response)
+                if success:
+                    await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
+                    await session.send_chat(f"인삿말 '{keyword}'가 수정되었습니다.")
+                else:
+                    await session.send_chat(f"존재하지 않는 인삿말입니다: {keyword}. 등록하려면 !인사등록을 사용하세요.")
+
+            elif result.command == "인사삭제":
+                if len(args) < 1:
+                    await session.send_chat("사용법: !인사삭제 [키워드]")
+                    return
+                keyword = args[0]
+                
+                success = await chat_service.delete_greeting(channel_id, keyword)
+                if success:
+                    await redis_service.delete_greeting_cache(channel_id, keyword) # Redis에서 삭제
+                    await session.send_chat(f"인삿말 '{keyword}'가 삭제되었습니다.")
+                else:
+                    await session.send_chat(f"등록되지 않은 인삿말입니다: {keyword}")
+
+            elif result.command == "인사목록":
+                greetings = await chat_service.get_channel_greetings(channel_id)
+                if greetings:
+                    keywords = [g.keyword for g in greetings]
+                    await session.send_chat(f"등록된 인삿말: {', '.join(keywords)}")
+                else:
+                    await session.send_chat("등록된 인삿말이 없습니다.")
