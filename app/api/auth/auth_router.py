@@ -1,11 +1,12 @@
 from app.api.auth.chzzk_auth import ChzzkAuth
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Cookie
+from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_async_db
 from app.api.auth.auth_service import AuthService
+from app.api.chat.session_manager import session_manager
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,6 +33,7 @@ async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
 async def callback_auth(
     code: str = Query(...),
     state: str = Query(...),
+    background_tasks: BackgroundTasks,
     oauth_state: str = Cookie(None),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -55,6 +57,9 @@ async def callback_auth(
     auth_service = AuthService(db)
 
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
+    
+    # [추가] 인증 완료 후 백그라운드에서 세션 생성 및 채팅 연결 시작
+    background_tasks.add_task(session_manager.get_or_create_session, chzzk_auth.channel_id)
     
     channel_name = getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
 
