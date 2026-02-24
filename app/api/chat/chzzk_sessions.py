@@ -1,6 +1,7 @@
 import httpx
 import asyncio
 from datetime import datetime
+import random
 
 import app.config as config
 import app.api.chat.clients.chat_client as chat_client
@@ -192,6 +193,12 @@ class ChzzkSessions:
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json', 
         }
+
+        # 파이프(|)로 구분된 메시지 처리 (랜덤 발송)
+        if '|' in message:
+            options = [m.strip() for m in message.split('|') if m.strip()]
+            if options:
+                message = random.choice(options)
 
         # 메시지 데이터 구성
         data = {
