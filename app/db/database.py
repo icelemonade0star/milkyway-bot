@@ -13,7 +13,6 @@ async def get_async_db(request: Request):
             await db.close()
 
 def get_session_factory():
-    global AsyncSessionLocal
     return AsyncSessionLocal
 
 def create_db_engine(local_port):
