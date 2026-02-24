@@ -3,6 +3,7 @@ import json
 import asyncio
 import logging
 
+import app.config as config
 from .base import BaseChatClient
 from app.api.chat.handling import message_handling
 
@@ -76,6 +77,11 @@ class ChzzkChatClient(BaseChatClient):
             raw_data = json.loads(data)
             channel_id = raw_data.get('channelId')
             nickname = raw_data.get('profile', {}).get('nickname')
+            
+            # 봇 자신 및 설정된 다른 봇들의 메시지는 무시
+            if nickname in config.BOT_NICKNAMES:
+                return
+
             message = raw_data.get('content')
             role = raw_data.get('profile', {}).get('userRoleCode')
             # 어느 세션에서 발생한 채팅인지 식별자와 함께 출력
