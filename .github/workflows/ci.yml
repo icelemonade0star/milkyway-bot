@@ -49,9 +49,14 @@ jobs:
         key: ${{ runner.os }}-requirements-${{ hashFiles('**/requirements.txt') }}
 
     - name: Install dependencies
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-anyio requests flake8
+
+    - name: Lint with flake8
+      run: |
+        # 문법 오류(SyntaxError)나 정의되지 않은 변수 등 치명적인 오류만 검사하여 빌드 중단
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
     - name: Run tests
-      run: |
-        pip install pytest pytest-anyio requests
-        pytest tests/ || true
+      run: pytest tests/
