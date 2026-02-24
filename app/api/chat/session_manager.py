@@ -1,5 +1,8 @@
 import asyncio
+import logging
 from app.api.chat.chzzk_sessions import ChzzkSessions
+
+logger = logging.getLogger("SessionManager")
 
 class SessionManager:
     def __init__(self):
@@ -27,13 +30,13 @@ class SessionManager:
             for i, res in enumerate(results):
                 if isinstance(res, Exception):
                     # 어떤 채널(ID)에서 에러가 났는지 로그에 남김
-                    print(f"❌ 세션 복구 실패: {res}")
-            print(f"✅ {len(results)}개의 세션 복구 시도 완료")
+                    logger.error(f"❌ 세션 복구 실패: {res}")
+            logger.info(f"✅ {len(results)}개의 세션 복구 시도 완료")
 
     async def get_session(self, channel_id: str):
         """세션이 있으면 반환하고, 없으면 생성해서 반환합니다."""
         if channel_id not in self.active_sessions:
-            print(f"🆕 [{channel_id}] 새 세션 생성 및 캐싱")
+            logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 캐싱")
             session = ChzzkSessions(channel_id)
             self.active_sessions[channel_id] = session
             
@@ -47,10 +50,10 @@ class SessionManager:
             if not force_recreate:
                 return self.active_sessions[channel_id], False
             
-            print(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
+            logger.info(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
             await self.remove_session(channel_id)
 
-        print(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
+        logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
         
         new_session = ChzzkSessions(channel_id)
         
@@ -86,6 +89,6 @@ class SessionManager:
         if channel_id in self.active_sessions:
             session = self.active_sessions[channel_id]
             session.access_token = new_access_token
-            print(f"🔄 [SessionManager] {channel_id}의 인메모리 토큰이 갱신되었습니다.")
+            logger.info(f"🔄 [SessionManager] {channel_id}의 인메모리 토큰이 갱신되었습니다.")
 
 session_manager = SessionManager()

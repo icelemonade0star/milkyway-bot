@@ -3,7 +3,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
-from app.db.models import ChannelConfig, GlobalCommand, ChatCommand
+from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting
 from app.db.database import get_async_db
 
 class ChatService:
@@ -174,6 +174,82 @@ class ChatService:
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
+            return False
+
+    # --- 인삿말(Greeting) 관련 메서드 ---
+
+    async def get_channel_greetings(self, channel_id: str):
+        """특정 채널의 모든 인삿말 조회"""
+        try:
+            stmt = select(ChatGreeting).where(ChatGreeting.channel_id == channel_id)
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"[DB Error] Greetings fetch failed: {str(e)}")
+            return []
+
+    async def get_greeting(self, channel_id: str, keyword: str):
+        """특정 인삿말 조회"""
+        try:
+            stmt = select(ChatGreeting).where(
+                ChatGreeting.channel_id == channel_id,
+                ChatGreeting.keyword == keyword
+            )
+            result = await self.db.execute(stmt)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            print(f"[DB Error] Get greeting failed: {str(e)}")
+            return None
+
+    async def create_greeting(self, channel_id: str, keyword: str, response: str):
+        """인삿말 등록 (중복 시 실패)"""
+        try:
+            existing = await self.get_greeting(channel_id, keyword)
+            if existing:
+                return False
+            
+            new_greeting = ChatGreeting(channel_id=channel_id, keyword=keyword, response=response)
+            self.db.add(new_greeting)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Create greeting failed: {str(e)}")
+            return False
+
+    async def update_greeting(self, channel_id: str, keyword: str, response: str):
+        """인삿말 수정 (없으면 실패)"""
+        try:
+            existing = await self.get_greeting(channel_id, keyword)
+            if not existing:
+                return False
+            
+            existing.response = response
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Update greeting failed: {str(e)}")
+            return False
+
+    async def delete_greeting(self, channel_id: str, keyword: str):
+        try:
+            stmt = select(ChatGreeting).where(
+                ChatGreeting.channel_id == channel_id,
+                ChatGreeting.keyword == keyword
+            )
+            result = await self.db.execute(stmt)
+            target = result.scalar_one_or_none()
+            
+            if not target:
+                return False
+                
+            await self.db.delete(target)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Delete greeting failed: {str(e)}")
             return False
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):

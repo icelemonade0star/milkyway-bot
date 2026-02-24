@@ -57,3 +57,16 @@ class ChatCommand(Base):
     __table_args__ = (
         UniqueConstraint('channel_id', 'command', name='unique_command_per_channel'),
     )
+
+class ChatGreeting(Base):
+    __tablename__ = "chat_greetings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(String(100), ForeignKey("auth_token.channel_id", ondelete="CASCADE"), nullable=False, comment="채널 ID")
+    keyword = Column(String(100), nullable=False, comment="감지할 단어")
+    response = Column(Text, nullable=False, comment="응답 내용")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('channel_id', 'keyword', name='unique_greeting_per_channel'),
+    )

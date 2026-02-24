@@ -72,6 +72,74 @@ class RedisConfigService:
         except Exception as e:
             print(f"⚠️ Redis 갱신 실패: {e}")
 
+    async def get_greeting_response(self, channel_id: str, message: str) -> str:
+        """
+        메시지가 인삿말 키워드와 일치하는지 확인하고 응답을 반환합니다.
+        Redis Hash를 사용하여 O(1) 조회.
+        """
+        cache_key = f"greetings:{channel_id}"
+        
+        try:
+            # 1. Redis에서 해당 키워드 조회
+            response = await redis_client.hget(cache_key, message)
+            if response:
+                return response
+                
+            # 2. Redis에 키가 아예 없으면(만료/미로드) DB에서 로드 후 재시도
+            if not await redis_client.exists(cache_key):
+                await self.refresh_greetings_cache(channel_id)
+                # 다시 조회
+                return await redis_client.hget(cache_key, message)
+                
+        except Exception as e:
+            print(f"⚠️ Redis 인삿말 조회 실패: {e}")
+            
+        return None
+
+    async def refresh_greetings_cache(self, channel_id: str):
+        """DB에서 인삿말을 불러와 Redis에 캐싱합니다."""
+        session_factory = get_session_factory()
+        if not session_factory:
+            return
+
+        async with session_factory() as db:
+            chat_service = ChatService(db)
+            greetings = await chat_service.get_channel_greetings(channel_id)
+            
+            cache_key = f"greetings:{channel_id}"
+            try:
+                # 기존 키 삭제 후 새로 등록 (삭제된 항목 반영 위해)
+                await redis_client.delete(cache_key)
+                if greetings:
+                    mapping = {g.keyword: g.response for g in greetings}
+                    await redis_client.hset(cache_key, mapping=mapping)
+                    # 24시간 유지
+                    await redis_client.expire(cache_key, timedelta(days=1))
+            except Exception as e:
+                print(f"⚠️ Redis 인삿말 캐싱 실패: {e}")
+
+    async def add_greeting_cache(self, channel_id: str, keyword: str, response: str):
+        """인삿말 하나를 Redis에 추가하거나 갱신합니다."""
+        cache_key = f"greetings:{channel_id}"
+        try:
+            # 캐시가 존재하면 부분 업데이트 (TTL 유지)
+            if await redis_client.exists(cache_key):
+                await redis_client.hset(cache_key, keyword, response)
+            else:
+                # 캐시가 없으면 전체 로드 (TTL 설정 포함)
+                await self.refresh_greetings_cache(channel_id)
+        except Exception as e:
+            print(f"⚠️ Redis 인삿말 추가 실패: {e}")
+
+    async def delete_greeting_cache(self, channel_id: str, keyword: str):
+        """인삿말 하나를 Redis에서 삭제합니다."""
+        cache_key = f"greetings:{channel_id}"
+        try:
+            if await redis_client.exists(cache_key):
+                await redis_client.hdel(cache_key, keyword)
+        except Exception as e:
+            print(f"⚠️ Redis 인삿말 삭제 실패: {e}")
+
     async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
         """
         쿨타임 체크 및 설정.
