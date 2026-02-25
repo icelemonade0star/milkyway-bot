@@ -254,53 +254,81 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if len(args) < 2:
                     await session.send_chat("사용법: !인사등록 [키워드] [응답]")
                     return
-                keyword = strip_prefix(args[0])
-                response = " ".join(args[1:])
+                
+                keywords_str, response = parse_command_and_content(args)
+                if not keywords_str or not response:
+                    await session.send_chat("키워드와 응답을 모두 입력해주세요.")
+                    return
                 
                 if has_chzzk_emoticon(response):
                     await session.send_chat("인삿말 내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
-                success = await chat_service.create_greeting(channel_id, keyword, response)
-                if success:
-                    await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
-                    josa = get_josa(keyword, "이/가")
-                    await session.send_chat(f"인삿말 '{keyword}'{josa} 등록되었습니다.")
-                else:
-                    await session.send_chat(f"이미 존재하는 인삿말입니다: {keyword}. 변경하려면 !인사변경을 사용하세요.")
+                keywords = keywords_str.split('|')
+                success_list = []
+                
+                for keyword in keywords:
+                    if await chat_service.create_greeting(channel_id, keyword, response):
+                        await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
+                        success_list.append(keyword)
+                
+                if success_list:
+                    success_str = ", ".join([f"'{k}'" for k in success_list])
+                    await session.send_chat(f"인삿말 {success_str}이(가) 등록되었습니다.")
+                elif not success_list:
+                    await session.send_chat(f"이미 존재하는 인삿말입니다. 변경하려면 !인사변경을 사용하세요.")
 
             elif result.command == "인사변경":
                 if len(args) < 2:
                     await session.send_chat("사용법: !인사변경 [키워드] [응답]")
                     return
-                keyword = strip_prefix(args[0])
-                response = " ".join(args[1:])
+                
+                keywords_str, response = parse_command_and_content(args)
+                if not keywords_str or not response:
+                    await session.send_chat("키워드와 응답을 모두 입력해주세요.")
+                    return
                 
                 if has_chzzk_emoticon(response):
                     await session.send_chat("인삿말 내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
-                success = await chat_service.update_greeting(channel_id, keyword, response)
-                if success:
-                    await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
-                    josa = get_josa(keyword, "이/가")
-                    await session.send_chat(f"인삿말 '{keyword}'{josa} 수정되었습니다.")
-                else:
-                    await session.send_chat(f"존재하지 않는 인삿말입니다: {keyword}. 등록하려면 !인사등록을 사용하세요.")
+                keywords = keywords_str.split('|')
+                success_list = []
+
+                for keyword in keywords:
+                    if await chat_service.update_greeting(channel_id, keyword, response):
+                        await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
+                        success_list.append(keyword)
+                
+                if success_list:
+                    success_str = ", ".join([f"'{k}'" for k in success_list])
+                    await session.send_chat(f"인삿말 {success_str}이(가) 수정되었습니다.")
+                elif not success_list:
+                    await session.send_chat(f"존재하지 않는 인삿말입니다. 등록하려면 !인사등록을 사용하세요.")
 
             elif result.command == "인사삭제":
                 if len(args) < 1:
                     await session.send_chat("사용법: !인사삭제 [키워드]")
                     return
-                keyword = strip_prefix(args[0])
                 
-                success = await chat_service.delete_greeting(channel_id, keyword)
-                if success:
-                    await redis_service.delete_greeting_cache(channel_id, keyword) # Redis에서 삭제
-                    josa = get_josa(keyword, "이/가")
-                    await session.send_chat(f"인삿말 '{keyword}'{josa} 삭제되었습니다.")
-                else:
-                    await session.send_chat(f"등록되지 않은 인삿말입니다: {keyword}")
+                keywords_str, _ = parse_command_and_content(args)
+                if not keywords_str:
+                    await session.send_chat("삭제할 키워드를 입력해주세요.")
+                    return
+
+                keywords = keywords_str.split('|')
+                success_list = []
+
+                for keyword in keywords:
+                    if await chat_service.delete_greeting(channel_id, keyword):
+                        await redis_service.delete_greeting_cache(channel_id, keyword) # Redis에서 삭제
+                        success_list.append(keyword)
+                
+                if success_list:
+                    success_str = ", ".join([f"'{k}'" for k in success_list])
+                    await session.send_chat(f"인삿말 {success_str}이(가) 삭제되었습니다.")
+                elif not success_list:
+                    await session.send_chat(f"등록되지 않은 인삿말입니다.")
 
             elif result.command == "인사목록":
                 greetings = await chat_service.get_channel_greetings(channel_id)
