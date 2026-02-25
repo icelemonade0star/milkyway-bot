@@ -10,6 +10,66 @@ from app.config import ALLOWED_PREFIXES
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
 
+# 헬퍼 함수: 접두사 제거
+def strip_prefix(text: str) -> str:
+    if text and text[0] in ALLOWED_PREFIXES:
+        return text[1:]
+    return text
+
+# 헬퍼 함수: 이모티콘 체크
+def has_chzzk_emoticon(text: str) -> bool:
+    return bool(re.search(r'{:[a-zA-Z0-9_]+:}', text))
+
+# 헬퍼 함수: 한국어 조사 판별
+def get_josa(word: str, josa_pair: str) -> str:
+    """
+    입력된 단어의 받침 유무에 따라 적절한 조사를 반환합니다.
+    사용법: get_josa("사과", "은/는") -> "는", get_josa("수박", "이/가") -> "이"
+    """
+    if not word:
+        return ""
+    last_char = word[-1]
+    first, second = josa_pair.split('/')
+    # 한글 유니코드 범위 (가 ~ 힣) 확인
+    if 0xAC00 <= ord(last_char) <= 0xD7A3:
+        # (문자코드 - 0xAC00) % 28 > 0 이면 받침 있음
+        has_batchim = (ord(last_char) - 0xAC00) % 28 > 0
+        return first if has_batchim else second
+    # 숫자인 경우 발음에 따라 조사 결정
+    elif last_char.isdigit():
+        # 0(영), 1(일), 3(삼), 6(육), 7(칠), 8(팔) -> 받침 있음
+        return first if last_char in "013678" else second
+    # 한글, 숫자가 아닌 경우(영어 등) 보통 받침 없는 쪽(뒤)을 기본값으로 사용
+    return second
+
+# 헬퍼 함수: 명령어 인자 파싱 ( | 포함 공백 처리 )
+def parse_command_and_content(args_list):
+    if not args_list:
+        return None, None
+    
+    raw_cmd = args_list[0]
+    idx = 1
+    
+    # 파이프(|)가 포함된 명령어가 공백으로 분리된 경우를 처리
+    # 예: "룰| 규칙", "룰 |규칙", "룰 | 규칙" 등
+    while idx < len(args_list):
+        next_arg = args_list[idx]
+        if raw_cmd.endswith('|') or next_arg.startswith('|'):
+            raw_cmd += next_arg
+            idx += 1
+        else:
+            break
+        
+    cmd_no_prefix = strip_prefix(raw_cmd)
+    # | 기준으로 분리 후 각 항목의 공백 제거 및 빈 항목 필터링
+    cleaned_parts = [p.strip() for p in cmd_no_prefix.split('|') if p.strip()]
+    final_cmd = "|".join(cleaned_parts)
+    
+    # 남은 args를 content로 결합
+    content = " ".join(args_list[idx:]) if idx < len(args_list) else ""
+    
+    return final_cmd, content
+
 async def on_message(channel_id: str, message_text: str, role: str, user_id: str, user_name: str):
     # 순환 참조 방지를 위해 함수 내부에서 import
     from app.api.chat.session_manager import session_manager
@@ -62,44 +122,6 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
 async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
     chat_service = ChatService(db)
     
-    # 접두사 제거 헬퍼 함수
-    def strip_prefix(text: str) -> str:
-        if text and text[0] in ALLOWED_PREFIXES:
-            return text[1:]
-        return text
-
-    # 이모티콘 체크 헬퍼 함수
-    def has_chzzk_emoticon(text: str) -> bool:
-        return bool(re.search(r'{:[a-zA-Z0-9_]+:}', text))
-
-    # 명령어 인자 파싱 헬퍼 함수 ( | 포함 공백 처리 )
-    def parse_command_and_content(args_list):
-        if not args_list:
-            return None, None
-        
-        raw_cmd = args_list[0]
-        idx = 1
-        
-        # 파이프(|)가 포함된 명령어가 공백으로 분리된 경우를 처리
-        # 예: "룰| 규칙", "룰 |규칙", "룰 | 규칙" 등
-        while idx < len(args_list):
-            next_arg = args_list[idx]
-            if raw_cmd.endswith('|') or next_arg.startswith('|'):
-                raw_cmd += next_arg
-                idx += 1
-            else:
-                break
-            
-        cmd_no_prefix = strip_prefix(raw_cmd)
-        # | 기준으로 분리 후 각 항목의 공백 제거 및 빈 항목 필터링
-        cleaned_parts = [p.strip() for p in cmd_no_prefix.split('|') if p.strip()]
-        final_cmd = "|".join(cleaned_parts)
-        
-        # 남은 args를 content로 결합
-        content = " ".join(args_list[idx:]) if idx < len(args_list) else ""
-        
-        return final_cmd, content
-
     # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
     custom_cmd = await chat_service.get_chat_command(channel_id, command)
     if custom_cmd and custom_cmd.is_active:
@@ -167,7 +189,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
                 success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
                 if success:
-                    await session.send_chat(f"명령어 '{new_cmd}'가 등록되었습니다.")
+                    josa = get_josa(new_cmd, "이/가")
+                    await session.send_chat(f"명령어 '{new_cmd}'{josa} 등록되었습니다.")
                 else:
                     await session.send_chat(f"이미 존재하는 명령어입니다: {new_cmd}")
 
@@ -187,7 +210,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
                 success = await chat_service.update_chat_command(channel_id, target_cmd, new_response)
                 if success:
-                    await session.send_chat(f"명령어 '{target_cmd}'가 수정되었습니다.")
+                    josa = get_josa(target_cmd, "이/가")
+                    await session.send_chat(f"명령어 '{target_cmd}'{josa} 수정되었습니다.")
                 else:
                     await session.send_chat(f"존재하지 않는 명령어입니다: {target_cmd}")
 
@@ -203,7 +227,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
                 success = await chat_service.delete_chat_command(channel_id, target_cmd)
                 if success:
-                    await session.send_chat(f"명령어 '{target_cmd}'가 삭제되었습니다.")
+                    josa = get_josa(target_cmd, "이/가")
+                    await session.send_chat(f"명령어 '{target_cmd}'{josa} 삭제되었습니다.")
                 else:
                     await session.send_chat(f"존재하지 않는 명령어입니다: {target_cmd}")
 
@@ -221,7 +246,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 # RedisConfigService를 통해 DB와 Redis 모두 업데이트
                 redis_service = RedisConfigService()
                 await redis_service.update_command_prefix(channel_id, new_prefix)
-                await session.send_chat(f"접두사가 '{new_prefix}'로 변경되었습니다.")
+                josa = get_josa(new_prefix, "으로/로")
+                await session.send_chat(f"접두사가 '{new_prefix}'{josa} 변경되었습니다.")
 
             # --- 인삿말 관리 명령어 ---
             elif result.command == "인사등록":
@@ -238,7 +264,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 success = await chat_service.create_greeting(channel_id, keyword, response)
                 if success:
                     await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
-                    await session.send_chat(f"인삿말 '{keyword}'가 등록되었습니다.")
+                    josa = get_josa(keyword, "이/가")
+                    await session.send_chat(f"인삿말 '{keyword}'{josa} 등록되었습니다.")
                 else:
                     await session.send_chat(f"이미 존재하는 인삿말입니다: {keyword}. 변경하려면 !인사변경을 사용하세요.")
 
@@ -256,7 +283,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 success = await chat_service.update_greeting(channel_id, keyword, response)
                 if success:
                     await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
-                    await session.send_chat(f"인삿말 '{keyword}'가 수정되었습니다.")
+                    josa = get_josa(keyword, "이/가")
+                    await session.send_chat(f"인삿말 '{keyword}'{josa} 수정되었습니다.")
                 else:
                     await session.send_chat(f"존재하지 않는 인삿말입니다: {keyword}. 등록하려면 !인사등록을 사용하세요.")
 
@@ -269,7 +297,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 success = await chat_service.delete_greeting(channel_id, keyword)
                 if success:
                     await redis_service.delete_greeting_cache(channel_id, keyword) # Redis에서 삭제
-                    await session.send_chat(f"인삿말 '{keyword}'가 삭제되었습니다.")
+                    josa = get_josa(keyword, "이/가")
+                    await session.send_chat(f"인삿말 '{keyword}'{josa} 삭제되었습니다.")
                 else:
                     await session.send_chat(f"등록되지 않은 인삿말입니다: {keyword}")
 
