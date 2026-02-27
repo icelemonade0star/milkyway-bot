@@ -86,17 +86,24 @@ class RedisConfigService:
         3. 오른쪽 경계 검사 (Lookahead): 뒤에 다른 글자가 붙어있는지 확인
            단, 키워드 자체가 반복되는 경우
         """
-        # 1. 키워드가 아예 없으면 False
-        if keyword not in message:
-            return False
+        # | 로 구분된 키워드 처리
+        keywords = [k.strip() for k in keyword.split('|') if k.strip()]
 
-        # 2. 정규표현식
-        # (?<!\w): 앞 경계 확인 (앞에 문자 없음)
-        # (?:...)+: 키워드가 1번 이상 반복됨 (비캡처 그룹)
-        # (?!\w): 뒤 경계 확인 (뒤에 문자 없음)
-        pattern = rf"(?<!\w)(?:{re.escape(keyword)})+(?!\w)"
-        # re.IGNORECASE를 추가하여 영어 인삿말(Hi/hi)도 구분 없이 인식하도록 개선
-        return bool(re.search(pattern, message, re.IGNORECASE))
+        for k in keywords:
+            # 1. 키워드가 아예 없으면 다음으로
+            if k not in message:
+                continue
+
+            # 2. 정규표현식
+            # (?<!\w): 앞 경계 확인 (앞에 문자 없음)
+            # (?:...)+: 키워드가 1번 이상 반복됨 (비캡처 그룹)
+            # (?!\w): 뒤 경계 확인 (뒤에 문자 없음)
+            pattern = rf"(?<!\w)(?:{re.escape(k)})+(?!\w)"
+            # re.IGNORECASE를 추가하여 영어 인삿말(Hi/hi)도 구분 없이 인식하도록 개선
+            if re.search(pattern, message, re.IGNORECASE):
+                return True
+        
+        return False
 
     async def get_greeting_response(self, channel_id: str, message: str) -> str:
         """
