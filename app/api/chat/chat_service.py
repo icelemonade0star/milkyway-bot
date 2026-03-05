@@ -133,12 +133,27 @@ class ChatService:
         특정 채널의 특정 커스텀 명령어를 조회합니다.
         """
         try:
+            # 1. 정확히 일치하는 명령어 조회
             stmt = select(ChatCommand).where(
                 ChatCommand.channel_id == channel_id, 
                 ChatCommand.command == command
             )
             result = await self.db.execute(stmt)
-            return result.scalar_one_or_none()
+            exact = result.scalar_one_or_none()
+            if exact:
+                return exact
+
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
+            stmt = select(ChatCommand).where(
+                ChatCommand.channel_id == channel_id,
+                ChatCommand.command.contains('|')
+            )
+            result = await self.db.execute(stmt)
+            for cmd_obj in result.scalars().all():
+                if command in cmd_obj.command.split('|'):
+                    return cmd_obj
+            
+            return None
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
