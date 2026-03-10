@@ -12,7 +12,6 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 @bot.event
 async def on_ready():
     print(f"Milkyway Bot ({bot.user}) 로그인 완료!")
-    await bot.add_cog(ChzzkNotification(bot)) 
 
 if __name__ == "__main__":
     if discord_token:
