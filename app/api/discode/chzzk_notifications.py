@@ -20,6 +20,7 @@ class ChzzkNotification(commands.Cog):
 
     @tasks.loop(minutes=1.0) # 1분에 한 번씩 실행
     async def check_chzzk(self):
+        print("👀 [ChzzkNotification] 1분 폴링 루프 도는 중... 확인 중!")
         # 쿠키 갱신을 위해 메인 페이지 접속
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
@@ -34,6 +35,7 @@ class ChzzkNotification(commands.Cog):
                 stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
                 result = await db.execute(stmt)
                 notifications = result.scalars().all()
+                print(f"[ChzzkNotification] 활성화된 알림 설정 {len(notifications)}개 발견.")
 
                 # 각 알림 설정에 대해 처리
                 for notification_setting in notifications:
@@ -47,6 +49,7 @@ class ChzzkNotification(commands.Cog):
     async def process_notification(self, db, notification_setting: ChzzkNotificationModel):
         chzzk_id = notification_setting.chzzk_channel_id
         last_status = notification_setting.last_status
+        print(f"[ChzzkNotification] 채널 확인 중: {chzzk_id} (Last: {last_status})")
         
         url = f"https://api.chzzk.naver.com/service/v1/channels/{chzzk_id}/live-detail"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
@@ -66,13 +69,17 @@ class ChzzkNotification(commands.Cog):
                 else:
                     current_status = live_data.get("status")
 
+                print(f"[ChzzkNotification] {chzzk_id} 현재 상태: {current_status}")
+
                 if last_status == 'CLOSE' and current_status == 'OPEN':
+                    print(f"[ChzzkNotification] 🟢 방송 시작 감지! {chzzk_id}")
                     # 알림 전송
                     await self.send_live_notification(notification_setting, live_data)
                     # DB 및 캐시 업데이트
                     await self.update_status(db, notification_setting, 'OPEN', update_time=True)
                 
                 elif last_status == 'OPEN' and current_status == 'CLOSE':
+                    print(f"[ChzzkNotification] 🔴 방송 종료 감지! {chzzk_id}")
                     # DB 및 캐시 업데이트
                     await self.update_status(db, notification_setting, 'CLOSE', update_time=False)
 
@@ -122,6 +129,7 @@ class ChzzkNotification(commands.Cog):
         
         try:
             await target_channel.send(content=content, embed=embed)
+            print(f"[ChzzkNotification] 알림 전송 성공: {streamer_name} -> {target_channel.name} ({target_channel.id})")
         except Exception as e:
             print(f"[ChzzkNotification] 메시지 전송 실패 {chzzk_id}: {e}")
 
@@ -133,6 +141,7 @@ class ChzzkNotification(commands.Cog):
                 kst = timezone(timedelta(hours=9))
                 setting.last_notified_at = datetime.now(kst)
             await db.commit()
+            print(f"[ChzzkNotification] DB 상태 업데이트 완료: {setting.chzzk_channel_id} -> {status}")
         except Exception as e:
             print(f"[ChzzkNotification] DB Update Failed: {e}")
             await db.rollback()
