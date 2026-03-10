@@ -87,3 +87,19 @@ class Attendance(Base):
         # 특정 채널 내에서 유저당 하나의 레코드만 존재하도록 설정
         UniqueConstraint('channel_id', 'user_id', name='unique_user_per_channel_attendance'),
     )
+
+class ChzzkNotification(Base):
+    __tablename__ = "chzzk_notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chzzk_channel_id = Column(String(50), nullable=False, comment="치지직 채널 ID")
+    discord_channel_id = Column(String(50), nullable=False, comment="디스코드 채널 ID")
+    mention_role = Column(String(100), default='@everyone', comment="알림 시 멘션할 역할")
+    streamer_name = Column(String(50), nullable=True, comment="스트리머 이름 (표시용)")
+    is_active = Column(Boolean, default=True, comment="알림 활성화 여부")
+    last_status = Column(String(10), default='CLOSE', comment="마지막 방송 상태 (OPEN/CLOSE)")
+    last_notified_at = Column(DateTime(timezone=True), nullable=True, comment="마지막 알림 전송 시간")
+
+    __table_args__ = (
+        UniqueConstraint('chzzk_channel_id', 'discord_channel_id', name='unique_chzzk_discord_notification'),
+    )

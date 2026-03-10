@@ -3,7 +3,9 @@ import re
 from app.redis.redis_service import RedisConfigService
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.db.database import get_session_factory
+from app.db.models import ChzzkNotification
 from app.api.chat.chat_service import ChatService
 from app.config import ALLOWED_PREFIXES
 
@@ -151,7 +153,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         elif result.type == "system":
             # 시스템 명령어 처리
             # 관리자 권한이 필요한 명령어 목록
-            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정", "인사등록", "인사변경", "인사삭제"]
+            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정", "인사등록", "인사변경", "인사삭제", "알림설정"]
             if result.command in admin_commands and role == 'common_user':
                 return
 
@@ -337,6 +339,28 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat(f"등록된 인삿말: {', '.join(keywords)}")
                 else:
                     await session.send_chat("등록된 인삿말이 없습니다.")
+
+            elif result.command == "알림설정":
+                
+                if len(args) < 1:
+                    await session.send_chat("사용법: !알림설정 [디스코드채널ID]")
+                    return
+                
+                discord_channel_id = args[0]
+                
+                stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
+                existing = (await db.execute(stmt)).scalar_one_or_none()
+                
+                if existing:
+                    existing.discord_channel_id = discord_channel_id
+                    existing.streamer_name = user_name
+                    existing.is_active = True
+                    await session.send_chat(f"알림 설정이 업데이트되었습니다. (Discord ID: {discord_channel_id})")
+                else:
+                    new_noti = ChzzkNotification(chzzk_channel_id=channel_id, streamer_name=user_name, discord_channel_id=discord_channel_id, last_status="CLOSE", is_active=True)
+                    db.add(new_noti)
+                    await session.send_chat(f"알림 설정이 등록되었습니다. (Discord ID: {discord_channel_id})")
+                await db.commit()
 
         elif result.type == "attendance":
             result_att = await chat_service.process_attendance(channel_id, user_id, user_name)
