@@ -62,7 +62,9 @@ class ChzzkNotification(commands.Cog):
         try:
             async with self.session.get(url, headers=headers, timeout=5) as response:
                 if response.status != 200:
-                    print(f"[ChzzkNotification] API 에러 {chzzk_id}: {response.status}")
+                    error_text = await response.text()
+                    print(f"[ChzzkNotification] API 에러 {chzzk_id} - 상태코드: {response.status}")
+                    print(f"[ChzzkNotification] 에러 상세 내용: {error_text}")
                     return
                 
                 data = await response.json()
