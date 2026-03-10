@@ -8,6 +8,7 @@ import app.db.database as db_module
 from app.db.tunnel import ParamikoTunnel
 from app.api.chat.session_manager import session_manager
 from app.tasks import token_refresh_task
+from app.api.discode.discode import bot, discord_token
 
 # 터널 인스턴스 생성
 tunnel = ParamikoTunnel()
@@ -36,12 +37,22 @@ async def lifespan(app: FastAPI):
     # 토큰 자동 갱신 백그라운드 작업 시작
     refresh_task = asyncio.create_task(token_refresh_task(session_factory))
     
+    # 디스코드 봇 백그라운드 실행
+    discord_task = None
+    if discord_token:
+        print("🤖 디스코드 봇 시작")
+        discord_task = asyncio.create_task(bot.start(discord_token))
+    else:
+        print("⚠️ DISCORD_TOKEN이 없어 디스코드 봇을 시작하지 않습니다.")
+
     yield
     
     # --- SHUTDOWN ---
     print("🔒 리소스 정리 시작")
     # 백그라운드 작업 취소
     refresh_task.cancel()
+    if discord_task:
+        await bot.close()
     await session_manager.close_all()
     await engine.dispose()
     tunnel.stop()
