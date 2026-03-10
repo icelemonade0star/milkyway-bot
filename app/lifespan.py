@@ -38,12 +38,12 @@ async def lifespan(app: FastAPI):
     refresh_task = asyncio.create_task(token_refresh_task(session_factory))
     
     # 디스코드 봇 백그라운드 실행
-    discord_task = None
-    if discord_token:
-        print("🤖 디스코드 봇 시작")
-        discord_task = asyncio.create_task(start_discord_bot(discord_token))
-    else:
-        print("⚠️ DISCORD_TOKEN이 없어 디스코드 봇을 시작하지 않습니다.")
+    # discord_task = None
+    # if discord_token:
+    #     print("🤖 디스코드 봇 시작")
+    #     discord_task = asyncio.create_task(start_discord_bot(discord_token))
+    # else:
+    #     print("⚠️ DISCORD_TOKEN이 없어 디스코드 봇을 시작하지 않습니다.")
 
     yield
     
