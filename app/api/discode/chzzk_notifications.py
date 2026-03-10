@@ -3,7 +3,7 @@ import discord
 from discord.ext import tasks, commands
 import aiohttp
 from sqlalchemy import select
-from app.db.database import get_async_db
+from app.db.database import get_session_factory
 from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
 
@@ -28,23 +28,20 @@ class ChzzkNotification(commands.Cog):
             async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5) as resp:
                 pass # 응답만 받고 넘어가기 (쿠키는 자동 저장됨)
 
-            # 2. DB 세션 가져오
-            async for db in get_async_db():
-                try:
-                    # 활성화된(is_active=True) 알림 설정만 조회합니다.
-                    stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
-                    result = await db.execute(stmt)
-                    notifications = result.scalars().all()
-                    
-                    print(f"✅ [ChzzkNotification] 활성화된 알림 설정 {len(notifications)}개 발견.")
-
-                    # 각 알림 설정에 대해 처리
-                    for notification_setting in notifications:
-                        await self.process_notification(db, notification_setting)
+            # 2. DB 세션 직접 열기
+            async with get_session_factory() as db:
+            
+                # 활성화된(is_active=True) 알림 설정만 조회합니다.
+                stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
+                result = await db.execute(stmt)
+                notifications = result.scalars().all()
                 
-                finally:
-                    break # 제너레이터 탈출
-                    
+                print(f"✅ [ChzzkNotification] 활성화된 알림 설정 {len(notifications)}개 발견.")
+
+                # 각 알림 설정에 대해 처리
+                for notification_setting in notifications:
+                    await self.process_notification(db, notification_setting)
+                
         except Exception as e:
             print(f"🚨 [ChzzkNotification] 루프 에러 발생: {e}")
     
