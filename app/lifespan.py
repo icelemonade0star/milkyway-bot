@@ -51,8 +51,8 @@ async def lifespan(app: FastAPI):
     print("🔒 리소스 정리 시작")
     # 백그라운드 작업 취소
     refresh_task.cancel()
-    if discord_task:
-        await bot.close()
+    # if discord_task:
+    #     await bot.close()
     await session_manager.close_all()
     await engine.dispose()
     tunnel.stop()
