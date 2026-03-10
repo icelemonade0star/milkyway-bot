@@ -317,31 +317,25 @@ class ChatService:
                     user_id=user_id,
                     user_name=user_name,
                     attendance_count=1,
-                    streak_count=1,
+                    streak_count=0,
                     last_attendance_at=now
                 )
                 self.db.add(new_attendance)
                 await self.db.commit()
-                return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
+                return {"status": "checked", "streak": 0, "total": 1, "is_new": True}
             
             # 마지막 출석일 확인 (DB에 저장된 시간도 KST로 변환해서 비교 권장)
             last_date = attendance.last_attendance_at.astimezone(kst).date()
 
             if last_date == today:
-                return {"status": "already_checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
-            
-            # 어제 출석했으면 연속 출석 유지, 아니면 1로 초기화
-            if last_date == today - timedelta(days=1):
-                attendance.streak_count += 1
-            else:
-                attendance.streak_count = 1
+                return {"status": "already_checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
             
             attendance.attendance_count += 1
             attendance.last_attendance_at = now
             attendance.user_name = user_name # 닉네임 변경 시 업데이트
             
             await self.db.commit()
-            return {"status": "checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
+            return {"status": "checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
 
         except Exception as e:
             await self.db.rollback()

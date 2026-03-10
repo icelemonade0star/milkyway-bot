@@ -342,8 +342,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             result_att = await chat_service.process_attendance(channel_id, user_id, user_name)
             if result_att:
                 if result_att["status"] == "checked":
-                    msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일, 총 {result_att['total']}회)"
+                    msg = f"@{user_name}님 출석 체크 완료! 총 {result_att['total']}회)"
                     await session.send_chat(msg)
                 elif result_att["status"] == "already_checked":
-                    msg = f"@{user_name}님 이미 오늘 출석하셨습니다. (연속 {result_att['streak']}일, 총 {result_att['total']}회)"
+                    msg = f"@{user_name}님 이미 오늘 출석하셨습니다. 총 {result_att['total']}회)"
                     await session.send_chat(msg)
