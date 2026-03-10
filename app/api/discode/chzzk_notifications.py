@@ -23,28 +23,30 @@ class ChzzkNotification(commands.Cog):
         print("👀 [ChzzkNotification] 1분 폴링 루프 도는 중... 확인 중!")
         # 쿠키 갱신을 위해 메인 페이지 접속
         try:
+            # 1. 쿠키 갱신
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-            await self.session.get("https://chzzk.naver.com", headers=headers, timeout=5)
+            async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5) as resp:
+                pass # 응답만 받고 넘어가기 (쿠키는 자동 저장됨)
+
+            # 2. DB 세션 가져오
+            async for db in get_async_db():
+                try:
+                    # 활성화된(is_active=True) 알림 설정만 조회합니다.
+                    stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
+                    result = await db.execute(stmt)
+                    notifications = result.scalars().all()
+                    
+                    print(f"✅ [ChzzkNotification] 활성화된 알림 설정 {len(notifications)}개 발견.")
+
+                    # 각 알림 설정에 대해 처리
+                    for notification_setting in notifications:
+                        await self.process_notification(db, notification_setting)
+                
+                finally:
+                    break # 제너레이터 탈출
+                    
         except Exception as e:
-            print(f"[ChzzkNotification] 메인 페이지 접속 에러: {e}")
-
-        # DB 세션을 가져옵니다.
-        async for db in get_async_db():
-            try:
-                # 활성화된(is_active=True) 알림 설정만 조회합니다.
-                stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
-                result = await db.execute(stmt)
-                notifications = result.scalars().all()
-                print(f"[ChzzkNotification] 활성화된 알림 설정 {len(notifications)}개 발견.")
-
-                # 각 알림 설정에 대해 처리
-                for notification_setting in notifications:
-                    await self.process_notification(db, notification_setting)
-            
-            except Exception as e:
-                print(f"[ChzzkNotification] Loop 에러: {e}")
-            finally:
-                break
+            print(f"🚨 [ChzzkNotification] 루프 에러 발생: {e}")
     
     async def process_notification(self, db, notification_setting: ChzzkNotificationModel):
         chzzk_id = notification_setting.chzzk_channel_id
