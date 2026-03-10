@@ -9,6 +9,7 @@ from app.db.tunnel import ParamikoTunnel
 from app.api.chat.session_manager import session_manager
 from app.tasks import token_refresh_task
 from app.api.discode.discode import bot, discord_token
+from app.api.discode.chzzk_notifications import ChzzkNotification
 
 # 터널 인스턴스 생성
 tunnel = ParamikoTunnel()
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
     discord_task = None
     if discord_token:
         print("🤖 디스코드 봇 시작")
+        await bot.add_cog(ChzzkNotification(bot))
         discord_task = asyncio.create_task(bot.start(discord_token))
     else:
         print("⚠️ DISCORD_TOKEN이 없어 디스코드 봇을 시작하지 않습니다.")
