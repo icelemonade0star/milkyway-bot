@@ -29,7 +29,13 @@ class ChzzkNotification(commands.Cog):
                 pass # 응답만 받고 넘어가기 (쿠키는 자동 저장됨)
 
             # 2. DB 세션 직접 열기
-            async with get_session_factory() as db:
+            factory = get_session_factory()
+
+            if factory is None:
+                print("⚠️ DB 세션 팩토리가 없습니다.")
+                return
+
+            async with factory() as db:
             
                 # 활성화된(is_active=True) 알림 설정만 조회합니다.
                 stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
