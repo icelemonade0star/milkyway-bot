@@ -19,37 +19,6 @@ class ChzzkNotification(commands.Cog):
         if self.session:
             self.bot.loop.create_task(self.session.close())
 
-
-    async def init_cookies(self):
-        print("🍪 [ChzzkNotification] 네이버 쿠키 및 세션을 초기화합니다...")
-        try:
-            # 기본 접속으로 chzzk 측 쿠키 생성
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/122.0.0.0 Safari/537.36"
-                )
-            }
-            async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=10) as resp:
-                resp.raise_for_status() # HTTP 에러 발생 시 예외를 일으킴
-
-            # 네이버 로그인 쿠키 주입
-            nid_aut = os.getenv("NID_AUT")
-            nid_ses = os.getenv("NID_SES")
-
-            if not nid_aut or not nid_ses:
-                print("⚠️ [ChzzkNotification] NID_AUT 또는 NID_SES 환경 변수가 없습니다. 비로그인 상태로 작동합니다.")
-                return
-
-            self.session.cookie_jar.update_cookies(
-                {"NID_AUT": nid_aut, "NID_SES": nid_ses},
-                response_url="https://chzzk.naver.com",
-            )
-            print("✅ [ChzzkNotification] 네이버 쿠키 주입 완료.")
-        except Exception as e:
-            print(f"🚨 [ChzzkNotification] 쿠키 초기화 중 심각한 오류 발생: {e}")
-
     @tasks.loop(minutes=1.0) # 1분에 한 번씩 실행
     async def check_chzzk(self):
         print("👀 [ChzzkNotification] 1분 폴링 루프 도는 중... 확인 중!")
@@ -92,12 +61,6 @@ class ChzzkNotification(commands.Cog):
         try:
             current_status = None
             async with self.session.get(status_url, headers=headers, timeout=5) as response:
-                # 인증 관련 에러 발생 시 쿠키 갱신 시도
-                if response.status in [401, 403]:
-                    print(f"[ChzzkNotification] ⚠️ 인증 만료 감지 ({response.status}). 쿠키를 갱신합니다.")
-                    await self.init_cookies()
-                    return
-
                 if response.status != 200:
                     print(f"[ChzzkNotification] Status API 에러 {chzzk_id} - 상태코드: {response.status}")
                     return
@@ -210,4 +173,3 @@ class ChzzkNotification(commands.Cog):
         await self.bot.wait_until_ready()
         # 루프 시작 전 세션 생성 및 초기 쿠키 세팅 (1회만 실행)
         self.session = aiohttp.ClientSession()
-        await self.init_cookies()
