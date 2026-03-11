@@ -8,7 +8,7 @@ import app.db.database as db_module
 from app.db.tunnel import ParamikoTunnel
 from app.api.chat.session_manager import session_manager
 from app.tasks import token_refresh_task
-from app.api.notification.discode import bot, discord_token, start_discord_bot
+from app.api.notification.discord import bot, discord_token, start_discord_bot
 
 # 터널 인스턴스 생성
 tunnel = ParamikoTunnel()
