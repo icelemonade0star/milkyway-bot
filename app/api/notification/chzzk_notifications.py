@@ -19,9 +19,9 @@ class ChzzkNotification(commands.Cog):
         if self.session:
             self.bot.loop.create_task(self.session.close())
 
-    @tasks.loop(minutes=1.0) # 1분에 한 번씩 실행
+    @tasks.loop(seconds=30.0) # 30초에 한 번씩 실행
     async def check_chzzk(self):
-        print("👀 [ChzzkNotification] 1분 폴링 루프 도는 중... 확인 중!")
+        print("👀 [ChzzkNotification] 방송 상태 체크 중... (30s interval)")
         # 쿠키 갱신을 위해 메인 페이지 접속
         try:
             # 1. DB 세션 직접 열기
