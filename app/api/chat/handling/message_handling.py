@@ -8,6 +8,7 @@ from app.db.database import get_session_factory
 from app.db.models import ChzzkNotification
 from app.api.chat.chat_service import ChatService
 from app.config import ALLOWED_PREFIXES
+from app.api.discord.discord_service import DiscordService
 
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
@@ -324,6 +325,14 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     return
                 
                 discord_channel_id = args[0]
+
+                # [검증] 디스코드 메시지 발송 테스트
+                discord_service = DiscordService()
+                test_msg = f"🔔 [MilkywayBot] '{user_name}'님의 방송 알림이 이 채널로 정상적으로 설정되었습니다."
+                
+                if not await discord_service.send_message(discord_channel_id, test_msg):
+                    await session.send_chat(f"❌ 설정 실패: 디스코드 채널({discord_channel_id})에 테스트 메시지를 보낼 수 없습니다. 봇이 초대되었는지, 채널 ID가 맞는지 확인해주세요.")
+                    return
                 
                 stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
                 existing = (await db.execute(stmt)).scalar_one_or_none()
