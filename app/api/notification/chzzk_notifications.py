@@ -83,54 +83,64 @@ class ChzzkNotification(commands.Cog):
         last_status = notification_setting.last_status
         print(f"[ChzzkNotification] 채널 확인 중: {chzzk_id} (Last: {last_status})")
         
-        url = f"https://api.chzzk.naver.com/service/v1/channels/{chzzk_id}/live-detail"
+        # [Cookie 강제 주입] 헤더에 직접 삽입
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
 
-        # [Cookie 강제 주입] 헤더에 직접 삽입
-        nid_aut = os.getenv("NID_AUT")
-        nid_ses = os.getenv("NID_SES")
-        if nid_aut and nid_ses:
-            headers["Cookie"] = f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
+        # 1. 가벼운 Polling API로 상태 먼저 확인
+        status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{chzzk_id}/live-status"
 
         try:
-            async with self.session.get(url, headers=headers, timeout=5) as response:
-                print(f"[ChzzkNotification] 실제 전송된 헤더(쿠키 포함): {response.request_info.headers}")
-
+            current_status = None
+            async with self.session.get(status_url, headers=headers, timeout=5) as response:
                 # 인증 관련 에러 발생 시 쿠키 갱신 시도
                 if response.status in [401, 403]:
                     print(f"[ChzzkNotification] ⚠️ 인증 만료 감지 ({response.status}). 쿠키를 갱신합니다.")
                     await self.init_cookies()
-                    # 재시도 (Optional: 재귀 호출 혹은 다음 루프에 맡김. 여기서는 return)
                     return
 
                 if response.status != 200:
-                    error_text = await response.text()
-                    print(f"[ChzzkNotification] API 에러 {chzzk_id} - 상태코드: {response.status}")
-                    print(f"[ChzzkNotification] 에러 상세 내용: {error_text}")
+                    print(f"[ChzzkNotification] Status API 에러 {chzzk_id} - 상태코드: {response.status}")
                     return
                 
                 data = await response.json()
-                live_data = data.get("content", {})
+                content = data.get("content", {})
                 
                 # 방송 상태 확인
-                if not live_data:
+                if not content:
                     current_status = 'CLOSE'
                 else:
-                    current_status = live_data.get("status")
+                    current_status = content.get("status")
 
-                print(f"[ChzzkNotification] {chzzk_id} 현재 상태: {current_status}")
+            print(f"[ChzzkNotification] {chzzk_id} 현재 상태: {current_status}")
 
-                if last_status == 'CLOSE' and current_status == 'OPEN':
-                    print(f"[ChzzkNotification] 🟢 방송 시작 감지! {chzzk_id}")
-                    # 알림 전송
-                    await self.send_live_notification(notification_setting, live_data)
-                    # DB 및 캐시 업데이트
-                    await self.update_status(db, notification_setting, 'OPEN', update_time=True)
+            if last_status == 'CLOSE' and current_status == 'OPEN':
+                print(f"[ChzzkNotification] 🟢 방송 시작 감지! {chzzk_id} -> 상세 정보 조회")
                 
-                elif last_status == 'OPEN' and current_status == 'CLOSE':
-                    print(f"[ChzzkNotification] 🔴 방송 종료 감지! {chzzk_id}")
-                    # DB 및 캐시 업데이트
-                    await self.update_status(db, notification_setting, 'CLOSE', update_time=False)
+                # 2. 방송이 켜졌을 때만 상세 정보(썸네일 등) API 호출
+                detail_url = f"https://api.chzzk.naver.com/service/v1/channels/{chzzk_id}/live-detail"
+                
+                # [Cookie 주입] 상세 조회 시에만 쿠키 사용
+                nid_aut = os.getenv("NID_AUT")
+                nid_ses = os.getenv("NID_SES")
+                if nid_aut and nid_ses:
+                    headers["Cookie"] = f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
+                    
+                async with self.session.get(detail_url, headers=headers, timeout=5) as detail_res:
+                    if detail_res.status == 200:
+                        detail_data = await detail_res.json()
+                        live_data = detail_data.get("content", {})
+                        
+                        # 알림 전송 (상세 정보 사용)
+                        await self.send_live_notification(notification_setting, live_data)
+                        # DB 및 캐시 업데이트
+                        await self.update_status(db, notification_setting, 'OPEN', update_time=True)
+                    else:
+                        print(f"[ChzzkNotification] 상세 정보 조회 실패: {detail_res.status}")
+            
+            elif last_status == 'OPEN' and current_status == 'CLOSE':
+                print(f"[ChzzkNotification] 🔴 방송 종료 감지! {chzzk_id}")
+                # DB 및 캐시 업데이트
+                await self.update_status(db, notification_setting, 'CLOSE', update_time=False)
 
         except Exception as e:
             print(f"[ChzzkNotification] 에러 {chzzk_id}: {e}")
