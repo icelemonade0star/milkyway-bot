@@ -153,7 +153,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         elif result.type == "system":
             # 시스템 명령어 처리
             # 관리자 권한이 필요한 명령어 목록
-            admin_commands = ["명령어등록", "명령어수정", "명령어삭제", "접두사수정", "인사등록", "인사변경", "인사삭제", "알림설정"]
+            admin_commands = ["명령어등록", "명령어삭제", "접두사수정", "인사등록", "인사삭제", "알림설정", "알림삭제"]
             if result.command in admin_commands and role == 'common_user':
                 return
 
@@ -177,7 +177,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             
             elif result.command == "명령어등록":
                 if len(args) < 2:
-                    await session.send_chat("사용법: 명령어등록 [명령어] [내용]")
+                    await session.send_chat("사용법: !명령어등록 [명령어] [내용]")
                     return
                 
                 new_cmd, new_response = parse_command_and_content(args)
@@ -189,33 +189,21 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("명령어 또는 내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
+                # 명령어 등록 전에 기존 명령어 존재 여부 확인 (업데이트/등록 구분)
+                existing_cmd = await chat_service.get_chat_command(channel_id, new_cmd)
+                
+                # 명령어 등록/업데이트 시 글로벌 명령어와의 충돌 체크
                 success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
+                
                 if success:
                     josa = get_josa(new_cmd, "이/가")
-                    await session.send_chat(f"명령어 '{new_cmd}'{josa} 등록되었습니다.")
+                    if existing_cmd:
+                        await session.send_chat(f"명령어 '{new_cmd}'{josa} 수정되었습니다.")
+                    else:
+                        await session.send_chat(f"명령어 '{new_cmd}'{josa} 등록되었습니다.")
                 else:
-                    await session.send_chat(f"이미 존재하는 명령어입니다: {new_cmd}")
-
-            elif result.command == "명령어수정":
-                if len(args) < 2:
-                    await session.send_chat("사용법: 명령어수정 [명령어] [내용]")
-                    return
-                
-                target_cmd, new_response = parse_command_and_content(args)
-                if not target_cmd or not new_response:
-                    await session.send_chat("명령어와 내용을 모두 입력해주세요.")
-                    return
-
-                if has_chzzk_emoticon(new_response):
-                    await session.send_chat("내용에 이모티콘을 포함할 수 없습니다.")
-                    return
-
-                success = await chat_service.update_chat_command(channel_id, target_cmd, new_response)
-                if success:
-                    josa = get_josa(target_cmd, "이/가")
-                    await session.send_chat(f"명령어 '{target_cmd}'{josa} 수정되었습니다.")
-                else:
-                    await session.send_chat(f"존재하지 않는 명령어입니다: {target_cmd}")
+                    # This case is for global command conflict
+                    await session.send_chat(f"'{new_cmd}'는 이미 존재하는 기본 명령어이거나 등록할 수 없는 명령어입니다.")
 
             elif result.command == "명령어삭제":
                 if len(args) < 1:
@@ -267,46 +255,35 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     return
 
                 keywords = keywords_str.split('|')
-                success_list = []
+                created_list = []
+                updated_list = []
                 
                 for keyword in keywords:
-                    if await chat_service.create_greeting(channel_id, keyword, response):
-                        await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis에 직접 추가
-                        success_list.append(keyword)
+                    # Check existence first
+                    existing = await chat_service.get_greeting(channel_id, keyword)
+                    if existing:
+                        # Update
+                        if await chat_service.update_greeting(channel_id, keyword, response):
+                            await redis_service.add_greeting_cache(channel_id, keyword, response)
+                            updated_list.append(keyword)
+                    else:
+                        # Create
+                        if await chat_service.create_greeting(channel_id, keyword, response):
+                            await redis_service.add_greeting_cache(channel_id, keyword, response)
+                            created_list.append(keyword)
                 
-                if success_list:
-                    success_str = ", ".join([f"'{k}'" for k in success_list])
-                    await session.send_chat(f"인삿말 {success_str}이(가) 등록되었습니다.")
-                elif not success_list:
-                    await session.send_chat(f"이미 존재하는 인삿말입니다. 변경하려면 !인사변경을 사용하세요.")
-
-            elif result.command == "인사변경":
-                if len(args) < 2:
-                    await session.send_chat("사용법: !인사변경 [키워드] [응답]")
-                    return
+                response_messages = []
+                if created_list:
+                    created_str = ", ".join([f"'{k}'" for k in created_list])
+                    response_messages.append(f"인삿말 {created_str}이(가) 등록되었습니다.")
+                if updated_list:
+                    updated_str = ", ".join([f"'{k}'" for k in updated_list])
+                    response_messages.append(f"인삿말 {updated_str}이(가) 수정되었습니다.")
                 
-                keywords_str, response = parse_command_and_content(args)
-                if not keywords_str or not response:
-                    await session.send_chat("키워드와 응답을 모두 입력해주세요.")
-                    return
-                
-                if has_chzzk_emoticon(response):
-                    await session.send_chat("인삿말 내용에 이모티콘을 포함할 수 없습니다.")
-                    return
-
-                keywords = keywords_str.split('|')
-                success_list = []
-
-                for keyword in keywords:
-                    if await chat_service.update_greeting(channel_id, keyword, response):
-                        await redis_service.add_greeting_cache(channel_id, keyword, response) # Redis 값 갱신
-                        success_list.append(keyword)
-                
-                if success_list:
-                    success_str = ", ".join([f"'{k}'" for k in success_list])
-                    await session.send_chat(f"인삿말 {success_str}이(가) 수정되었습니다.")
-                elif not success_list:
-                    await session.send_chat(f"존재하지 않는 인삿말입니다. 등록하려면 !인사등록을 사용하세요.")
+                if response_messages:
+                    await session.send_chat(" ".join(response_messages))
+                else:
+                    await session.send_chat("이미 등록되었거나, 처리에 실패했습니다.")
 
             elif result.command == "인사삭제":
                 if len(args) < 1:
@@ -343,7 +320,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             elif result.command == "알림설정":
                 
                 if len(args) < 1:
-                    await session.send_chat("사용법: !알림설정 [디스코드채널ID]")
+                    await session.send_chat("사용법: 우선, !디스코드봇으로 나온 url로 디스코드에 봇을 초대해주세요. 그리고 채팅창에 !알림설정 [디스코드채널ID]를 입력하세요.")
                     return
                 
                 discord_channel_id = args[0]
@@ -361,6 +338,17 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     db.add(new_noti)
                     await session.send_chat(f"알림 설정이 등록되었습니다. (Discord ID: {discord_channel_id})")
                 await db.commit()
+
+            elif result.command == "알림삭제":
+                stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
+                existing = (await db.execute(stmt)).scalar_one_or_none()
+                
+                if existing and existing.is_active:
+                    existing.is_active = False
+                    await db.commit()
+                    await session.send_chat("알림 설정이 해제되었습니다.")
+                else:
+                    await session.send_chat("활성화된 알림 설정이 없습니다.")
 
         elif result.type == "attendance":
             result_att = await chat_service.process_attendance(channel_id, user_id, user_name)
