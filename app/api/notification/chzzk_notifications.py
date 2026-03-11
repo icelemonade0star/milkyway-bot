@@ -84,10 +84,18 @@ class ChzzkNotification(commands.Cog):
         print(f"[ChzzkNotification] 채널 확인 중: {chzzk_id} (Last: {last_status})")
         
         url = f"https://api.chzzk.naver.com/service/v1/channels/{chzzk_id}/live-detail"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+
+        # [Cookie 강제 주입] 헤더에 직접 삽입
+        nid_aut = os.getenv("NID_AUT")
+        nid_ses = os.getenv("NID_SES")
+        if nid_aut and nid_ses:
+            headers["Cookie"] = f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
 
         try:
             async with self.session.get(url, headers=headers, timeout=5) as response:
+                print(f"[ChzzkNotification] 실제 전송된 헤더(쿠키 포함): {response.request_info.headers}")
+
                 # 인증 관련 에러 발생 시 쿠키 갱신 시도
                 if response.status in [401, 403]:
                     print(f"[ChzzkNotification] ⚠️ 인증 만료 감지 ({response.status}). 쿠키를 갱신합니다.")
