@@ -1,4 +1,5 @@
 import asyncio
+import os
 import discord
 from discord.ext import tasks, commands
 import aiohttp
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 class ChzzkNotification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.session = None # 초기에는 None으로 비워둠
+        self.session = aiohttp.ClientSession()
         self.check_chzzk.start()
 
     def cog_unload(self):
@@ -18,15 +19,34 @@ class ChzzkNotification(commands.Cog):
         if self.session:
             self.bot.loop.create_task(self.session.close())
 
+    async def init_cookies(self):
+        # 기본 접속으로 chzzk 측 쿠키 생성
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            )
+        }
+        async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5):
+            pass
+
+        # 네이버 로그인 쿠키 주입
+        self.session.cookie_jar.update_cookies(
+            {
+                "NID_AUT": os.getenv("NID_AUT"),
+                "NID_SES": os.getenv("NID_SES"),
+            },
+            response_url=base_url,
+        )
+
     @tasks.loop(minutes=1.0) # 1분에 한 번씩 실행
     async def check_chzzk(self):
         print("👀 [ChzzkNotification] 1분 폴링 루프 도는 중... 확인 중!")
         # 쿠키 갱신을 위해 메인 페이지 접속
         try:
-            # 1. 쿠키 갱신
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-            async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5) as resp:
-                pass # 응답만 받고 넘어가기 (쿠키는 자동 저장됨)
+            # 1. 쿠키 세팅
+            await self.init_cookies()
 
             # 2. DB 세션 직접 열기
             factory = get_session_factory()
