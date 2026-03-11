@@ -22,25 +22,33 @@ class ChzzkNotification(commands.Cog):
 
     async def init_cookies(self):
         print("🍪 [ChzzkNotification] 네이버 쿠키 및 세션을 초기화합니다...")
-        # 기본 접속으로 chzzk 측 쿠키 생성
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
-            )
-        }
-        async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5):
-            pass
+        try:
+            # 기본 접속으로 chzzk 측 쿠키 생성
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                )
+            }
+            async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=10) as resp:
+                resp.raise_for_status() # HTTP 에러 발생 시 예외를 일으킴
 
-        # 네이버 로그인 쿠키 주입
-        self.session.cookie_jar.update_cookies(
-            {
-                "NID_AUT": os.getenv("NID_AUT"),
-                "NID_SES": os.getenv("NID_SES"),
-            },
-            response_url="https://chzzk.naver.com",
-        )
+            # 네이버 로그인 쿠키 주입
+            nid_aut = os.getenv("NID_AUT")
+            nid_ses = os.getenv("NID_SES")
+
+            if not nid_aut or not nid_ses:
+                print("⚠️ [ChzzkNotification] NID_AUT 또는 NID_SES 환경 변수가 없습니다. 비로그인 상태로 작동합니다.")
+                return
+
+            self.session.cookie_jar.update_cookies(
+                {"NID_AUT": nid_aut, "NID_SES": nid_ses},
+                response_url="https://chzzk.naver.com",
+            )
+            print("✅ [ChzzkNotification] 네이버 쿠키 주입 완료.")
+        except Exception as e:
+            print(f"🚨 [ChzzkNotification] 쿠키 초기화 중 심각한 오류 발생: {e}")
 
     @tasks.loop(minutes=1.0) # 1분에 한 번씩 실행
     async def check_chzzk(self):
