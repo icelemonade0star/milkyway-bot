@@ -24,6 +24,8 @@ class ChzzkChatClient(BaseChatClient):
 
         self.logger = logging.getLogger(f"Chzzk.{self.channel_name}")
         self.logger.setLevel(logging.DEBUG)
+        # 부모 로거(Root)로 전파 차단 -> Docker(콘솔) 로그에 출력되지 않게 함
+        self.logger.propagate = False
 
         log_dir = Path.cwd() / "logs" / self.channel_name  # 프로젝트 루트/logs/channel_name
         log_dir.mkdir(parents=True, exist_ok=True) # 폴더가 없으면 생성
@@ -35,16 +37,10 @@ class ChzzkChatClient(BaseChatClient):
             file_handler = logging.FileHandler(log_file, encoding='utf-8')
             file_handler.setLevel(logging.DEBUG)
             
-            # 콘솔 핸들러 (선택 사항: print 대신 로그로 통일하고 싶을 때)
-            stream_handler = logging.StreamHandler()
-            stream_handler.setLevel(logging.INFO)
-            
             formatter = logging.Formatter('%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
             file_handler.setFormatter(formatter)
-            stream_handler.setFormatter(formatter)
             
             self.logger.addHandler(file_handler)
-            self.logger.addHandler(stream_handler)
 
         # 이벤트 핸들러 등록
         self._setup_handlers()
