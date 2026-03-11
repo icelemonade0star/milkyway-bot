@@ -20,6 +20,7 @@ class ChzzkNotification(commands.Cog):
             self.bot.loop.create_task(self.session.close())
 
     async def init_cookies(self):
+        base_url = "https://chzzk.naver.com"
         # 기본 접속으로 chzzk 측 쿠키 생성
         headers = {
             "User-Agent": (
@@ -28,7 +29,7 @@ class ChzzkNotification(commands.Cog):
                 "Chrome/122.0.0.0 Safari/537.36"
             )
         }
-        async with self.session.get("https://chzzk.naver.com", headers=headers, timeout=5):
+        async with self.session.get(base_url, headers=headers, timeout=5):
             pass
 
         # 네이버 로그인 쿠키 주입
