@@ -116,8 +116,9 @@ class ChzzkNotification(commands.Cog):
             return
 
         # 방송 정보 추출
-        live_title = live_data.get("liveTitle", "제목 없음")
-        category = live_data.get("liveCategoryValue", "카테고리 미지정")
+        live_title = live_data.get("liveTitle")
+        category = live_data.get("liveCategoryValue")
+        tags = live_data.get("tags")
         chzzk_id = setting.chzzk_channel_id
         
         # 채널 정보 추출
@@ -137,13 +138,19 @@ class ChzzkNotification(commands.Cog):
             timestamp=datetime.now()
         )
         
-        embed.add_field(name="카테고리", value=category, inline=True)
+        if category:
+            embed.add_field(name="카테고리", value=category, inline=True)
+        if tags:
+            # 태그를 보기 좋게 `#태그` 형식으로 변환
+            embed.add_field(name="태그", value=" ".join([f"`#{t}`" for t in tags]), inline=False)
         if thumbnail_url:
             embed.set_image(url=thumbnail_url)
         if channel_image_url:
             embed.set_thumbnail(url=channel_image_url)
+        else:
+            embed.set_thumbnail(url="https://ssl.pstatic.net/cmstatic/nng/img/img_anonymous_square_gray_opacity2x.png") # 기본 이미지
         
-        embed.set_author(name=streamer_name, icon_url=channel_image_url, url=f"https://chzzk.naver.com/live/{chzzk_id}")
+        embed.set_author(name=streamer_name, icon_url=channel_image_url, url=f"https://chzzk.naver.com/{chzzk_id}")
         embed.set_footer(text="치지직 방송 알림", icon_url="https://ssl.pstatic.net/static/nng/glive/icon/favicon.png")
 
         mention_role = setting.mention_role
