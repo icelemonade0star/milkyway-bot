@@ -81,8 +81,6 @@ class SessionManager:
                 await session.socket_client.disconnect()
             await session.client.aclose() # httpx 클라이언트 닫기
         
-        # 락 정리 (선택 사항: 메모리 누수 방지)
-        self._locks.pop(channel_id, None)
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""
