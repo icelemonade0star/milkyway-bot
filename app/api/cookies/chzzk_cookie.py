@@ -10,7 +10,10 @@ class ChzzkCookieGetter:
     
     async def login_and_get_cookies(self, chzzk_id: str, chzzk_pw: str):
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)  # 디버깅용 visible
+            # 서버 환경(Docker 등)에서는 headless=True가 필수적입니다.
+            # --no-sandbox, --disable-dev-shm-usage는 컨테이너 환경에서 크래시 방지를 위해 권장됩니다.
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            
             # 네이버 보안 우회를 위해 user_agent 설정 및 뷰포트 설정
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -31,8 +34,7 @@ class ChzzkCookieGetter:
             
             # 4. 로그인 성공 대기 (URL이 치지직으로 변경될 때까지 대기)
             try:
-                # 캡차 발생 시 사용자가 직접 풀 수 있도록 넉넉하게 대기 (60초)
-                print("로그인 처리 중... (캡차가 뜨면 직접 해결하세요)")
+                print("로그인 처리 중...")
                 await page.wait_for_url("https://chzzk.naver.com/**", timeout=60000)
             except Exception:
                 print("❌ 로그인 시간 초과 또는 실패. 스크린샷을 확인하세요.")
