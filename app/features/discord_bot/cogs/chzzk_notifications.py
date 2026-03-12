@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
+from app.core.chzzk_api import ChzzkAPIClient
 
 @dataclass
 class LiveNotificationData:
@@ -26,12 +27,15 @@ class ChzzkNotification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.session = None
+        self.chzzk_client = ChzzkAPIClient()
         self.check_chzzk.start()
 
     def cog_unload(self):
         self.check_chzzk.cancel()
         if self.session:
             self.bot.loop.create_task(self.session.close())
+        if self.chzzk_client:
+            self.bot.loop.create_task(self.chzzk_client.close())
 
     @tasks.loop(seconds=30.0) # 30초에 한 번씩 실행
     async def check_chzzk(self):
@@ -93,8 +97,8 @@ class ChzzkNotification(commands.Cog):
                 # live-detail API 미사용 (Polling 데이터만 사용)
                 final_content = content
 
-                # 채널 이미지 등 추가 정보 추출
-                channel_info = final_content.get("channel", {})
+                # 채널 정보 별도 조회 (프로필 이미지 등)
+                channel_info = await self.chzzk_client.get_channel_info(chzzk_id) or {}
                 channel_image = channel_info.get("channelImageUrl")
 
                 # 썸네일은 liveImageUrl 필드 사용

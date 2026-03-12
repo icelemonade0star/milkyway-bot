@@ -7,6 +7,9 @@ import app.core.config as config
 import app.features.chat.clients.chat_client as chat_client
 from app.features.auth.service import AuthService
 from app.core.database import get_session_factory
+from app.core.logger import get_logger
+
+logger = get_logger("ChzzkSessions")
 
 class ChzzkSessions:
     def __init__(self, channel_id: str):
@@ -22,7 +25,8 @@ class ChzzkSessions:
         self.socket_client = None # 소켓 클라이언트 인스턴스 저장
 
         # HTTP 클라이언트를 하나로 유지
-        self.client = httpx.AsyncClient(timeout=10.0)
+        # base_url을 설정하여 이후 요청 시 상대 경로만 사용
+        self.client = httpx.AsyncClient(base_url=self.openapi_base, timeout=10.0)
 
     async def _ensure_auth(self, force_refresh=False):
 
@@ -46,30 +50,30 @@ class ChzzkSessions:
                 now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
                 
                 if (expires_at - now).total_seconds() < 50400:
-                    print(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
+                    logger.warning(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
                     from app.features.auth.chzzk_client import ChzzkAuth
                     chzzk_auth = ChzzkAuth(auth_service)
                     new_token = await chzzk_auth.refresh_access_token(self.channel_id)
                     if new_token:
                         auth_data.access_token = new_token
-                        print(f"✅ [{self.channel_id}] 선제적 토큰 갱신 완료")
+                        logger.info(f"✅ [{self.channel_id}] 선제적 토큰 갱신 완료")
 
                 self.access_token = auth_data.access_token
                 self.channel_name = auth_data.channel_name
-                print(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
+                logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
             else:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 
     async def _refresh_token(self):
         """401 에러 발생 시 토큰을 갱신하고 메모리에 반영합니다."""
-        print(f"🔄 [{self.channel_id}] API 401 응답 감지. 토큰 갱신 시도...")
+        logger.warning(f"🔄 [{self.channel_id}] API 401 응답 감지. 토큰 갱신 시도...")
         
         # 순환 참조 방지를 위해 함수 내부에서 import
         from app.features.auth.chzzk_client import ChzzkAuth
         
         factory = get_session_factory()
         if not factory:
-            print("⚠️ DB 세션 팩토리가 없습니다.")
+            logger.error("⚠️ DB 세션 팩토리가 없습니다.")
             return False
 
         async with factory() as db:
@@ -80,15 +84,15 @@ class ChzzkSessions:
             
             if new_token:
                 self.access_token = new_token
-                print(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
+                logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
                 return True
             else:
-                print(f"❌ [{self.channel_id}] 토큰 갱신 실패")
+                logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
                 return False
 
     async def create_socket_url(self):
         # 세션 발급을 위한 치지직 API 주소
-        url = f'{self.openapi_base}/open/v1/sessions/auth/client'
+        url = '/open/v1/sessions/auth/client'
 
         # 내 앱의 ID랑 비밀키로 인증 헤더 구성
         headers = {
@@ -101,7 +105,7 @@ class ChzzkSessions:
         response = await self.client.get(url, headers=headers)
         
         if response.status_code == 200:
-            print("url 정상", response.json())
+            logger.debug(f"url 정상: {response.json()}")
             data = response.json()
             
             # 응답 데이터에서 실제 소켓 서버 주소만 추출
@@ -109,7 +113,7 @@ class ChzzkSessions:
             self.socket_url = socket_url
         else:
             # 실패하면 에러 코드 찍고 끝냄
-            print(f"Error: {response.status_code} - {response.text}")
+            logger.error(f"Error: {response.status_code} - {response.text}")
             self.socket_url = None
         
     async def create_session(self):
@@ -135,10 +139,10 @@ class ChzzkSessions:
         try:
             # Future가 완료될 때까지 최대 5초 대기 (Polling 제거)
             self.session_key = await asyncio.wait_for(session_key_future, timeout=5.0)
-            print(f"✨ 세션 키 확인 완료: {self.session_key}")
+            logger.info(f"✨ 세션 키 확인 완료: {self.session_key}")
             return self.session_key
         except asyncio.TimeoutError:
-            print("⚠️ 세션 키 확인 실패: 타임아웃")
+            logger.warning("⚠️ 세션 키 확인 실패: 타임아웃")
             return None
     
     async def subscribe_chat(self):
@@ -153,14 +157,14 @@ class ChzzkSessions:
         }
 
         if not self.session_key:
-            print("⚠️ 구독 실패: 세션 키가 없습니다.")
+            logger.error("⚠️ 구독 실패: 세션 키가 없습니다.")
             return False
         
         # 서버에 보낼 파라미터(소켓 세션 키) 설정
         params = {
             "sessionKey": self.session_key
         }
-        uri = f"{self.openapi_base}/open/v1/sessions/events/subscribe/chat"
+        uri = "/open/v1/sessions/events/subscribe/chat"
 
         response = await self.client.post(uri, headers=headers, params=params)
 
@@ -172,11 +176,11 @@ class ChzzkSessions:
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
-            print(f"✅ [{self.channel_id}] 채팅 구독 성공")
+            logger.info(f"✅ [{self.channel_id}] 채팅 구독 성공")
             return response.json() 
         # 실패하면 에러 코드랑 메시지 반환
         else:
-            print(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
+            logger.error(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
             return {
                 "error": "API request failed", 
                 "status_code": response.status_code,
@@ -205,7 +209,7 @@ class ChzzkSessions:
             "message": message
         }
 
-        uri = f"{self.openapi_base}/open/v1/chats/send"
+        uri = "/open/v1/chats/send"
 
         # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
         if config.CHAT_DELAY > 0:
@@ -220,36 +224,9 @@ class ChzzkSessions:
                 response = await self.client.post(uri, headers=headers, json=data)
         
         if response.status_code == 200:
-            print(f"✅ 채팅 전송 성공: {message}")
+            logger.info(f"✅ 채팅 전송 성공: {message}")
             return True
         else:
-            print(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
+            logger.error(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
             return False
         
-    async def get_channel_info(self, channel_id: str = None):
-        """
-        채널 정보를 조회합니다. channel_id가 없으면 현재 세션의 채널 정보를 조회합니다.
-        """
-        target_id = channel_id if channel_id else self.channel_id
-        url = f'{self.openapi_base}/open/v1/channels'
-        
-        headers = {
-            'Client-Id': self.client_id,
-            'Client-Secret': self.client_secret,
-        }
-
-        params = {"channelIds": target_id}
-        
-        try:
-            response = await self.client.get(url, headers=headers, params=params)
-        
-            if response.status_code == 200:
-                data = response.json()
-                # content 내부에 data 리스트 형태로 반환됨
-                return data.get('content', {}).get('data', [])
-            else:
-                print(f"❌ 채널 정보 조회 실패: {response.status_code} - {response.text}")
-                return None
-        except Exception as e:
-            print(f"⚠️ 채널 정보 요청 중 에러: {e}")
-            return None
