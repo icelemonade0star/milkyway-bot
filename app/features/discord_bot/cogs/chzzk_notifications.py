@@ -156,16 +156,14 @@ class ChzzkNotification(commands.Cog):
         if live_data.tags:
             # 태그를 보기 좋게 `#태그` 형식으로 변환
             embed.add_field(name="태그", value=" ".join([f"`#{t}`" for t in live_data.tags]), inline=False)
-        if thumbnail_url:
-            embed.set_image(url=thumbnail_url)
-        else:
-            embed.set_image(url="https://ssl.pstatic.net/cmstatic/nng/img/img_anonymous_square_gray_opacity2x.png") # 기본 이미지
-        
         # 썸네일 주석처리
-        # if live_data.channel_image_url:
-        #     embed.set_thumbnail(url=live_data.channel_image_url)
-        # else:
-        #     embed.set_thumbnail(url="https://ssl.pstatic.net/cmstatic/nng/img/img_anonymous_square_gray_opacity2x.png") # 기본 이미지
+        # if thumbnail_url:
+        #     embed.set_image(url=thumbnail_url)
+        
+        if live_data.channel_image_url:
+            embed.set_thumbnail(url=live_data.channel_image_url)
+        else:
+            embed.set_thumbnail(url="https://ssl.pstatic.net/cmstatic/nng/img/img_anonymous_square_gray_opacity2x.png") # 기본 이미지
         
         embed.set_author(name=live_data.streamer_name, icon_url=live_data.channel_image_url, url=f"https://chzzk.naver.com/{live_data.channel_id}")
         embed.set_footer(text="치지직 방송 알림", icon_url="https://ssl.pstatic.net/static/nng/glive/icon/favicon.png")
