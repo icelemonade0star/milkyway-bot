@@ -10,7 +10,6 @@ from sqlalchemy import select
 from app.db.database import get_session_factory
 from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
-from app.api.cookies.chzzk_cookie import ChzzkCookieGetter
 
 @dataclass
 class LiveNotificationData:
@@ -27,8 +26,6 @@ class ChzzkNotification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.session = None
-        self.cookie_getter = ChzzkCookieGetter()
-        self.cookies = {}
         self.check_chzzk.start()
 
     def cog_unload(self):
@@ -93,14 +90,10 @@ class ChzzkNotification(commands.Cog):
             if last_status == 'CLOSE' and current_status == 'OPEN':
                 print(f"[ChzzkNotification] 🟢 방송 시작 감지! {chzzk_id}")
 
-                # 2. 상세 정보(live-detail) 가져오기 (쿠키 사용)
-                detail_content = await self.fetch_live_detail(chzzk_id)
-                
-                # 상세 정보를 못 가져왔으면 Polling 데이터(content)를 사용
-                final_content = detail_content if detail_content else content
-                
+                # live-detail API 미사용 (Polling 데이터만 사용)
+                final_content = content
+
                 # 채널 이미지 등 추가 정보 추출
-                # live-detail에는 channel 정보가 포함되어 있음
                 channel_info = final_content.get("channel", {})
                 channel_image = channel_info.get("channelImageUrl")
 
@@ -134,52 +127,6 @@ class ChzzkNotification(commands.Cog):
 
         except Exception as e:
             print(f"[ChzzkNotification] 에러 {chzzk_id}: {e}")
-
-    async def fetch_live_detail(self, channel_id: str, retry: bool = True):
-        """쿠키가 적용된 세션으로 상세 방송 정보를 가져옵니다."""
-        url = f"https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
-        
-        # 쿠키가 없으면 1회 갱신 시도
-        if not self.cookies and retry:
-            await self.refresh_cookies()
-
-        try:
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("content")
-                elif response.status == 500 and retry:
-                    print(f"🔄 [ChzzkNotification] 500 에러 감지 ({channel_id}). 쿠키 갱신 후 재시도...")
-                    await self.refresh_cookies()
-                    return await self.fetch_live_detail(channel_id, retry=False)
-                else:
-                    print(f"⚠️ [ChzzkNotification] live-detail 조회 실패 ({channel_id}): {response.status}")
-                    return None
-        except Exception as e:
-            print(f"⚠️ [ChzzkNotification] live-detail 요청 중 에러: {e}")
-            return None
-
-    async def refresh_cookies(self):
-        """ChzzkCookieGetter를 사용하여 쿠키를 갱신하고 메모리에 저장합니다."""
-        print("🍪 [ChzzkNotification] 쿠키 갱신 시도 중...")
-        naver_id = os.getenv("NAVER_ID")
-        naver_pw = os.getenv("NAVER_PW")
-        
-        if not naver_id or not naver_pw:
-            print("⚠️ [ChzzkNotification] 환경변수 NAVER_ID 또는 NAVER_PW가 없습니다.")
-            return
-
-        try:
-            nid_aut, nid_ses = await self.cookie_getter.login_and_get_cookies(naver_id, naver_pw)
-            if nid_aut and nid_ses:
-                self.cookies = {"NID_AUT": nid_aut, "NID_SES": nid_ses}
-                if self.session:
-                    self.session.cookie_jar.update_cookies(self.cookies)
-                print(f"✅ [ChzzkNotification] 쿠키 갱신 성공")
-            else:
-                print(f"❌ [ChzzkNotification] 쿠키 갱신 실패 (로그인 실패)")
-        except Exception as e:
-            print(f"🚨 [ChzzkNotification] 쿠키 갱신 중 에러 발생: {e}")
 
     async def send_live_notification(self, setting: ChzzkNotificationModel, live_data: LiveNotificationData):
         # 디스코드 채널 찾기
@@ -246,6 +193,3 @@ class ChzzkNotification(commands.Cog):
         await self.bot.wait_until_ready()
         # 루프 시작 전 세션 생성 및 초기 쿠키 세팅 (1회만 실행)
         self.session = aiohttp.ClientSession()
-        
-        # 시작 시 쿠키 확보 시도
-        await self.refresh_cookies()

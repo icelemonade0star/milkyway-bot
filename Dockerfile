@@ -22,11 +22,6 @@ ENV PYTHONPATH=/app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Playwright 및 브라우저 설치
-RUN pip install playwright
-RUN playwright install chromium
-RUN playwright install-deps chromium
-
 # 애플리케이션 코드 복사
 COPY ./app /app/app
 
