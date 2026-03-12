@@ -225,3 +225,31 @@ class ChzzkSessions:
         else:
             print(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
             return False
+        
+    async def get_channel_info(self, channel_id: str = None):
+        """
+        채널 정보를 조회합니다. channel_id가 없으면 현재 세션의 채널 정보를 조회합니다.
+        """
+        target_id = channel_id if channel_id else self.channel_id
+        url = f'{self.openapi_base}/open/v1/channels'
+        
+        headers = {
+            'Client-Id': self.client_id,
+            'Client-Secret': self.client_secret,
+        }
+
+        params = {"channelIds": target_id}
+        
+        try:
+            response = await self.client.get(url, headers=headers, params=params)
+        
+            if response.status_code == 200:
+                data = response.json()
+                # content 내부에 data 리스트 형태로 반환됨
+                return data.get('content', {}).get('data', [])
+            else:
+                print(f"❌ 채널 정보 조회 실패: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"⚠️ 채널 정보 요청 중 에러: {e}")
+            return None
