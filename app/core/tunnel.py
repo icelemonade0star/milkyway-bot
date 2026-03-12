@@ -1,5 +1,8 @@
 from sshtunnel import SSHTunnelForwarder
 import app.core.config as config
+from app.core.logger import get_logger
+
+logger = get_logger("SSH_Tunnel")
 
 class ParamikoTunnel:
     _instance = None
@@ -11,7 +14,7 @@ class ParamikoTunnel:
             if config.SSH_HOST:
                 cls._instance.init_tunnel()
             else:
-                print("⚠️ SSH_HOST 설정이 없어 터널링을 생략합니다.")
+                logger.warning("⚠️ SSH_HOST 설정이 없어 터널링을 생략합니다.")
         return cls._instance
 
     def init_tunnel(self):
@@ -31,10 +34,10 @@ class ParamikoTunnel:
             )
             
             self._server.start()
-            print(f"✅ SSH 터널 시작됨 - 로컬 포트: {self._server.local_bind_port}")
+            logger.info(f"✅ SSH 터널 시작됨 - 로컬 포트: {self._server.local_bind_port}")
             
         except Exception as e:
-            print(f"❌ SSH 터널 실패: {e}")
+            logger.error(f"❌ SSH 터널 실패: {e}")
 
     @property
     def local_port(self):
@@ -43,4 +46,4 @@ class ParamikoTunnel:
     def stop(self):
         if self._server:
             self._server.stop()
-            print("🔒 SSH 터널 종료")
+            logger.info("🔒 SSH 터널 종료")

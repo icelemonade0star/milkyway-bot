@@ -1,13 +1,11 @@
 import socketio
 import json
 import asyncio
-import logging
 
 import app.core.config as config
 from .base import BaseChatClient
-from app.features.chat.handling import message_handling
-
-from pathlib import Path
+from app.features.chat.handling import handler
+from app.core.logger import get_channel_logger
 
 class ChzzkChatClient(BaseChatClient):
 
@@ -22,25 +20,8 @@ class ChzzkChatClient(BaseChatClient):
         self.session_key = None
         self.session_key_future = session_key_future
 
-        self.logger = logging.getLogger(f"Chzzk.{self.channel_name}")
-        self.logger.setLevel(logging.DEBUG)
-        # 부모 로거(Root)로 전파 차단 -> Docker(콘솔) 로그에 출력되지 않게 함
-        self.logger.propagate = False
-
-        log_dir = Path.cwd() / "logs" / self.channel_name  # 프로젝트 루트/logs/channel_name
-        log_dir.mkdir(parents=True, exist_ok=True) # 폴더가 없으면 생성
-        log_file = log_dir / "chat_client.log"
-        
-        # 3. 핸들러 중복 등록 방지 (인스턴스 재생성 시 대비)
-        if not self.logger.handlers:
-            # 파일 핸들러 (UTF-8 설정 권장)
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
-            file_handler.setLevel(logging.DEBUG)
-            
-            formatter = logging.Formatter('%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
-            file_handler.setFormatter(formatter)
-            
-            self.logger.addHandler(file_handler)
+        # 중앙화된 로거 사용
+        self.logger = get_channel_logger(self.channel_name)
 
         # 이벤트 핸들러 등록
         self._setup_handlers()
@@ -85,7 +66,7 @@ class ChzzkChatClient(BaseChatClient):
             self.logger.info(f"💬{role} : [{nickname}] {message}")
 
             # 핸들러로 메시지 전달
-            await message_handling.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
+            await handler.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
 
     def get_session_key(self):
         return self.session_key

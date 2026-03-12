@@ -7,6 +7,8 @@ logger = logging.getLogger("SessionManager")
 class SessionManager:
     def __init__(self):
         self.active_sessions = {}  # {channel_id: ChzzkSessions 인스턴스}
+        # 동시 생성 방지를 위한 락 (channel_id별로 관리)
+        self._locks = {}
 
     def add_session(self, channel_id, session):
         self.active_sessions[channel_id] = session
@@ -42,27 +44,34 @@ class SessionManager:
         """
         세션을 반환합니다. 없으면 새로 생성하고 초기화(연결)까지 마칩니다.
         """
-        if channel_id in self.active_sessions:
-            if not force_recreate:
-                return self.active_sessions[channel_id], False
+        # 해당 채널용 락이 없으면 생성
+        if channel_id not in self._locks:
+            self._locks[channel_id] = asyncio.Lock()
+
+        # 락을 사용하여 중복 생성 방지 (Critical Section)
+        async with self._locks[channel_id]:
+            if channel_id in self.active_sessions:
+                if not force_recreate:
+                    return self.active_sessions[channel_id], False
+                
+                logger.info(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
+                await self.remove_session(channel_id)
+
+            logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
             
-            logger.info(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
-            await self.remove_session(channel_id)
+            # TODO: 파일 구조 변경 시 from .session import ChzzkSession 으로 변경 필요
+            new_session = ChzzkSessions(channel_id)
+            
+            # 2. 실제 치지직 서버와 연결 및 구독 (비동기 작업)
+            await new_session.create_session()
+            
+            if not new_session.socket_url:
+                raise Exception("소켓 URL을 가져오지 못했습니다.")
 
-        logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
-        
-        new_session = ChzzkSessions(channel_id)
-        
-        # 2. 실제 치지직 서버와 연결 및 구독 (비동기 작업)
-        await new_session.create_session()
-        
-        if not new_session.socket_url:
-            raise Exception("소켓 URL을 가져오지 못했습니다.")
-
-        await new_session.subscribe_chat()
-        
-        self.active_sessions[channel_id] = new_session
-        return new_session, True
+            await new_session.subscribe_chat()
+            
+            self.active_sessions[channel_id] = new_session
+            return new_session, True
 
     async def remove_session(self, channel_id: str):
         """특정 채널 세션 종료 및 제거"""
@@ -71,6 +80,9 @@ class SessionManager:
             if session.socket_client:
                 await session.socket_client.disconnect()
             await session.client.aclose() # httpx 클라이언트 닫기
+        
+        # 락 정리 (선택 사항: 메모리 누수 방지)
+        self._locks.pop(channel_id, None)
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""
