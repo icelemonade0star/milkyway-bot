@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
 from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance
-from app.db.database import get_async_db
+from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
 
 class ChatService:

@@ -4,10 +4,10 @@ from app.redis.redis_service import RedisConfigService
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db.database import get_session_factory
+from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification
 from app.api.chat.chat_service import ChatService
-from app.config import ALLOWED_PREFIXES
+from app.core.config import ALLOWED_PREFIXES
 from app.api.discord.discord_service import DiscordService
 
 # 로거 설정

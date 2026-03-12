@@ -3,10 +3,10 @@ import asyncio
 from datetime import datetime
 import random
 
-import app.config as config
+import app.core.config as config
 import app.api.chat.clients.chat_client as chat_client
 from app.api.auth.auth_service import AuthService
-from app.db.database import get_session_factory
+from app.core.database import get_session_factory
 
 class ChzzkSessions:
     def __init__(self, channel_id: str):

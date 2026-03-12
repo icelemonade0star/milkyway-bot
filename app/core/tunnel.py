@@ -1,5 +1,5 @@
 from sshtunnel import SSHTunnelForwarder
-import app.config as config
+import app.core.config as config
 
 class ParamikoTunnel:
     _instance = None
@@ -8,7 +8,10 @@ class ParamikoTunnel:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.init_tunnel()
+            if config.SSH_HOST:
+                cls._instance.init_tunnel()
+            else:
+                print("⚠️ SSH_HOST 설정이 없어 터널링을 생략합니다.")
         return cls._instance
 
     def init_tunnel(self):
@@ -41,5 +44,3 @@ class ParamikoTunnel:
         if self._server:
             self._server.stop()
             print("🔒 SSH 터널 종료")
-
-tunnel = ParamikoTunnel()

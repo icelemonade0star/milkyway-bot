@@ -1,5 +1,5 @@
 import httpx
-import app.config as config
+import app.core.config as config
 import secrets
 import asyncio
 from datetime import datetime, timedelta

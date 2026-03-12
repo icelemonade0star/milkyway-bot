@@ -7,7 +7,7 @@ import aiohttp
 from dataclasses import dataclass
 from typing import List, Optional
 from sqlalchemy import select
-from app.db.database import get_session_factory
+from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
 

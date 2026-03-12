@@ -1,6 +1,6 @@
 from fastapi import Request
 from sqlalchemy.ext.asyncio import create_async_engine
-import app.config as config
+import app.core.config as config
 
 AsyncSessionLocal = None
 
@@ -16,7 +16,12 @@ def get_session_factory():
     return AsyncSessionLocal
 
 def create_db_engine(local_port):
-    DATABASE_URL = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASSWORD}@localhost:{local_port}/{config.DB_NAME}"
+    # 터널링 포트가 있으면 localhost 사용, 없으면 설정된 DB_HOST 사용
+    db_host = "localhost" if local_port and config.SSH_HOST else config.DB_HOST
+    # 포트가 명시적으로 넘어오면 사용, 아니면 설정된 DB_PORT 사용
+    db_port = local_port if local_port else config.DB_PORT
+    
+    DATABASE_URL = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASSWORD}@{db_host}:{db_port}/{config.DB_NAME}"
     return create_async_engine(
         DATABASE_URL, 
         pool_size=10,       # 챗봇 동시 접속자가 많다면 조금 늘려주세요

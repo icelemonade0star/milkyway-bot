@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException
 from app.db.models import AuthToken, ChannelConfig
 
-from app.db.database import get_async_db
+from app.core.database import get_async_db
 
 
 class AuthService:

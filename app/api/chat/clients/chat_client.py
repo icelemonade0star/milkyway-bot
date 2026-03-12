@@ -3,7 +3,7 @@ import json
 import asyncio
 import logging
 
-import app.config as config
+import app.core.config as config
 from .base import BaseChatClient
 from app.api.chat.handling import message_handling
 

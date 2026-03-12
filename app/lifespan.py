@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.database import create_db_engine
-import app.db.database as db_module
-from app.db.tunnel import ParamikoTunnel
+from app.core.database import create_db_engine
+import app.core.database as db_module
+from app.core.tunnel import ParamikoTunnel
 from app.api.chat.session_manager import session_manager
 from app.tasks import token_refresh_task
 from app.api.notification.discord import bot, discord_token, start_discord_bot

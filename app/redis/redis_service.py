@@ -1,9 +1,9 @@
 import redis.asyncio as redis
 from datetime import timedelta
-import app.config as config
+import app.core.config as config
 import re
 
-from app.db.database import get_session_factory
+from app.core.database import get_session_factory
 from app.api.chat.chat_service import ChatService
 
 redis_client = redis.Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, decode_responses=True)

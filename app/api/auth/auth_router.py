@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, Background
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_async_db
+from app.core.database import get_async_db
 from app.api.auth.auth_service import AuthService
 from app.api.chat.session_manager import session_manager
 
