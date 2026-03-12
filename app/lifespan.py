@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.database import create_db_engine
 import app.core.database as db_module
 from app.core.tunnel import ParamikoTunnel
-from app.api.chat.session_manager import session_manager
+from app.features.chat.session_manager import session_manager
 from app.tasks import token_refresh_task
-from app.api.notification.discord import bot, discord_token, start_discord_bot
+from app.features.discord_bot.main import bot, discord_token, start_discord_bot
 
 # 터널 인스턴스 생성
 tunnel = ParamikoTunnel()

@@ -1,7 +1,7 @@
 import asyncio
-from app.api.auth.auth_service import AuthService
-from app.api.auth.chzzk_auth import ChzzkAuth
-from app.api.chat.session_manager import session_manager
+from app.features.auth.service import AuthService
+from app.features.auth.chzzk_client import ChzzkAuth
+from app.features.chat.session_manager import session_manager
 
 async def token_refresh_task(session_factory):
     """

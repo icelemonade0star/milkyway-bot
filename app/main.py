@@ -2,9 +2,9 @@ from fastapi import FastAPI
 
 from app.lifespan import lifespan
 from app.core.tunnel import ParamikoTunnel
-from app.api.auth import auth_router
-from app.api.chat import chat_router
-from app.api.discord import discord_test as discord_router
+from app.features.auth import auth_router
+from app.features.chat import chat_router
+
 
 # api
 app = FastAPI(
@@ -16,7 +16,6 @@ app = FastAPI(
     )
 app.include_router(auth_router.auth_router)
 app.include_router(chat_router.chat_router)
-app.include_router(discord_router.discord_router)
 
 
 @app.get("/")
