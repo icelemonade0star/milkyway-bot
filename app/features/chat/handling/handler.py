@@ -8,7 +8,7 @@ from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification
 from app.features.chat.service import ChatService
 from app.core.config import ALLOWED_PREFIXES
-from app.features.discord_bot.main import DiscordService
+from app.features.discord_bot.cogs.discord_service import DiscordService
 
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
