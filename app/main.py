@@ -2,8 +2,8 @@ from fastapi import FastAPI
 
 from app.lifespan import lifespan
 from app.core.tunnel import ParamikoTunnel
-from app.features.auth import auth_router
-from app.features.chat import chat_router
+from app.features.auth import router as auth_router
+from app.features.chat import router as chat_router
 
 
 # api
