@@ -2,8 +2,7 @@ import discord
 import logging
 from typing import Optional, Union
 
-# 기존에 정의된 봇 인스턴스 가져오기
-from app.api.notification.discord import bot
+from app.features.discord_bot.main import bot
 
 class DiscordService:
     def __init__(self):
