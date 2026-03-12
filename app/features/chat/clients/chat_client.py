@@ -5,7 +5,7 @@ import logging
 
 import app.core.config as config
 from .base import BaseChatClient
-from app.api.chat.handling import message_handling
+from app.features.chat.handling import message_handling
 
 from pathlib import Path
 

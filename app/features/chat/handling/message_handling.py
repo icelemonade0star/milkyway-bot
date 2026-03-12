@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification
-from app.api.chat.chat_service import ChatService
+from app.features.chat.service import ChatService
 from app.core.config import ALLOWED_PREFIXES
-from app.api.discord.discord_service import DiscordService
+from app.features.discord_bot.main import DiscordService
 
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
@@ -75,7 +75,7 @@ def parse_command_and_content(args_list):
 
 async def on_message(channel_id: str, message_text: str, role: str, user_id: str, user_name: str):
     # 순환 참조 방지를 위해 함수 내부에서 import
-    from app.api.chat.session_manager import session_manager
+    from app.features.chat.session_manager import session_manager
    
     # 1. Redis 서비스 인스턴스 생성
     redis_service = RedisConfigService()

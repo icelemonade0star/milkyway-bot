@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from app.api.chat.chzzk_sessions import ChzzkSessions
+from app.features.chat.chzzk_sessions import ChzzkSessions
 
 logger = logging.getLogger("SessionManager")
 
@@ -16,7 +16,7 @@ class SessionManager:
         """
         서버 시작 시 DB에서 인증 정보를 가진 모든 채널을 불러와 연결을 복구합니다.
         """
-        from app.api.auth.auth_service import AuthService 
+        from app.features.auth.service import AuthService 
         auth_service = AuthService(db_session)
         channels = await auth_service.get_auth_list()
 
@@ -35,12 +35,8 @@ class SessionManager:
 
     async def get_session(self, channel_id: str):
         """세션이 있으면 반환하고, 없으면 생성해서 반환합니다."""
-        if channel_id not in self.active_sessions:
-            logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 캐싱")
-            session = ChzzkSessions(channel_id)
-            self.active_sessions[channel_id] = session
-            
-        return self.active_sessions[channel_id]
+        session, _ = await self.get_or_create_session(channel_id)
+        return session
     
     async def get_or_create_session(self, channel_id: str, force_recreate: bool = False):
         """

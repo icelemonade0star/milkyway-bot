@@ -4,8 +4,8 @@ from datetime import datetime
 import random
 
 import app.core.config as config
-import app.api.chat.clients.chat_client as chat_client
-from app.api.auth.auth_service import AuthService
+import app.features.chat.clients.chat_client as chat_client
+from app.features.auth.service import AuthService
 from app.core.database import get_session_factory
 
 class ChzzkSessions:
@@ -47,7 +47,7 @@ class ChzzkSessions:
                 
                 if (expires_at - now).total_seconds() < 50400:
                     print(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
-                    from app.api.auth.chzzk_auth import ChzzkAuth
+                    from app.features.auth.chzzk_client import ChzzkAuth
                     chzzk_auth = ChzzkAuth(auth_service)
                     new_token = await chzzk_auth.refresh_access_token(self.channel_id)
                     if new_token:
@@ -65,7 +65,7 @@ class ChzzkSessions:
         print(f"🔄 [{self.channel_id}] API 401 응답 감지. 토큰 갱신 시도...")
         
         # 순환 참조 방지를 위해 함수 내부에서 import
-        from app.api.auth.chzzk_auth import ChzzkAuth
+        from app.features.auth.chzzk_client import ChzzkAuth
         
         factory = get_session_factory()
         if not factory:

@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.chat.chzzk_sessions import ChzzkSessions
-from app.api.chat.session_manager import session_manager
+from app.features.chat.chzzk_sessions import ChzzkSessions
+from app.features.chat.session_manager import session_manager
 
 chat_router = APIRouter(prefix="/chat", tags=["chat"])
 

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from urllib.parse import quote
 
-from app.api.auth.auth_service import AuthService
+from app.features.auth.service import AuthService
  
 class ChzzkAuth:
     def __init__(self, auth_service: AuthService):

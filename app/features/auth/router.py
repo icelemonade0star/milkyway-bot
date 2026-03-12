@@ -1,12 +1,12 @@
-from app.api.auth.chzzk_auth import ChzzkAuth
+from app.features.auth.chzzk_client import ChzzkAuth
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_db
-from app.api.auth.auth_service import AuthService
-from app.api.chat.session_manager import session_manager
+from app.features.auth.service import AuthService
+from app.features.chat.session_manager import session_manager
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
