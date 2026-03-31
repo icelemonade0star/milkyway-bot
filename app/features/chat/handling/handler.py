@@ -376,6 +376,3 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 elif result_att["status"] == "not_streaming":
                     msg = f"@{user_name}님 현재 방송 중에만 출석할 수 있습니다."
                     await session.send_chat(msg)
-                elif result_att["status"] == "no_session_data":
-                    msg = f"@{user_name}님 방송 정보를 가져올 수 없어 출석 처리가 불가능합니다."
-                    await session.send_chat(msg)

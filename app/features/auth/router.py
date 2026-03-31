@@ -143,10 +143,23 @@ async def get_auth_token_list(
 @auth_router.post("/refresh/{channel_id}")
 async def refresh_token(
     channel_id: str, 
-    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth)
+    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth),
+    db: AsyncSession = Depends(get_async_db)
 ):
+    # 1. 토큰 갱신
     new_token = await chzzk_auth.refresh_access_token(channel_id)
-    return {"status": "success", "token": new_token}
+    if not new_token:
+        raise HTTPException(status_code=500, detail="토큰 갱신에 실패했습니다.")
+
+    # 2. 스트림 세션 동기화 (방송 중일 시 기록)
+    from app.features.chat.service import ChatService
+    chat_service = ChatService(db)
+    await chat_service.sync_stream_session(channel_id)
+
+    # 3. 활성화된 세션이 있다면 메모리 상의 토큰도 업데이트
+    await session_manager.update_session_token(channel_id, new_token)
+    
+    return {"status": "success", "new_access_token": new_token}
 
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")

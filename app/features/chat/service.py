@@ -290,47 +290,18 @@ class ChatService:
         """
         출석 체크를 수행하고 결과를 반환합니다 (방송 세션 단위 기준).
         """
-        import httpx
         try:
-            # 1. API 호출하여 채널 상태 확인
-            status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
-            content = {}
-            async with httpx.AsyncClient() as client:
-                res = await client.get(status_url, timeout=5)
-                if res.status_code == 200:
-                    content = res.json().get("content", {})
-                    current_status = content.get("status") if content else "CLOSE"
-                else:
-                    current_status = "CLOSE"
-            
-            if current_status != "OPEN":
-                return {"status": "not_streaming"}
-
-            # 2. 방송 세션 확인 및 생성 (on-demand)
-            open_date_str = content.get("openDate")
-            if not open_date_str:
-                return {"status": "no_session_data"} # 방송 시작 정보가 없어 출석 처리 불가
-
-            kst_tz = timezone(timedelta(hours=9))
-            current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
-
-            # 해당 방송 세션이 DB에 있는지 확인
-            stmt_find_session = select(StreamSession).where(
-                StreamSession.chzzk_channel_id == channel_id,
-                StreamSession.opened_at == current_opened_at
-            )
-            latest_session = (await self.db.execute(stmt_find_session)).scalar_one_or_none()
+            # 1. 방송 세션 확인 및 동기화 (방송 중이 아니거나, 데이터가 없으면 None 반환)
+            latest_session = await self.sync_stream_session(channel_id)
 
             if not latest_session:
-                # 새 방송 세션 생성
-                latest_session = StreamSession(
-                    chzzk_channel_id=channel_id,
-                    opened_at=current_opened_at,
-                    stream_title=content.get("liveTitle")
-                )
-                self.db.add(latest_session)
-            
-            # 3. 이전 방송 세션 조회 (연속 출석 체크용)
+                # sync_stream_session에서 실패하면 방송 중이 아니거나, API 오류, openDate 없음 등의 이유.
+                # 사용자에게는 방송 중이 아니라는 메시지로 통일하여 안내.
+                return {"status": "not_streaming"}
+
+            current_opened_at = latest_session.opened_at
+
+            # 2. 이전 방송 세션 조회 (연속 출석 체크용)
             previous_session = (await self.db.execute(
                 select(StreamSession).where(
                     StreamSession.chzzk_channel_id == channel_id,
@@ -338,7 +309,7 @@ class ChatService:
                 ).order_by(StreamSession.opened_at.desc()).limit(1)
             )).scalar_one_or_none()
 
-            # 4. 기존 출석 기록 확인
+            # 3. 기존 출석 기록 확인
             stmt_att = select(Attendance).where(
                 Attendance.channel_id == channel_id,
                 Attendance.user_id == user_id
@@ -368,13 +339,13 @@ class ChatService:
                     "is_new": False
                 }
 
-            # 5. 연속 출석 검사 (단계 4)
+            # 4. 연속 출석 검사 (단계 4)
             if previous_session and attendance.last_attendance_at == previous_session.opened_at:
                 attendance.streak_count += 1
             else:
                 attendance.streak_count = 1
 
-            # 6. 출석 업데이트 (단계 5)
+            # 5. 출석 업데이트 (단계 5)
             attendance.attendance_count += 1
             attendance.last_attendance_at = current_opened_at
             attendance.user_name = user_name
@@ -385,6 +356,47 @@ class ChatService:
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] Attendance check failed: {str(e)}")
+            return None
+
+    async def sync_stream_session(self, channel_id: str):
+        """
+        현재 방송 상태를 확인하고, 방송 중이면 StreamSession을 기록합니다.
+        """
+        import httpx
+        try:
+            status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
+            content = {}
+            async with httpx.AsyncClient() as client:
+                res = await client.get(status_url, timeout=5)
+                if res.status_code != 200:
+                    return None # API 실패
+                content = res.json().get("content", {})
+                if not content or content.get("status") != "OPEN":
+                    return None # 방송 중 아님
+
+            open_date_str = content.get("openDate")
+            if not open_date_str:
+                return None # 방송 시작 정보 없음
+
+            kst_tz = timezone(timedelta(hours=9))
+            current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
+
+            stmt_find_session = select(StreamSession).where(
+                StreamSession.chzzk_channel_id == channel_id,
+                StreamSession.opened_at == current_opened_at
+            )
+            existing_session = (await self.db.execute(stmt_find_session)).scalar_one_or_none()
+
+            if not existing_session:
+                new_session = StreamSession(chzzk_channel_id=channel_id, opened_at=current_opened_at, stream_title=content.get("liveTitle"))
+                self.db.add(new_session)
+                await self.db.commit()
+                return new_session
+            
+            return existing_session
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Sync stream session failed: {str(e)}")
             return None
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
