@@ -1,9 +1,8 @@
 from fastapi import FastAPI
-
 from app.lifespan import lifespan
-from app.core.tunnel import ParamikoTunnel
-from app.features.auth import router as auth_router
-from app.features.chat import router as chat_router
+from app.features.auth.router import auth_router
+from app.features.chat.router import chat_router
+from app.features.guide.router import guide_router
 
 
 # api
@@ -16,7 +15,7 @@ app = FastAPI(
     )
 app.include_router(auth_router.auth_router)
 app.include_router(chat_router.chat_router)
-
+app.include_router(guide_router.guide_router)
 
 @app.get("/")
 async def root():

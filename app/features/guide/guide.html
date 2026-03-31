@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milkyway Bot 사용 설명서</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #2c2c2e;
+            padding: 20px 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        h1, h2, h3 {
+            color: #00c73c;
+            border-bottom: 2px solid #00c73c;
+            padding-bottom: 10px;
+        }
+        h1 { font-size: 2.5em; text-align: center; border: none; }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; margin-top: 30px; border-bottom: 1px solid #444; }
+        code {
+            background-color: #3a3a3c;
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            border-radius: 6px;
+            font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+        }
+        .command {
+            background: #3a3a3c;
+            border-left: 5px solid #00c73c;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .command .usage {
+            font-weight: bold;
+            color: #f2f2f7;
+        }
+        .command .desc {
+            margin-top: 5px;
+            color: #c7c7cc;
+        }
+        .admin-only {
+            color: #ff453a;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .note {
+            background-color: rgba(0, 199, 60, 0.1);
+            border-left: 4px solid #00c73c;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌌 Milkyway Bot 사용 설명서</h1>
+        
+        <h2>소개</h2>
+        <p>Milkyway Bot은 치지직 스트리머를 위한 다기능 챗봇입니다. 출석 체크, 커스텀 명령어, 자동 인삿말, 디스코드 방송 알림 등 다양한 기능을 제공하여 방송을 더 편리하고 재미있게 만들어줍니다.</p>
+        <p>기본 명령어 접두사는 <code>!</code> 입니다. (스트리머가 변경할 수 있습니다)</p>
+
+        <h2>기본 명령어 (모든 사용자)</h2>
+        
+        <div class="command">
+            <div class="usage">!출석</div>
+            <div class="desc">현재 진행중인 방송에 출석 체크를 합니다. 연속 출석과 총 출석 횟수가 기록됩니다.</div>
+        </div>
+        
+        <div class="command">
+            <div class="usage">!명령어</div>
+            <div class="desc">봇에 등록된 모든 기본 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!채널명령어</div>
+            <div class="desc">현재 채널에 스트리머가 직접 등록한 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <h2>관리자 명령어 (스트리머/매니저)</h2>
+
+        <h3>명령어 관리</h3>
+        <div class="command">
+            <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                새로운 채널 명령어를 등록합니다. <code>|</code> 문자로 여러 개의 명령어 별칭을 한번에 등록할 수 있습니다.<br>
+                <strong>예시:</strong> <code>!명령어등록 규칙|룰 채널 규칙입니다.</code> (<code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답)
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!명령어삭제 [명령어] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 채널 명령어를 삭제합니다.</div>
+        </div>
+
+        <h3>인삿말 관리</h3>
+        <div class="command">
+            <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. <code>|</code> 문자로 여러 키워드를 등록할 수 있습니다.<br>
+                <strong>예시:</strong> <code>!인사등록 안녕|하이 어서오세요!</code> (채팅에 '안녕' 또는 '하이'에 반응하여 '어서오세요!'라고 응답)
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사삭제 [키워드] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 인삿말 키워드를 삭제합니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사목록</div>
+            <div class="desc">현재 채널에 등록된 모든 인삿말 키워드를 보여줍니다.</div>
+        </div>
+
+        <h3>봇 설정</h3>
+        <div class="command">
+            <div class="usage">!접두사수정 [새 접두사] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                명령어 접두사를 변경합니다. 허용되는 접두사는 <code>!</code>, <code>?</code>, <code>.</code>, <code>,</code> 입니다.
+            </div>
+        </div>
+
+        <h3>디스코드 알림</h3>
+        <div class="command">
+            <div class="usage">!알림설정 [디스코드채널ID] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                방송 시작 알림을 받을 디스코드 채널을 설정합니다.
+                <div class="note">
+                    <strong>설정 방법:</strong><br>
+                    1. <strong>[봇 초대 링크]</strong>를 통해 봇을 디스코드 서버에 초대해주세요.<br>
+                    2. 디스코드 설정 > 고급 > '개발자 모드'를 활성화합니다.<br>
+                    3. 알림을 받을 채널에 마우스 우클릭 후 'ID 복사하기'를 눌러 채널 ID를 확인합니다.<br>
+                    4. 치지직 채팅창에 <code>!알림설정 [복사한 ID]</code>를 입력합니다.
+                </div>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!알림삭제 <span class="admin-only">관리자용</span></div>
+            <div class="desc">설정된 디스코드 방송 알림을 해제합니다.</div>
+        </div>
+    </div>
+</body>
+</html>
