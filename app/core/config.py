@@ -1,8 +1,13 @@
 # config.py
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
+
+# 디렉터리 설정
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_DIR = BASE_DIR / "app" / "templates"
 
 OPENAPI_BASE = "https://openapi.chzzk.naver.com"
 
