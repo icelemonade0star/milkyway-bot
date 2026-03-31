@@ -51,6 +51,7 @@ pip install sqlalchemy asyncpg
 pip install python-socketio aiohttp
 pip install python-dotenv
 pip install discord.py
+pip install jinja2
 pip install paramiko
 pip install requests httpx
 ```

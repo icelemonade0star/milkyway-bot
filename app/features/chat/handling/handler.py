@@ -233,7 +233,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
                 # 접두사 화이트리스트 검증
                 if len(new_prefix) != 1 or new_prefix not in ALLOWED_PREFIXES:
-                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {ALLOWED_PREFIXES}")
+                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {', '.join(ALLOWED_PREFIXES)}")
                     return
 
                 # RedisConfigService를 통해 DB와 Redis 모두 업데이트
