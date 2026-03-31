@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from sqlalchemy import select
 from app.core.database import get_session_factory
-from app.db.models import ChzzkNotification as ChzzkNotificationModel, StreamSession
+from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
 from app.core.chzzk_api import ChzzkAPIClient
 
@@ -120,9 +120,14 @@ class ChzzkNotification(commands.Cog):
 
                 # 알림 전송
                 await self.send_live_notification(notification_setting, live_data)
-                
+
+                # 스트림 세션 동기화 (방송 중일 시 기록)
+                from app.features.chat.service import ChatService
+                chat_service = ChatService(db)
+                await chat_service.sync_stream_session(chzzk_id)
+
                 # DB 및 캐시 업데이트
-                await self.update_status(db, notification_setting, 'OPEN', update_time=True, live_title=live_data.live_title, open_date=live_data.open_date)
+                await self.update_status(db, notification_setting, 'OPEN', update_time=True)
             
             elif last_status == 'OPEN' and current_status == 'CLOSE':
                 print(f"[ChzzkNotification] 🔴 방송 종료 감지! {chzzk_id}")
@@ -177,7 +182,7 @@ class ChzzkNotification(commands.Cog):
         except Exception as e:
             print(f"[ChzzkNotification] 메시지 전송 실패 {live_data.channel_id}: {e}")
 
-    async def update_status(self, db, setting: ChzzkNotificationModel, status: str, update_time=False, live_title: str = None, open_date: str = None):
+    async def update_status(self, db, setting: ChzzkNotificationModel, status: str, update_time=False):
         # DB 업데이트
         try:
             setting.last_status = status
@@ -185,31 +190,9 @@ class ChzzkNotification(commands.Cog):
                 kst = timezone(timedelta(hours=9))
                 setting.last_notified_at = datetime.now(kst)
 
-            # 더블 체크: 방송 시작 시 알림 루프에서도 StreamSession 기록
-            if status == 'OPEN' and open_date:
-                kst_tz = timezone(timedelta(hours=9))
-                try:
-                    # "2024-03-31 15:30:00" 형식의 openDate를 datetime 객체로 변환
-                    dt_open_date = datetime.strptime(open_date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
-                    
-                    # 중복 생성을 막기 위해 해당 세션이 이미 DB에 있는지 확인
-                    stmt = select(StreamSession).where(
-                        StreamSession.chzzk_channel_id == setting.chzzk_channel_id,
-                        StreamSession.opened_at == dt_open_date
-                    )
-                    existing_session = (await db.execute(stmt)).scalar_one_or_none()
-                    if not existing_session:
-                        new_session = StreamSession(
-                            chzzk_channel_id=setting.chzzk_channel_id,
-                            opened_at=dt_open_date,
-                            stream_title=live_title
-                        )
-                        db.add(new_session)
-                except (ValueError, TypeError):
-                    print(f"[ChzzkNotification] 잘못된 openDate 형식: {open_date}")
-
             # 방송 종료 시에만 StreamSession의 closed_at을 업데이트
             if status == 'CLOSE':
+                from app.db.models import StreamSession
                 stmt = select(StreamSession).where(
                     StreamSession.chzzk_channel_id == setting.chzzk_channel_id,
                     StreamSession.closed_at.is_(None)
