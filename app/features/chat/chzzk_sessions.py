@@ -204,29 +204,36 @@ class ChzzkSessions:
             if options:
                 message = random.choice(options)
 
-        # 메시지 데이터 구성
-        data = {
-            "message": message
-        }
+        # 300자 초과 시 자르고 ... 붙이기
+        if len(message) > 300:
+            message = message[:297] + "..."
+            
+        # 100자 단위로 분할 (최대 3개)
+        chunks = [message[i:i+100] for i in range(0, len(message), 100)]
 
         uri = "/open/v1/chats/send"
 
-        # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
-        if config.CHAT_DELAY > 0:
-            await asyncio.sleep(config.CHAT_DELAY)
+        success_all = True
+        for chunk in chunks:
+            data = {"message": chunk}
 
-        response = await self.client.post(uri, headers=headers, json=data)
+            # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
+            if config.CHAT_DELAY > 0:
+                await asyncio.sleep(config.CHAT_DELAY)
 
-        # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
-        if response.status_code == 401:
-            if await self._refresh_token():
-                headers['Authorization'] = f'Bearer {self.access_token}'
-                response = await self.client.post(uri, headers=headers, json=data)
-        
-        if response.status_code == 200:
-            logger.info(f"✅ 채팅 전송 성공: {message}")
-            return True
-        else:
-            logger.error(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
-            return False
+            response = await self.client.post(uri, headers=headers, json=data)
+
+            # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
+            if response.status_code == 401:
+                if await self._refresh_token():
+                    headers['Authorization'] = f'Bearer {self.access_token}'
+                    response = await self.client.post(uri, headers=headers, json=data)
+            
+            if response.status_code == 200:
+                logger.info(f"✅ 채팅 전송 성공: {chunk}")
+            else:
+                logger.error(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
+                success_all = False
+                
+        return success_all
         
