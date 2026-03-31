@@ -43,7 +43,8 @@ def get_josa(word: str, josa_pair: str) -> str:
         # 0(영), 1(일), 3(삼), 6(육), 7(칠), 8(팔) -> 받침 있음
         return first if last_char in "013678" else second
     # 한글, 숫자가 아닌 경우(영어 등) 보통 받침 없는 쪽(뒤)을 기본값으로 사용
-    return second
+    else:
+        return second
 
 # 헬퍼 함수: 명령어 인자 파싱 ( | 포함 공백 처리 )
 def parse_command_and_content(args_list):
@@ -203,8 +204,9 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     else:
                         await session.send_chat(f"명령어 '{new_cmd}'{josa} 등록되었습니다.")
                 else:
-                    # This case is for global command conflict
-                    await session.send_chat(f"'{new_cmd}'는 이미 존재하는 기본 명령어이거나 등록할 수 없는 명령어입니다.")
+                    # 글로벌 명령어와 충돌하는 경우
+                    josa = get_josa(new_cmd, "은/는")
+                    await session.send_chat(f"'{new_cmd}'{josa} 이미 존재하는 기본 명령어이거나 등록할 수 없는 명령어입니다.")
 
             elif result.command == "명령어삭제":
                 if len(args) < 1:
@@ -276,10 +278,12 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 response_messages = []
                 if created_list:
                     created_str = ", ".join([f"'{k}'" for k in created_list])
-                    response_messages.append(f"인삿말 {created_str}이(가) 등록되었습니다.")
+                    josa = get_josa(created_list[-1], "이/가")
+                    response_messages.append(f"인삿말 {created_str}{josa} 등록되었습니다.")
                 if updated_list:
                     updated_str = ", ".join([f"'{k}'" for k in updated_list])
-                    response_messages.append(f"인삿말 {updated_str}이(가) 수정되었습니다.")
+                    josa = get_josa(updated_list[-1], "이/가")
+                    response_messages.append(f"인삿말 {updated_str}{josa} 수정되었습니다.")
                 
                 if response_messages:
                     await session.send_chat(" ".join(response_messages))
@@ -306,7 +310,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 
                 if success_list:
                     success_str = ", ".join([f"'{k}'" for k in success_list])
-                    await session.send_chat(f"인삿말 {success_str}이(가) 삭제되었습니다.")
+                    josa = get_josa(success_list[-1], "이/가")
+                    await session.send_chat(f"인삿말 {success_str}{josa} 삭제되었습니다.")
                 elif not success_list:
                     await session.send_chat(f"등록되지 않은 인삿말입니다.")
 
