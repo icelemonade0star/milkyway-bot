@@ -84,8 +84,9 @@
 </head>
 <body>
     <div class="container">
-        <a href="https://milkywaybot.cloud/auth/" class="auth-link">방송에 밀키웨이 봇 초대 및 권한 부여하기</a>
+        
         <h1>🌌 Milkyway Bot 사용 설명서</h1>
+        <a href="https://milkywaybot.cloud/auth/" class="auth-link">방송에 밀키웨이 봇 초대 및 권한 부여하기</a>
         
         <h2>소개</h2>
         <p>Milkyway Bot은 치지직 스트리머를 위한 다기능 챗봇입니다. 출석 체크, 커스텀 명령어, 자동 인삿말, 디스코드 방송 알림 등 다양한 기능을 제공하여 방송을 더 편리하고 재미있게 만들어줍니다.</p>
@@ -97,7 +98,7 @@
         
         <div class="command">
             <div class="usage">!출석</div>
-            <div class="desc">현재 진행중인 방송에 출석 체크를 합니다. 연속 출석과 총 출석 횟수가 기록됩니다.</div>
+            <div class="desc">현재 진행 중인 방송에 출석 체크를 합니다. 연속 출석과 총 출석 횟수가 기록됩니다.</div>
         </div>
         
         <div class="command">
@@ -116,7 +117,7 @@
         <div class="command">
             <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
-                새로운 채널 명령어를 등록합니다. <code>|</code> 문자로 여러 개의 명령어 별칭을 한번에 등록할 수 있습니다.<br>
+                새로운 채널 명령어를 등록합니다. <code>|</code> 문자로 여러 개의 명령어 별칭을 한 번에 등록할 수 있습니다.<br>
                 <strong>예시:</strong> <code>!명령어등록 규칙|룰 채널 규칙입니다.</code> (<code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답)
             </div>
         </div>
@@ -126,7 +127,7 @@
             <div class="desc">등록된 채널 명령어를 삭제합니다.</div>
         </div>
 
-        <h3>인삿말 관리</h3>
+        <h3>인사말관리</h3>
         <div class="command">
             <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
@@ -137,12 +138,12 @@
 
         <div class="command">
             <div class="usage">!인사삭제 [키워드] <span class="admin-only">관리자용</span></div>
-            <div class="desc">등록된 인삿말 키워드를 삭제합니다.</div>
+            <div class="desc">등록된 인사말키워드를 삭제합니다.</div>
         </div>
 
         <div class="command">
             <div class="usage">!인사목록</div>
-            <div class="desc">현재 채널에 등록된 모든 인삿말 키워드를 보여줍니다.</div>
+            <div class="desc">현재 채널에 등록된 모든 인사말키워드를 보여줍니다.</div>
         </div>
 
         <h3>봇 설정</h3>
@@ -160,7 +161,7 @@
                 방송 시작 알림을 받을 디스코드 채널을 설정합니다.
                 <div class="note">
                     <strong>설정 방법:</strong><br>
-                    1. <strong>[https://discord.com/oauth2/authorize?client_id=1480744234029158410&permissions=8&integration_type=0&scope=bot]</strong>를 통해 봇을 디스코드 서버에 초대해주세요.<br>
+                    1. <a href="https://discord.com/oauth2/authorize?client_id=1480744234029158410&permissions=8&integration_type=0&scope=bot" target="_blank" rel="noopener noreferrer"><strong>[디스코드 봇 초대 링크 바로가기]</strong></a>를 클릭하여 봇을 디스코드 서버에 초대해주세요.<br>
                     2. 알림을 받을 채널에 마우스 우클릭 후 'ID 복사하기'를 눌러 채널 ID를 확인합니다.<br>
                     3. 치지직 채팅창에 <code>!알림설정 [복사한 ID]</code>를 입력합니다.
                 </div>
