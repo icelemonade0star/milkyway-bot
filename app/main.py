@@ -1,16 +1,17 @@
 from fastapi import FastAPI
+
 from app.lifespan import lifespan
-from app.features.auth.router import auth_router
-from app.features.chat.router import chat_router
-from app.features.guide.router import guide_router
+from app.features.auth import router as auth_router
+from app.features.chat import router as chat_router
+from app.features.guide import router as guide_router
 
 
 # api
 app = FastAPI(
     lifespan=lifespan,
     title="milkyway bot",
-    version = "1.0.1",
-    docs_url = "/swagger",
+    version = "1.3.0",
+    docs_url = "/api/swagger",
     description = "밀키웨이 봇 API 문서입니다."
     )
 app.include_router(auth_router.auth_router)
