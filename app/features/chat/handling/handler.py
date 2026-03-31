@@ -162,7 +162,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 # 모든 활성 글로벌 명령어 조회
                 all_cmds = await chat_service.get_all_global_commands()
                 if all_cmds:
-                    cmd_names = [cmd.command for cmd in all_cmds]
+                    cmd_names = [cmd.command.split('|')[0].strip() for cmd in all_cmds]
                     response_message = f"기본 명령어: {', '.join(cmd_names)}"
                     await session.send_chat(response_message)
             
@@ -170,7 +170,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 # 채널 전용 커스텀 명령어 조회
                 channel_cmds = await chat_service.get_channel_commands(channel_id)
                 if channel_cmds:
-                    cmd_names = [cmd.command for cmd in channel_cmds]
+                    cmd_names = [cmd.command.split('|')[0].strip() for cmd in channel_cmds]
                     response_message = f"채널 명령어: {', '.join(cmd_names)}"
                     await session.send_chat(response_message)
                 else:
