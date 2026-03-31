@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from sqlalchemy import select
 from app.core.database import get_session_factory
-from app.db.models import ChzzkNotification as ChzzkNotificationModel
+from app.db.models import ChzzkNotification as ChzzkNotificationModel, StreamSession
 from datetime import datetime, timedelta, timezone
 from app.core.chzzk_api import ChzzkAPIClient
 
@@ -184,6 +184,17 @@ class ChzzkNotification(commands.Cog):
             if update_time:
                 kst = timezone(timedelta(hours=9))
                 setting.last_notified_at = datetime.now(kst)
+
+            # 방송 종료 시에만 StreamSession의 closed_at을 업데이트
+            if status == 'CLOSE':
+                stmt = select(StreamSession).where(
+                    StreamSession.chzzk_channel_id == setting.chzzk_channel_id,
+                    StreamSession.closed_at.is_(None)
+                ).order_by(StreamSession.opened_at.desc()).limit(1)
+                latest_session = (await db.execute(stmt)).scalar_one_or_none()
+                if latest_session:
+                    latest_session.closed_at = datetime.now(timezone(timedelta(hours=9)))
+
             await db.commit()
             print(f"[ChzzkNotification] DB 상태 업데이트 완료: {setting.chzzk_channel_id} -> {status}")
         except Exception as e:

@@ -3,7 +3,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
-from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance
+from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance, StreamSession
 from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
 
@@ -288,27 +288,62 @@ class ChatService:
 
     async def process_attendance(self, channel_id: str, user_id: str, user_name: str):
         """
-        출석 체크를 수행하고 결과를 반환합니다.
-        return: {
-            "status": "checked" | "already_checked",
-            "streak": 연속출석일,
-            "total": 총출석일,
-            "is_new": 신규출석여부
-        }
+        출석 체크를 수행하고 결과를 반환합니다 (방송 세션 단위 기준).
         """
+        import httpx
         try:
-            # 한국 시간(KST) 기준 현재 날짜 계산
-            kst = timezone(timedelta(hours=9))
-            now = datetime.now(kst)
-            today = now.date()
+            # 1. API 호출하여 채널 상태 확인
+            status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
+            content = {}
+            async with httpx.AsyncClient() as client:
+                res = await client.get(status_url, timeout=5)
+                if res.status_code == 200:
+                    content = res.json().get("content", {})
+                    current_status = content.get("status") if content else "CLOSE"
+                else:
+                    current_status = "CLOSE"
+            
+            if current_status != "OPEN":
+                return {"status": "not_streaming"}
 
-            # 기존 출석 기록 조회
-            stmt = select(Attendance).where(
+            # 2. 방송 세션 확인 및 생성 (on-demand)
+            open_date_str = content.get("openDate")
+            if not open_date_str:
+                return {"status": "no_session_data"} # 방송 시작 정보가 없어 출석 처리 불가
+
+            kst_tz = timezone(timedelta(hours=9))
+            current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
+
+            # 해당 방송 세션이 DB에 있는지 확인
+            stmt_find_session = select(StreamSession).where(
+                StreamSession.chzzk_channel_id == channel_id,
+                StreamSession.opened_at == current_opened_at
+            )
+            latest_session = (await self.db.execute(stmt_find_session)).scalar_one_or_none()
+
+            if not latest_session:
+                # 새 방송 세션 생성
+                latest_session = StreamSession(
+                    chzzk_channel_id=channel_id,
+                    opened_at=current_opened_at,
+                    stream_title=content.get("liveTitle")
+                )
+                self.db.add(latest_session)
+            
+            # 3. 이전 방송 세션 조회 (연속 출석 체크용)
+            previous_session = (await self.db.execute(
+                select(StreamSession).where(
+                    StreamSession.chzzk_channel_id == channel_id,
+                    StreamSession.opened_at < current_opened_at
+                ).order_by(StreamSession.opened_at.desc()).limit(1)
+            )).scalar_one_or_none()
+
+            # 4. 기존 출석 기록 확인
+            stmt_att = select(Attendance).where(
                 Attendance.channel_id == channel_id,
                 Attendance.user_id == user_id
             )
-            result = await self.db.execute(stmt)
-            attendance = result.scalar_one_or_none()
+            attendance = (await self.db.execute(stmt_att)).scalar_one_or_none()
 
             if not attendance:
                 # 첫 출석
@@ -317,25 +352,35 @@ class ChatService:
                     user_id=user_id,
                     user_name=user_name,
                     attendance_count=1,
-                    streak_count=0,
-                    last_attendance_at=now
+                    streak_count=1,
+                    last_attendance_at=current_opened_at
                 )
                 self.db.add(new_attendance)
                 await self.db.commit()
-                return {"status": "checked", "streak": 0, "total": 1, "is_new": True}
-            
-            # 마지막 출석일 확인 (DB에 저장된 시간도 KST로 변환해서 비교 권장)
-            last_date = attendance.last_attendance_at.astimezone(kst).date()
+                return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
 
-            if last_date == today:
-                return {"status": "already_checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
-            
+            # 중복 출석 확인 (단계 3)
+            if attendance.last_attendance_at == current_opened_at:
+                return {
+                    "status": "already_checked", 
+                    "streak": attendance.streak_count, 
+                    "total": attendance.attendance_count, 
+                    "is_new": False
+                }
+
+            # 5. 연속 출석 검사 (단계 4)
+            if previous_session and attendance.last_attendance_at == previous_session.opened_at:
+                attendance.streak_count += 1
+            else:
+                attendance.streak_count = 1
+
+            # 6. 출석 업데이트 (단계 5)
             attendance.attendance_count += 1
-            attendance.last_attendance_at = now
-            attendance.user_name = user_name # 닉네임 변경 시 업데이트
+            attendance.last_attendance_at = current_opened_at
+            attendance.user_name = user_name
             
             await self.db.commit()
-            return {"status": "checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
+            return {"status": "checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
 
         except Exception as e:
             await self.db.rollback()
