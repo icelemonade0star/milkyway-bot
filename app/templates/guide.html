@@ -64,6 +64,17 @@
             margin: 15px 0;
             border-radius: 4px;
         }
+        .note a {
+            color: #f2f2f7; /* 밝은 텍스트 색상으로 가시성 확보 */
+            text-decoration: none; /* 밑줄 제거 */
+        }
+        .note a:visited {
+            color: #c7c7cc; /* 방문한 링크는 약간 어둡게 처리 */
+        }
+        .note a:hover {
+            color: #00c73c; /* 마우스 오버 시 테마 색상으로 강조 */
+            text-decoration: underline; /* 마우스 오버 시 밑줄 표시 */
+        }
         .auth-link {
             display: block;
             padding: 15px;
