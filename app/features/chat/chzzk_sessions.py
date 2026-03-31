@@ -43,26 +43,23 @@ class ChzzkSessions:
             auth_service = AuthService(db)
             auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
 
-            if auth_data:
-                # 만료 시간 확인 (DB에 저장된 시간)
-                # 백그라운드 태스크(13시간)보다 조금 더 여유 있게 14시간(50400초) 전이면 미리 갱신
-                expires_at = auth_data.expires_at
-                now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
-                
-                if (expires_at - now).total_seconds() < 50400:
-                    logger.warning(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
-                    from app.features.auth.chzzk_client import ChzzkAuth
-                    chzzk_auth = ChzzkAuth(auth_service)
-                    new_token = await chzzk_auth.refresh_access_token(self.channel_id)
-                    if new_token:
-                        auth_data.access_token = new_token
-                        logger.info(f"✅ [{self.channel_id}] 선제적 토큰 갱신 완료")
-
-                self.access_token = auth_data.access_token
-                self.channel_name = auth_data.channel_name
-                logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
-            else:
+            if not auth_data:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
+
+            # 만료 시간 확인 (DB에 저장된 시간 기준, 1시간 이내 만료 시 갱신)
+            expires_at = auth_data.expires_at
+            now = datetime.now(expires_at.tzinfo)
+            
+            if (expires_at - now).total_seconds() < 3600:
+                logger.warning(f"⚠️ [{self.channel_id}] 토큰 만료 임박(1시간 이내). 갱신 시도...")
+                if not await self._refresh_token():
+                    raise Exception(f"토큰 갱신에 실패하여 세션을 시작할 수 없습니다: {self.channel_id}")
+                # _refresh_token 성공 시 self.access_token은 내부에서 갱신됨
+            else:
+                self.access_token = auth_data.access_token
+
+            self.channel_name = auth_data.channel_name
+            logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
 
     async def _refresh_token(self):
         """401 에러 발생 시 토큰을 갱신하고 메모리에 반영합니다."""
