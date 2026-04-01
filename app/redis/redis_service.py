@@ -91,7 +91,7 @@ class RedisConfigService:
 
         for k in keywords:
             # 1. 키워드가 아예 없으면 다음으로
-            if k not in message:
+            if k.lower() not in message.lower():
                 continue
 
             # 2. 정규표현식
@@ -105,9 +105,10 @@ class RedisConfigService:
         
         return False
 
-    async def get_greeting_response(self, channel_id: str, message: str) -> str:
+    async def get_greeting_response(self, channel_id: str, message: str) -> tuple[str | None, bool]:
         """
-        메시지에 인삿말 키워드가 포함되어 있는지 확인하고 응답을 반환합니다.
+        메시지에 인삿말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
+        반환값: (응답 메시지, 인삿말 매칭 여부)
         """
         cache_key = f"greetings:{channel_id}"
         
@@ -127,13 +128,13 @@ class RedisConfigService:
                     if self._should_respond(message, keyword):
                         # 쿨타임 체크 (10초)
                         if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10):
-                            return None
-                        return response
+                            return None, True
+                        return response, True
                 
         except Exception as e:
             print(f"⚠️ Redis 인삿말 조회 실패: {e}")
             
-        return None
+        return None, False
 
     async def refresh_greetings_cache(self, channel_id: str):
         """DB에서 인삿말을 불러와 Redis에 캐싱합니다."""

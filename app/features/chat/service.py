@@ -373,16 +373,31 @@ class ChatService:
         현재 방송 상태를 확인하고, 방송 중이면 StreamSession을 기록합니다.
         """
         import httpx
+        import json
+        from app.redis.redis_service import redis_client
         try:
-            status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
-            content = {}
-            async with httpx.AsyncClient() as client:
-                res = await client.get(status_url, timeout=5)
-                if res.status_code != 200:
-                    return None # API 실패
-                content = res.json().get("content", {})
-                if not content or content.get("status") != "OPEN":
-                    return None # 방송 중 아님
+            cache_key = f"live_status:{channel_id}"
+            content = None
+            
+            # 1. Redis 캐시에서 60초 이내에 조회한 방송 상태가 있는지 확인 (API Rate Limit 방지)
+            cached_status = await redis_client.get(cache_key)
+            
+            if cached_status:
+                if cached_status == "CLOSE":
+                    return None
+                content = json.loads(cached_status)
+            else:
+                # 2. 캐시가 없을 때만 API 호출 후 60초간 캐싱
+                status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
+                async with httpx.AsyncClient() as client:
+                    res = await client.get(status_url, timeout=5)
+                    if res.status_code != 200:
+                        return None # API 실패
+                    content = res.json().get("content", {})
+                    if not content or content.get("status") != "OPEN":
+                        await redis_client.set(cache_key, "CLOSE", ex=60)
+                        return None # 방송 중 아님
+                    await redis_client.set(cache_key, json.dumps(content), ex=60)
 
             open_date_str = content.get("openDate")
             if not open_date_str:

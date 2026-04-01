@@ -89,18 +89,20 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
         # DB 세션 팩토리 확인
         session_factory = get_session_factory()
         if session_factory:
-            # 인사말 체크 및 응답
-            greeting_resp = await redis_service.get_greeting_response(channel_id, message_text.strip())
-            if greeting_resp:
-                # 인사말 감지 시 출석 체크 수행
+            # 인사말 체크 및 응답 (쿨타임이더라도 매칭 여부를 확인)
+            greeting_resp, is_greeting = await redis_service.get_greeting_response(channel_id, message_text.strip())
+            
+            if is_greeting:
+                # 인사말 감지 시 쿨타임과 무관하게 출석 체크 수행
                 async with session_factory() as db:
                     chat_service = ChatService(db)
                     # 출석 로직 실행
                     await chat_service.process_attendance(channel_id, user_id, user_name)
 
-                session = await session_manager.get_session(channel_id)
-                if session:
-                    await session.send_chat(greeting_resp)
+                if greeting_resp:
+                    session = await session_manager.get_session(channel_id)
+                    if session:
+                        await session.send_chat(greeting_resp)
         return
 
     # 3. 명령어 파싱
