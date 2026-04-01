@@ -190,11 +190,13 @@ class RedisConfigService:
         cache_key = f"cooldown:{channel_id}:{command}"
         
         try:
-            if await redis_client.get(cache_key):
-                return True
-            
-            await redis_client.set(cache_key, "1", ex=cooldown_seconds)
-            return False
+            # SET key value EX seconds NX
+            # 키가 존재하지 않을 때만 값을 설정하고, 성공 시 True 반환 (원자적)
+            # was_set: True -> 쿨타임이 아니어서 새로 설정함 -> 쿨타임 상태가 아님 (False 반환)
+            # was_set: False -> 이미 키가 존재하여 설정 실패 -> 쿨타임 상태임 (True 반환)
+            was_set = await redis_client.set(cache_key, "1", ex=cooldown_seconds, nx=True)
+            return not was_set
+
         except Exception as e:
             print(f"⚠️ Redis 쿨타임 체크 실패: {e}")
             return False # 에러 시 쿨타임 없이 실행 허용

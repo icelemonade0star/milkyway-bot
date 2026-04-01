@@ -223,12 +223,27 @@ class ChatService:
     async def get_greeting(self, channel_id: str, keyword: str):
         """특정 인삿말 조회"""
         try:
+            # 1. 정확히 일치하는 인사말 조회
             stmt = select(ChatGreeting).where(
                 ChatGreeting.channel_id == channel_id,
                 ChatGreeting.keyword == keyword
             )
             result = await self.db.execute(stmt)
-            return result.scalar_one_or_none()
+            exact = result.scalar_one_or_none()
+            if exact:
+                return exact
+
+            # 2. '|' 구분자가 포함된 인사말 조회 (일부 키워드로도 검색 가능)
+            stmt = select(ChatGreeting).where(
+                ChatGreeting.channel_id == channel_id,
+                ChatGreeting.keyword.contains('|')
+            )
+            result = await self.db.execute(stmt)
+            for greet_obj in result.scalars().all():
+                if keyword in [k.strip() for k in greet_obj.keyword.split('|')]:
+                    return greet_obj
+            
+            return None
         except Exception as e:
             print(f"[DB Error] Get greeting failed: {str(e)}")
             return None
@@ -266,12 +281,7 @@ class ChatService:
 
     async def delete_greeting(self, channel_id: str, keyword: str):
         try:
-            stmt = select(ChatGreeting).where(
-                ChatGreeting.channel_id == channel_id,
-                ChatGreeting.keyword == keyword
-            )
-            result = await self.db.execute(stmt)
-            target = result.scalar_one_or_none()
+            target = await self.get_greeting(channel_id, keyword)
             
             if not target:
                 return False
