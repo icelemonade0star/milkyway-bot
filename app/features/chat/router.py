@@ -79,7 +79,7 @@ async def get_active_sessions():
 
 @chat_router.get("/close/session")
 async def close_session(channel_id: str):
-    session = session_manager.get_session(channel_id)
+    session = await session_manager.get_session(channel_id)
     if not session:
         return {"status": "error", "message": "활성화된 세션이 없습니다."}
     

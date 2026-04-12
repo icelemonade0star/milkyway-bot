@@ -3,6 +3,8 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException
+import httpx
+import json
 from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance, StreamSession
 from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
@@ -372,8 +374,7 @@ class ChatService:
         """
         현재 방송 상태를 확인하고, 방송 중이면 StreamSession을 기록합니다.
         """
-        import httpx
-        import json
+        # 순환 참조 방지를 위해 Redis 객체만 함수 내에서 임포트
         from app.redis.redis_service import redis_client
         try:
             cache_key = f"live_status:{channel_id}"

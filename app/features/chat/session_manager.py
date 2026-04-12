@@ -22,9 +22,16 @@ class SessionManager:
         auth_service = AuthService(db_session)
         channels = await auth_service.get_auth_list()
 
+        # 동시에 너무 많은 세션을 복구하면 API Rate Limit(429)이 발생할 수 있으므로 Semaphore 제한 추가
+        semaphore = asyncio.Semaphore(10) # 한 번에 최대 10개씩 연결
+        
+        async def _bounded_restore(channel_id):
+            async with semaphore:
+                return await self.get_or_create_session(channel_id)
+
         tasks = []
         for ch in channels:
-            tasks.append(self.get_or_create_session(ch.channel_id))
+            tasks.append(_bounded_restore(ch.channel_id))
         
         # 병렬로 모든 세션 복구 시작
         if tasks:
