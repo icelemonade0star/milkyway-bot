@@ -337,18 +337,23 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 
                 stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
                 existing = (await db.execute(stmt)).scalar_one_or_none()
-                
-                if existing:
-                    existing.discord_channel_id = discord_channel_id
-                    existing.streamer_name = user_name
-                    existing.is_active = True
-                    await session.send_chat(f"알림 설정이 업데이트되었습니다. (Discord ID: {discord_channel_id})")
-                else:
-                    new_noti = ChzzkNotification(chzzk_channel_id=channel_id, streamer_name=user_name, discord_channel_id=discord_channel_id, last_status="CLOSE", is_active=True)
-                    db.add(new_noti)
-                    await session.send_chat(f"알림 설정이 등록되었습니다. (Discord ID: {discord_channel_id})")
-                await db.commit()
-                invalidate_notification_cache()
+
+                try:
+                    if existing:
+                        existing.discord_channel_id = discord_channel_id
+                        existing.streamer_name = user_name
+                        existing.is_active = True
+                    else:
+                        new_noti = ChzzkNotification(chzzk_channel_id=channel_id, streamer_name=user_name, discord_channel_id=discord_channel_id, last_status="CLOSE", is_active=True)
+                        db.add(new_noti)
+                    await db.commit()
+                    invalidate_notification_cache()
+                    msg = f"알림 설정이 {'업데이트' if existing else '등록'}되었습니다. (Discord ID: {discord_channel_id})"
+                    await session.send_chat(msg)
+                except Exception as e:
+                    await db.rollback()
+                    logger.error(f"알림 설정 저장 실패: {e}")
+                    await session.send_chat("알림 설정 중 오류가 발생했습니다.")
 
             elif result.command == "알림삭제":
                 stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)

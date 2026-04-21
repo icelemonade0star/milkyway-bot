@@ -140,32 +140,33 @@ class ChzzkNotification(commands.Cog):
                     open_date=content.get("openDate"),
                 )
 
-                await self.send_live_notification(entry, live_data)
-
-                # 메모리 먼저 갱신 — 다음 루프에서 중복 알림 방지
-                entry.last_status = "OPEN"
-                await self._update_status_in_db(chzzk_id, "OPEN", update_time=True, content=content)
+                # DB를 먼저 갱신 — 실패 시 알림 발송 스킵해 재시작 후 중복 알림 방지
+                if await self._update_status_in_db(chzzk_id, "OPEN", update_time=True, content=content):
+                    entry.last_status = "OPEN"
+                    await self.send_live_notification(entry, live_data)
+                else:
+                    print(f"[ChzzkNotification] ⚠️ DB 업데이트 실패, 알림 발송 스킵: {chzzk_id}")
 
             elif last_status == "OPEN" and current_status == "CLOSE":
                 print(f"[ChzzkNotification] 🔴 방송 종료 감지! {chzzk_id}")
-                entry.last_status = "CLOSE"
-                await self._update_status_in_db(chzzk_id, "CLOSE", update_time=False)
+                if await self._update_status_in_db(chzzk_id, "CLOSE", update_time=False):
+                    entry.last_status = "CLOSE"
 
         except Exception as e:
             print(f"[ChzzkNotification] 에러 {chzzk_id}: {e}")
 
-    async def _update_status_in_db(self, chzzk_id: str, status: str, update_time: bool, content: dict = None):
-        """상태가 실제로 바뀔 때만 호출 — DB 세션을 자체적으로 관리."""
+    async def _update_status_in_db(self, chzzk_id: str, status: str, update_time: bool, content: dict = None) -> bool:
+        """상태가 실제로 바뀔 때만 호출 — DB 세션을 자체적으로 관리. 성공 여부 반환."""
         factory = get_session_factory()
         if not factory:
-            return
+            return False
 
         try:
             async with factory() as db:
                 stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.chzzk_channel_id == chzzk_id)
                 setting = (await db.execute(stmt)).scalar_one_or_none()
                 if not setting:
-                    return
+                    return False
 
                 setting.last_status = status
                 if update_time:
@@ -193,8 +194,10 @@ class ChzzkNotification(commands.Cog):
 
                 await db.commit()
                 print(f"[ChzzkNotification] DB 상태 업데이트 완료: {chzzk_id} -> {status}")
+                return True
         except Exception as e:
             print(f"[ChzzkNotification] DB Update Failed: {e}")
+            return False
 
     async def send_live_notification(self, entry: _CachedNotification, live_data: LiveNotificationData):
         target_channel = self.bot.get_channel(int(entry.discord_channel_id))

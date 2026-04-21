@@ -140,6 +140,8 @@ class ChzzkSessions:
             return self.session_key
         except asyncio.TimeoutError:
             logger.warning("⚠️ 세션 키 확인 실패: 타임아웃")
+            await self.socket_client.disconnect()
+            self.socket_client = None
             return None
     
     async def subscribe_chat(self):
