@@ -132,11 +132,11 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
 async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
     chat_service = ChatService(db)
     
-    # 1+2. 커스텀/글로벌 명령어 병렬 조회
-    custom_cmd, result = await asyncio.gather(
-        chat_service.get_chat_command(channel_id, command),
-        chat_service.get_global_commands(command),
-    )
+    # 커스텀 명령어와 글로벌 명령어를 순차적으로 조회합니다.
+    # NOTE: SQLAlchemy의 AsyncSession은 단일 세션 객체에 대한 동시 작업을 허용하지 않으므로,
+    # asyncio.gather를 사용한 병렬 조회가 IllegalStateChangeError를 유발했습니다.
+    custom_cmd = await chat_service.get_chat_command(channel_id, command)
+    result = await chat_service.get_global_commands(command)
 
     if custom_cmd and custom_cmd.is_active:
         # 쿨타임 체크
