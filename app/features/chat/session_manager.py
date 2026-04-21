@@ -71,30 +71,31 @@ class SessionManager:
             
             # 2. 실제 치지직 서버와 연결 및 구독 (비동기 작업)
             await new_session.create_session()
-            
+
             if not new_session.socket_url:
                 raise Exception("소켓 URL을 가져오지 못했습니다.")
 
-            await new_session.subscribe_chat()
-            
+            if not new_session.session_key:
+                raise Exception("세션 키를 받지 못했습니다. (소켓 연결 타임아웃)")
+
+            subscribed = await new_session.subscribe_chat()
+            if not subscribed:
+                raise Exception("채팅 구독에 실패했습니다.")
+
             self.active_sessions[channel_id] = new_session
             return new_session, True
 
     async def remove_session(self, channel_id: str):
         """특정 채널 세션 종료 및 제거"""
         session = self.active_sessions.pop(channel_id, None)
-        if session:
-            if session.socket_client:
-                await session.socket_client.disconnect()
-            await session.client.aclose() # httpx 클라이언트 닫기
-        
+        if session and session.socket_client:
+            await session.socket_client.disconnect()
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""
         for session in self.active_sessions.values():
             if session.socket_client:
                 await session.socket_client.disconnect()
-            await session.client.aclose()
         self.active_sessions.clear()
 
     async def update_session_token(self, channel_id: str, new_access_token: str):

@@ -214,8 +214,8 @@ class ChatService:
             cmd_obj = await self.get_chat_command(channel_id, command)
             if not cmd_obj:
                 return False
-            
-            await self.db.delete(cmd_obj)
+
+            self.db.delete(cmd_obj)
             await self.db.commit()
             return True
         except Exception as e:
@@ -301,11 +301,11 @@ class ChatService:
     async def delete_greeting(self, channel_id: str, keyword: str):
         try:
             target = await self.get_greeting(channel_id, keyword)
-            
+
             if not target:
                 return False
-                
-            await self.db.delete(target)
+
+            self.db.delete(target)
             await self.db.commit()
             return True
         except Exception as e:

@@ -11,22 +11,21 @@ from app.core.logger import get_logger
 
 logger = get_logger("ChzzkSessions")
 
+# 모듈 레벨 싱글톤 — 채널 수만큼 커넥션 풀이 생기는 문제 방지
+# base_url은 모든 인스턴스가 동일한 config.OPENAPI_BASE를 사용하므로 공유 가능
+_client = httpx.AsyncClient(base_url=config.OPENAPI_BASE, timeout=10.0)
+
 class ChzzkSessions:
     def __init__(self, channel_id: str):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
-        self.openapi_base = config.OPENAPI_BASE
 
         self.channel_id = channel_id
         self.channel_name = None
         self.access_token = None
         self.socket_url = None
         self.session_key = None
-        self.socket_client = None # 소켓 클라이언트 인스턴스 저장
-
-        # HTTP 클라이언트를 하나로 유지
-        # base_url을 설정하여 이후 요청 시 상대 경로만 사용
-        self.client = httpx.AsyncClient(base_url=self.openapi_base, timeout=10.0)
+        self.socket_client = None
 
     async def _ensure_auth(self, force_refresh=False):
 
@@ -99,7 +98,7 @@ class ChzzkSessions:
         }
         
         # 서버에 세션 생성 url 요청
-        response = await self.client.get(url, headers=headers)
+        response = await _client.get(url, headers=headers)
         
         if response.status_code == 200:
             logger.debug(f"url 정상: {response.json()}")
@@ -165,13 +164,13 @@ class ChzzkSessions:
         }
         uri = "/open/v1/sessions/events/subscribe/chat"
 
-        response = await self.client.post(uri, headers=headers, params=params)
+        response = await _client.post(uri, headers=headers, params=params)
 
         # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
         if response.status_code == 401:
             if await self._refresh_token():
                 headers['Authorization'] = f'Bearer {self.access_token}'
-                response = await self.client.post(uri, headers=headers, params=params)
+                response = await _client.post(uri, headers=headers, params=params)
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
@@ -220,13 +219,13 @@ class ChzzkSessions:
             if config.CHAT_DELAY > 0:
                 await asyncio.sleep(config.CHAT_DELAY)
 
-            response = await self.client.post(uri, headers=headers, json=data)
+            response = await _client.post(uri, headers=headers, json=data)
 
             # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
             if response.status_code == 401:
                 if await self._refresh_token():
                     headers['Authorization'] = f'Bearer {self.access_token}'
-                    response = await self.client.post(uri, headers=headers, json=data)
+                    response = await _client.post(uri, headers=headers, json=data)
             
             if response.status_code == 200:
                 logger.info(f"✅ 채팅 전송 성공: {chunk}")

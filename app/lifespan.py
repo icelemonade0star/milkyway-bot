@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
     print("🔒 리소스 정리 시작")
     if discord_task:
         await bot.close()
+        discord_task.cancel()
+        try:
+            await discord_task
+        except asyncio.CancelledError:
+            pass
     await session_manager.close_all()
     await engine.dispose()
     tunnel.stop()

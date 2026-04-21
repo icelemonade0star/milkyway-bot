@@ -79,6 +79,11 @@ CLIENT_ID=your_chzzk_client_id
 CLIENT_SECRET=your_chzzk_client_secret
 OPENAPI_BASE=https://openapi.chzzk.naver.com
 
+# Chat Bot Config
+# 봇 자신의 닉네임이나 다른 봇의 닉네임을 입력해 무한 응답 루프를 방지합니다. (쉼표로 구분)
+BOT_NICKNAMES=밀키웨이 봇, 다른 봇닉네임
+CHAT_DELAY=0.5
+
 # Discord Config
 DISCORD_TOKEN=your_discord_bot_token
 

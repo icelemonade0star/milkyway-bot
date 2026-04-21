@@ -152,6 +152,11 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             return
 
     if result and result.is_active:
+        # 권한 검사를 쿨타임 체크 전에 수행 — common_user가 쿨타임을 소비하지 않도록
+        admin_commands = ["명령어등록", "명령어삭제", "접두사수정", "인사등록", "인사삭제", "알림설정", "알림삭제"]
+        if result.type == "system" and result.command in admin_commands and role == 'common_user':
+            return
+
         # 쿨타임 체크
         if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds):
             return
@@ -159,13 +164,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         if result.type == "text":
             # 텍스트 응답 전송
             await session.send_chat(result.response)
-            
+
         elif result.type == "system":
-            # 시스템 명령어 처리
-            # 관리자 권한이 필요한 명령어 목록
-            admin_commands = ["명령어등록", "명령어삭제", "접두사수정", "인사등록", "인사삭제", "알림설정", "알림삭제"]
-            if result.command in admin_commands and role == 'common_user':
-                return
 
             if result.command == "명령어":
                 # 모든 활성 글로벌 명령어 조회
