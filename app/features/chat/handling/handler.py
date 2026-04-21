@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from app.redis.redis_service import RedisConfigService
@@ -131,22 +132,24 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
 async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
     chat_service = ChatService(db)
     
-    # 1. 커스텀 명령어 우선 조회 (개인화/오버라이딩)
-    custom_cmd = await chat_service.get_chat_command(channel_id, command)
+    # 1+2. 커스텀/글로벌 명령어 병렬 조회
+    custom_cmd, result = await asyncio.gather(
+        chat_service.get_chat_command(channel_id, command),
+        chat_service.get_global_commands(command),
+    )
+
     if custom_cmd and custom_cmd.is_active:
         # 쿨타임 체크
         if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
             return
 
         if custom_cmd.type == 'global':
-            # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입
+            # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입 (드문 케이스, 재조회)
             command = custom_cmd.response
+            result = await chat_service.get_global_commands(command)
         else:
             await session.send_chat(custom_cmd.response)
             return
-
-    # 2. 글로벌 명령어 조회
-    result = await chat_service.get_global_commands(command)
 
     if result and result.is_active:
         # 쿨타임 체크

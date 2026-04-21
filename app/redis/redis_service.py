@@ -146,13 +146,16 @@ class RedisConfigService:
             
             cache_key = f"greetings:{channel_id}"
             try:
-                # 기존 키 삭제 후 새로 등록 (삭제된 항목 반영 위해)
-                await redis_client.delete(cache_key)
                 if greetings:
                     mapping = {g.keyword: g.response for g in greetings}
-                    await redis_client.hset(cache_key, mapping=mapping)
-                    # 24시간 유지
-                    await redis_client.expire(cache_key, 86400)
+                    # Pipeline을 사용하여 여러 명령어를 하나의 트랜잭션으로 묶어서 전송 (네트워크 통신 비용 감소)
+                    async with redis_client.pipeline(transaction=True) as pipe:
+                        pipe.delete(cache_key)
+                        pipe.hset(cache_key, mapping=mapping)
+                        pipe.expire(cache_key, 86400)
+                        await pipe.execute()
+                else:
+                    await redis_client.delete(cache_key)
             except Exception as e:
                 print(f"⚠️ Redis 인삿말 캐싱 실패: {e}")
 

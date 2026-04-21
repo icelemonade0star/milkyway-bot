@@ -5,6 +5,9 @@ from sqlalchemy import select, update, or_
 from fastapi import HTTPException
 import httpx
 import json
+
+# 모듈 레벨 싱글톤 — 매 출석 체크마다 TCP 연결 재생성 방지
+_http_client = httpx.AsyncClient(timeout=5.0)
 from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance, StreamSession
 from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
@@ -404,15 +407,14 @@ class ChatService:
             else:
                 # 2. 캐시가 없을 때만 API 호출 후 60초간 캐싱
                 status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
-                async with httpx.AsyncClient() as client:
-                    res = await client.get(status_url, timeout=5)
-                    if res.status_code != 200:
-                        return None # API 실패
-                    content = res.json().get("content", {})
-                    if not content or content.get("status") != "OPEN":
-                        await redis_client.set(cache_key, "CLOSE", ex=60)
-                        return None # 방송 중 아님
-                    await redis_client.set(cache_key, json.dumps(content), ex=60)
+                res = await _http_client.get(status_url)
+                if res.status_code != 200:
+                    return None # API 실패
+                content = res.json().get("content", {})
+                if not content or content.get("status") != "OPEN":
+                    await redis_client.set(cache_key, "CLOSE", ex=60)
+                    return None # 방송 중 아님
+                await redis_client.set(cache_key, json.dumps(content), ex=60)
 
             open_date_str = content.get("openDate")
             if not open_date_str:
