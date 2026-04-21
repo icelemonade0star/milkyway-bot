@@ -1,7 +1,7 @@
 from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from fastapi import HTTPException
 import httpx
 import json
@@ -83,8 +83,14 @@ class ChatService:
             if exact:
                 return exact
 
-            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
-            stmt = select(GlobalCommand).where(GlobalCommand.command.contains('|'))
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원) — LIKE로 DB에서 선필터링
+            stmt = select(GlobalCommand).where(
+                or_(
+                    GlobalCommand.command.like(f'{command}|%'),
+                    GlobalCommand.command.like(f'%|{command}'),
+                    GlobalCommand.command.like(f'%|{command}|%'),
+                )
+            )
             result = await self.db.execute(stmt)
             for cmd_obj in result.scalars().all():
                 if command in cmd_obj.command.split('|'):
@@ -145,10 +151,14 @@ class ChatService:
             if exact:
                 return exact
 
-            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원) — LIKE로 DB에서 선필터링
             stmt = select(ChatCommand).where(
                 ChatCommand.channel_id == channel_id,
-                ChatCommand.command.contains('|')
+                or_(
+                    ChatCommand.command.like(f'{command}|%'),
+                    ChatCommand.command.like(f'%|{command}'),
+                    ChatCommand.command.like(f'%|{command}|%'),
+                )
             )
             result = await self.db.execute(stmt)
             for cmd_obj in result.scalars().all():
@@ -235,10 +245,14 @@ class ChatService:
             if exact:
                 return exact
 
-            # 2. '|' 구분자가 포함된 인사말 조회 (일부 키워드로도 검색 가능)
+            # 2. '|' 구분자가 포함된 인사말 조회 (별칭 지원) — LIKE로 DB에서 선필터링
             stmt = select(ChatGreeting).where(
                 ChatGreeting.channel_id == channel_id,
-                ChatGreeting.keyword.contains('|')
+                or_(
+                    ChatGreeting.keyword.like(f'{keyword}|%'),
+                    ChatGreeting.keyword.like(f'%|{keyword}'),
+                    ChatGreeting.keyword.like(f'%|{keyword}|%'),
+                )
             )
             result = await self.db.execute(stmt)
             for greet_obj in result.scalars().all():

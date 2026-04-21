@@ -1,5 +1,4 @@
 import redis.asyncio as redis
-from datetime import timedelta
 import app.core.config as config
 import re
 
@@ -42,7 +41,7 @@ class RedisConfigService:
 
                 # 3. 조회한 데이터를 Redis에 적재
                 try:
-                    await redis_client.set(cache_key, db_prefix, ex=timedelta(days=1))
+                    await redis_client.set(cache_key, db_prefix, ex=86400)
                 except Exception as e:
                     print(f"⚠️ Redis 저장 실패: {e}")
                 return db_prefix
@@ -74,7 +73,7 @@ class RedisConfigService:
         # 2. Redis 캐시 갱신
         cache_key = self.get_cache_key(channel_id)
         try:
-            await redis_client.set(cache_key, new_prefix, ex=timedelta(days=1))
+            await redis_client.set(cache_key, new_prefix, ex=86400)
         except Exception as e:
             print(f"⚠️ Redis 갱신 실패: {e}")
 
@@ -116,11 +115,10 @@ class RedisConfigService:
             # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
             greetings = await redis_client.hgetall(cache_key)
                 
-            # 2. 데이터가 없으면(None or Empty) 만료 여부 확인 후 리로드
+            # 2. 데이터가 없으면 DB에서 로드 후 캐싱
             if not greetings:
-                if not await redis_client.exists(cache_key):
-                    await self.refresh_greetings_cache(channel_id)
-                    greetings = await redis_client.hgetall(cache_key)
+                await self.refresh_greetings_cache(channel_id)
+                greetings = await redis_client.hgetall(cache_key)
             
             # 3. 키워드 포함 여부 검사
             if greetings:
@@ -154,7 +152,7 @@ class RedisConfigService:
                     mapping = {g.keyword: g.response for g in greetings}
                     await redis_client.hset(cache_key, mapping=mapping)
                     # 24시간 유지
-                    await redis_client.expire(cache_key, timedelta(days=1))
+                    await redis_client.expire(cache_key, 86400)
             except Exception as e:
                 print(f"⚠️ Redis 인삿말 캐싱 실패: {e}")
 

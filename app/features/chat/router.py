@@ -13,8 +13,9 @@ async def send_message(
     message: str
 ):
     chzzk_session = await session_manager.get_session(channel_id)
+    if not chzzk_session:
+        return {"error": "활성화된 세션이 없습니다."}
 
-    # 2. 채팅 전송 (인자 수정: message만 전달)
     result = await chzzk_session.send_chat(message)
     
     if not result:

@@ -9,6 +9,7 @@ from app.db.models import ChzzkNotification
 from app.features.chat.service import ChatService
 from app.core.config import ALLOWED_PREFIXES
 from app.features.discord_bot.cogs.discord_service import DiscordService
+from app.features.discord_bot.cogs.chzzk_notifications import invalidate_notification_cache
 
 # 로거 설정
 logger = logging.getLogger("MessageHandling")
@@ -19,9 +20,14 @@ def strip_prefix(text: str) -> str:
         return text[1:]
     return text
 
+# 모듈 레벨 컴파일 — 매 호출마다 재컴파일 방지
+_EMOTICON_PATTERN = re.compile(r'\{:[a-zA-Z0-9_]+:\}')
+# 모듈 레벨 싱글톤 — 매 메시지마다 인스턴스 생성 방지
+_redis_service = RedisConfigService()
+
 # 헬퍼 함수: 이모티콘 체크
 def has_chzzk_emoticon(text: str) -> bool:
-    return bool(re.search(r'{:[a-zA-Z0-9_]+:}', text))
+    return bool(_EMOTICON_PATTERN.search(text))
 
 # 헬퍼 함수: 한국어 조사 판별
 def get_josa(word: str, josa_pair: str) -> str:
@@ -78,11 +84,8 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
     # 순환 참조 방지를 위해 함수 내부에서 import
     from app.features.chat.session_manager import session_manager
    
-    # 1. Redis 서비스 인스턴스 생성
-    redis_service = RedisConfigService()
-    
-    # 2. Prefix 조회 (Redis -> DB Fallback)
-    prefix = await redis_service.get_command_prefix(channel_id)
+    # 1. Prefix 조회 (Redis -> DB Fallback)
+    prefix = await _redis_service.get_command_prefix(channel_id)
     
     # 접두사로 시작하지 않으면 인사말(Greeting) 체크
     if not message_text.startswith(prefix):
@@ -90,7 +93,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
         session_factory = get_session_factory()
         if session_factory:
             # 인사말 체크 및 응답 (쿨타임이더라도 매칭 여부를 확인)
-            greeting_resp, is_greeting = await redis_service.get_greeting_response(channel_id, message_text.strip())
+            greeting_resp, is_greeting = await _redis_service.get_greeting_response(channel_id, message_text.strip())
             
             if is_greeting:
                 # 인사말 감지 시 쿨타임과 무관하게 출석 체크 수행
@@ -123,7 +126,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
     async with session_factory() as db:
         session = await session_manager.get_session(channel_id)
         if session:
-            await on_command(db, session, channel_id, command, args, role, redis_service, prefix, user_id, user_name)
+            await on_command(db, session, channel_id, command, args, role, _redis_service, prefix, user_id, user_name)
 
 async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
     chat_service = ChatService(db)
@@ -345,6 +348,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     db.add(new_noti)
                     await session.send_chat(f"알림 설정이 등록되었습니다. (Discord ID: {discord_channel_id})")
                 await db.commit()
+                invalidate_notification_cache()
 
             elif result.command == "알림삭제":
                 stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
@@ -353,6 +357,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if existing and existing.is_active:
                     existing.is_active = False
                     await db.commit()
+                    invalidate_notification_cache()
                     await session.send_chat("알림 설정이 해제되었습니다.")
                 else:
                     await session.send_chat("활성화된 알림 설정이 없습니다.")
