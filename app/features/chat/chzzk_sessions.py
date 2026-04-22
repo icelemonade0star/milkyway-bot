@@ -66,25 +66,27 @@ class ChzzkSessions:
         async with factory() as db:
             auth_service = AuthService(db)
             chzzk_auth = ChzzkAuth(auth_service)
-            
             new_token = await chzzk_auth.refresh_access_token(self.channel_id)
-            
-            if new_token:
-                self.access_token = new_token
-                logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
-                return True
-            else:
-                logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
-                
-                # 토큰 갱신에 실패한 경우, 만료일이 30일이 넘었는지 확인하여(리프레시 토큰 만료) DB에서 삭제
-                auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
-                if auth_data and auth_data.expires_at:
-                    now = datetime.now(auth_data.expires_at.tzinfo)
-                    if (now - auth_data.expires_at).days >= 30:
-                        logger.warning(f"🗑️ [{self.channel_id}] 만료 후 1달(30일) 경과. DB에서 인증 정보를 삭제합니다.")
-                        await auth_service.delete_auth_token(self.channel_id)
-                        
-                return False
+
+        if new_token:
+            self.access_token = new_token
+            logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
+            return True
+
+        logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
+
+        # 토큰 갱신 실패 시 만료일 기준 30일 경과 여부 확인 (리프레시 토큰 만료 판단)
+        # 별도 세션을 사용해 refresh_access_token 내부 커밋/롤백과 세션 상태 충돌 방지
+        async with factory() as db:
+            auth_service = AuthService(db)
+            auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
+            if auth_data and auth_data.expires_at:
+                now = datetime.now(auth_data.expires_at.tzinfo)
+                if (now - auth_data.expires_at).days >= 30:
+                    logger.warning(f"🗑️ [{self.channel_id}] 만료 후 1달(30일) 경과. DB에서 인증 정보를 삭제합니다.")
+                    await auth_service.delete_auth_token(self.channel_id)
+
+        return False
 
     async def create_socket_url(self):
         # 세션 발급을 위한 치지직 API 주소
