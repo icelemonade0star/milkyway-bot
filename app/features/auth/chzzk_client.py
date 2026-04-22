@@ -98,12 +98,14 @@ class ChzzkAuth:
             return f"Error: {str(e)}"
         
     async def refresh_access_token(self, channel_id: str):
+        """(new_access_token, failure_status_code) 튜플 반환.
+        성공: (token, None) / API 오류: (None, status_code) / 네트워크 오류: (None, None)
+        """
         # 1. DB에서 기존 리프레시 토큰 가져오기
         auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
-        print(f"[DEBUG] DB에서 가져온 데이터: {auth_data}")
         if not auth_data or not auth_data.refresh_token:
             print(f"❌ 갱신 불가: {channel_id}의 리프레시 토큰이 없습니다.")
-            return None
+            return None, None
 
         # 2. 치지직 토큰 갱신 API 호출
         data = {
@@ -113,13 +115,16 @@ class ChzzkAuth:
             "refreshToken": auth_data.refresh_token
         }
 
-        print(f"[DEBUG] 전송 페이로드: RT={auth_data.refresh_token[:10]}..., ID={self.client_id[:5]}...")
+        try:
+            resp = await _http_client.post(self.chzzk_token_url, json=data)
+        except Exception as e:
+            print(f"❌ 토큰 갱신 네트워크 오류: {str(e)}")
+            return None, None
 
-        resp = await _http_client.post(self.chzzk_token_url, json=data)
         if resp.status_code == 200:
             res_json = resp.json()
             token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
-            return token
+            return token, None
         else:
             print(f"❌ 토큰 갱신 실패: {resp.status_code} - {resp.text}")
-            return None
+            return None, resp.status_code

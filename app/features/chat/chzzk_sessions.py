@@ -1,6 +1,5 @@
 import httpx
 import asyncio
-from datetime import datetime
 import random
 
 import app.core.config as config
@@ -66,25 +65,22 @@ class ChzzkSessions:
         async with factory() as db:
             auth_service = AuthService(db)
             chzzk_auth = ChzzkAuth(auth_service)
-            new_token = await chzzk_auth.refresh_access_token(self.channel_id)
+            new_token, status_code = await chzzk_auth.refresh_access_token(self.channel_id)
 
         if new_token:
             self.access_token = new_token
             logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
             return True
 
-        logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
+        logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패 (status={status_code})")
 
-        # 토큰 갱신 실패 시 만료일 기준 30일 경과 여부 확인 (리프레시 토큰 만료 판단)
-        # 별도 세션을 사용해 refresh_access_token 내부 커밋/롤백과 세션 상태 충돌 방지
-        async with factory() as db:
-            auth_service = AuthService(db)
-            auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
-            if auth_data and auth_data.expires_at:
-                now = datetime.now(auth_data.expires_at.tzinfo)
-                if (now - auth_data.expires_at).days >= 30:
-                    logger.warning(f"🗑️ [{self.channel_id}] 만료 후 1달(30일) 경과. DB에서 인증 정보를 삭제합니다.")
-                    await auth_service.delete_auth_token(self.channel_id)
+        # 401/400 → 리프레시 토큰 만료로 확정 판단, DB에서 삭제
+        # 5xx/네트워크 오류(None) → 일시 장애 가능성, 삭제하지 않음
+        if status_code in (400, 401):
+            logger.warning(f"🗑️ [{self.channel_id}] 인증 오류({status_code}) 확인. DB에서 인증 정보를 삭제합니다.")
+            async with factory() as db:
+                auth_service = AuthService(db)
+                await auth_service.delete_auth_token(self.channel_id)
 
         return False
 
