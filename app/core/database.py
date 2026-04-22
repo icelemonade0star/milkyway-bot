@@ -23,10 +23,10 @@ def create_db_engine(local_port):
     
     DATABASE_URL = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASSWORD}@{db_host}:{db_port}/{config.DB_NAME}"
     return create_async_engine(
-        DATABASE_URL, 
-        pool_size=10,       # 챗봇 동시 접속자가 많다면 조금 늘려주세요
-        max_overflow=0, 
+        DATABASE_URL,
+        pool_size=3,         # 1GB 서버 환경: 커넥션 3개로 충분 (각 ~5-10MB)
+        max_overflow=2,      # 순간 트래픽 대비 최대 5개까지 허용
         pool_recycle=3600,   # SSH 터널 특성상 끊김 방지를 위해 1시간마다 커넥션 재사용
         pool_pre_ping=True,
-        echo=False # SQL 로그가 필요하면 True
+        echo=False           # SQL 로그가 필요하면 True
     )

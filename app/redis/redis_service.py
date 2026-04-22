@@ -5,7 +5,12 @@ import re
 from app.core.database import get_session_factory
 from app.features.chat.service import ChatService
 
-redis_client = redis.Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, decode_responses=True)
+redis_client = redis.Redis(
+    host=config.REDIS_HOST,
+    port=config.REDIS_PORT,
+    decode_responses=True,
+    max_connections=10,  # 1GB 서버 환경: 기본 50개에서 축소
+)
 
 class RedisConfigService:
     def __init__(self):
