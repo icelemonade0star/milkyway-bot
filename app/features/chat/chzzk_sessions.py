@@ -45,17 +45,8 @@ class ChzzkSessions:
             if not auth_data:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
 
-            # 만료 시간 확인 (DB에 저장된 시간 기준, 1시간 이내 만료 시 갱신)
-            expires_at = auth_data.expires_at
-            now = datetime.now(expires_at.tzinfo)
-            
-            if (expires_at - now).total_seconds() < 3600:
-                logger.warning(f"⚠️ [{self.channel_id}] 토큰 만료 임박(1시간 이내). 갱신 시도...")
-                if not await self._refresh_token():
-                    raise Exception(f"토큰 갱신에 실패하여 세션을 시작할 수 없습니다: {self.channel_id}")
-                # _refresh_token 성공 시 self.access_token은 내부에서 갱신됨
-            else:
-                self.access_token = auth_data.access_token
+            # DB에서 꺼내온 토큰을 그대로 메모리에 적재 (만료 여부는 API 호출 시 401 에러로 판단)
+            self.access_token = auth_data.access_token
 
             self.channel_name = auth_data.channel_name
             logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
@@ -84,6 +75,15 @@ class ChzzkSessions:
                 return True
             else:
                 logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
+                
+                # 토큰 갱신에 실패한 경우, 만료일이 30일이 넘었는지 확인하여(리프레시 토큰 만료) DB에서 삭제
+                auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
+                if auth_data and auth_data.expires_at:
+                    now = datetime.now(auth_data.expires_at.tzinfo)
+                    if (now - auth_data.expires_at).days >= 30:
+                        logger.warning(f"🗑️ [{self.channel_id}] 만료 후 1달(30일) 경과. DB에서 인증 정보를 삭제합니다.")
+                        await auth_service.delete_auth_token(self.channel_id)
+                        
                 return False
 
     async def create_socket_url(self):

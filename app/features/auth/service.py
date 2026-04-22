@@ -1,7 +1,7 @@
 from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from app.db.models import AuthToken, ChannelConfig
@@ -118,6 +118,16 @@ class AuthService:
         await self.db.execute(stmt)
         await self.db.commit()
 
+    async def delete_auth_token(self, channel_id: str):
+        stmt = delete(AuthToken).where(AuthToken.channel_id == channel_id)
+        try:
+            await self.db.execute(stmt)
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Token delete failed: {str(e)}")
+            return False
 
 async def get_auth_service(db: AsyncSession = Depends(get_async_db)):
     return AuthService(db)
