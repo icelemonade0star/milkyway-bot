@@ -268,6 +268,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("키워드와 응답을 모두 입력해주세요.")
                     return
                 
+                # 키워드는 이모티콘 허용 (채팅에서 이모티콘으로 인사하는 경우를 감지하기 위함)
                 if has_chzzk_emoticon(response):
                     await session.send_chat("인사말 내용에 이모티콘을 포함할 수 없습니다.")
                     return

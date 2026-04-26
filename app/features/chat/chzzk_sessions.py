@@ -173,15 +173,10 @@ class ChzzkSessions:
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
             logger.info(f"✅ [{self.channel_id}] 채팅 구독 성공")
-            return response.json() 
-        # 실패하면 에러 코드랑 메시지 반환
+            return response.json()
         else:
             logger.error(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
-            return {
-                "error": "API request failed", 
-                "status_code": response.status_code,
-                "detail": response.json() if response.text else "No detail"
-            }
+            return False
     
     async def send_chat(self, message: str):
 

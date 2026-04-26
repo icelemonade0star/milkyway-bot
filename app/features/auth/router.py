@@ -147,7 +147,7 @@ async def refresh_token(
     db: AsyncSession = Depends(get_async_db)
 ):
     # 1. 토큰 갱신
-    new_token = await chzzk_auth.refresh_access_token(channel_id)
+    new_token, status_code = await chzzk_auth.refresh_access_token(channel_id)
     if not new_token:
         raise HTTPException(status_code=500, detail="토큰 갱신에 실패했습니다.")
 
@@ -158,7 +158,7 @@ async def refresh_token(
 
     # 3. 활성화된 세션이 있다면 메모리 상의 토큰도 업데이트
     await session_manager.update_session_token(channel_id, new_token)
-    
+
     return {"status": "success", "new_access_token": new_token}
 
 # 예외처리. 따로 분리할것

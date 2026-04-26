@@ -79,11 +79,11 @@ class ChzzkAuth:
             return None
 
     async def get_user_info(self):
-        headers = {          
+        headers = {
             'Content-Type': 'application/json',
             "Authorization": f"Bearer {self.access_token}"
         }
-        
+
         try:
             response = await _http_client.get(self.chzzk_user_info_url, headers=headers)
 
@@ -92,10 +92,12 @@ class ChzzkAuth:
                 self.channel_id = res_json["content"]["channelId"]
                 self.channel_name = res_json["content"]["channelName"]
                 return res_json
-            return f"Error: {response.status_code} - {response.text}"
+            print(f"유저 정보 조회 실패: {response.status_code} - {response.text}")
+            return None
 
         except Exception as e:
-            return f"Error: {str(e)}"
+            print(f"유저 정보 조회 오류: {str(e)}")
+            return None
         
     async def refresh_access_token(self, channel_id: str):
         """(new_access_token, failure_status_code) 튜플 반환.
