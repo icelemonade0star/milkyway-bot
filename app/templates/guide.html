@@ -91,6 +91,30 @@
         .auth-link:hover {
             background-color: #00a330;
         }
+        .recommend {
+            background-color: rgba(0, 199, 60, 0.12);
+            border: 1.5px solid #00c73c;
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin: 24px 0;
+        }
+        .recommend .recommend-title {
+            color: #00c73c;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .recommend ol {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+            color: #c7c7cc;
+        }
+        .recommend ol li {
+            margin-bottom: 6px;
+        }
+        .recommend ol li strong {
+            color: #f2f2f7;
+        }
     </style>
 </head>
 <body>
@@ -104,6 +128,19 @@
         <p>기본 명령어 접두사는 <code>!</code> 입니다. (스트리머가 변경할 수 있습니다)</p>
         <p>제작자 : 별아레</p>
         <p>피드백 환영!</p>
+
+        <div class="recommend">
+            <div class="recommend-title">💡 처음 봇을 설정하신다면?</div>
+            <p style="color:#c7c7cc; margin: 0 0 10px 0;">방송에 봇을 초대한 뒤 아래 순서대로 설정하시면 바로 활용할 수 있습니다.</p>
+            <ol>
+                <li><strong>인사말 등록을 먼저 해주세요.</strong> 시청자가 채팅창에 인사를 입력하면 봇이 자동으로 반응하며 출석 체크도 함께 처리됩니다.<br>
+                <code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!|반갑습니다!|환영합니다!</code><br>
+                <small style="color:#888;">(응답에도 <code>|</code>를 쓰면 그 중 하나가 랜덤으로 출력됩니다)</small></li>
+                <li>필요에 따라 커스텀 명령어를 추가해 방송 규칙, 일정 등을 안내하세요.<br>
+                <code>!명령어등록 규칙 채널 규칙입니다.</code></li>
+                <li>디스코드 알림을 원하신다면 <code>!알림설정</code>으로 연동하세요.</li>
+            </ol>
+        </div>
 
         <h2>기본 명령어 (모든 사용자)</h2>
         
@@ -128,8 +165,11 @@
         <div class="command">
             <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
-                새로운 채널 명령어를 등록합니다. <code>|</code> 문자로 여러 개의 명령어 별칭을 한 번에 등록할 수 있습니다.<br>
-                <strong>예시:</strong> <code>!명령어등록 규칙|룰 채널 규칙입니다.</code> (<code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답)
+                새로운 채널 명령어를 등록합니다. 이미 등록된 명령어를 다시 등록하면 응답이 수정됩니다.<br>
+                <strong>명령어 별칭:</strong> <code>|</code>로 여러 명령어를 한 번에 등록할 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 규칙|룰 채널 규칙입니다.</code> → <code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답<br>
+                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 주사위 1|2|3|4|5|6</code> → <code>!주사위</code> 입력 시 1~6 중 하나 출력<br>
             </div>
         </div>
 
@@ -142,19 +182,23 @@
         <div class="command">
             <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
-                채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. <code>|</code> 문자로 여러 키워드를 등록할 수 있습니다.<br>
-                <strong>예시:</strong> <code>!인사등록 안녕|하이 어서오세요!</code> (채팅에 '안녕' 또는 '하이'에 반응하여 '어서오세요!'라고 응답)
+                채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. 이미 등록된 키워드를 다시 등록하면 응답이 수정됩니다.<br>
+                <strong>키워드 별칭:</strong> <code>|</code>로 여러 키워드를 하나의 응답에 묶을 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!</code> → '안녕', '하이', 'ㅎㅇ' 중 하나라도 포함되면 반응<br>
+                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요!|반갑습니다!|환영합니다!</code> → 응답 3개 중 하나가 랜덤 출력<br>
+                <small style="color:#888;">※ 동일 키워드는 10초 쿨타임이 적용됩니다. 채널당 최대 30개까지 등록할 수 있습니다.</small>
             </div>
         </div>
 
         <div class="command">
             <div class="usage">!인사삭제 [키워드] <span class="admin-only">관리자용</span></div>
-            <div class="desc">등록된 인사말키워드를 삭제합니다.</div>
+            <div class="desc">등록된 인사말 키워드를 삭제합니다.</div>
         </div>
 
         <div class="command">
             <div class="usage">!인사목록</div>
-            <div class="desc">현재 채널에 등록된 모든 인사말키워드를 보여줍니다.</div>
+            <div class="desc">현재 채널에 등록된 모든 인사말 키워드를 보여줍니다.</div>
         </div>
 
         <h3>봇 설정</h3>
