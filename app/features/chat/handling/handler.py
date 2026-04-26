@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification
 from app.features.chat.service import ChatService
+from app.core.config import MAX_GREETINGS_PER_CHANNEL
 from app.core.config import ALLOWED_PREFIXES
 from app.features.discord_bot.cogs.discord_service import DiscordService
 from app.features.discord_bot.cogs.chzzk_notifications import invalidate_notification_cache
@@ -271,25 +272,19 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("인사말 내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
-                # Check existence first
-                existing = await chat_service.get_greeting(channel_id, keywords_str)
-                if existing:
-                    actual_keyword = existing.keyword
-                    # Update
-                    if await chat_service.update_greeting(channel_id, actual_keyword, response):
-                        await redis_service.add_greeting_cache(channel_id, actual_keyword, response)
-                        josa = get_josa(actual_keyword, "이/가")
-                        await session.send_chat(f"인사말 '{actual_keyword}'{josa} 수정되었습니다.")
-                    else:
-                        await session.send_chat("인사말 수정에 실패했습니다.")
+                status, actual_keyword = await chat_service.add_greeting(channel_id, keywords_str, response)
+                if status == "limit_exceeded":
+                    await session.send_chat(f"인사말은 최대 {MAX_GREETINGS_PER_CHANNEL}개까지 등록할 수 있습니다.")
+                elif status == "updated":
+                    await redis_service.add_greeting_cache(channel_id, actual_keyword, response)
+                    josa = get_josa(actual_keyword, "이/가")
+                    await session.send_chat(f"인사말 '{actual_keyword}'{josa} 수정되었습니다.")
+                elif status == "created":
+                    await redis_service.add_greeting_cache(channel_id, actual_keyword, response)
+                    josa = get_josa(actual_keyword, "이/가")
+                    await session.send_chat(f"인사말 '{actual_keyword}'{josa} 등록되었습니다.")
                 else:
-                    # Create
-                    if await chat_service.create_greeting(channel_id, keywords_str, response):
-                        await redis_service.add_greeting_cache(channel_id, keywords_str, response)
-                        josa = get_josa(keywords_str, "이/가")
-                        await session.send_chat(f"인사말 '{keywords_str}'{josa} 등록되었습니다.")
-                    else:
-                        await session.send_chat("인사말 등록에 실패했습니다.")
+                    await session.send_chat("인사말 등록에 실패했습니다.")
 
             elif result.command == "인사삭제":
                 if len(args) < 1:

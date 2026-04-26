@@ -128,6 +128,8 @@ class RedisConfigService:
             # 3. 키워드 포함 여부 검사
             if greetings:
                 for keyword, response in greetings.items():
+                    if keyword == "__empty__":
+                        continue
                     if self._should_respond(message, keyword):
                         # 쿨타임 체크 (10초)
                         if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10):
@@ -160,7 +162,12 @@ class RedisConfigService:
                         pipe.expire(cache_key, 86400)
                         await pipe.execute()
                 else:
-                    await redis_client.delete(cache_key)
+                    # 인사말 없는 채널도 캐싱하여 매 메시지마다 DB 재조회 방지 (5분 후 재확인)
+                    async with redis_client.pipeline(transaction=True) as pipe:
+                        pipe.delete(cache_key)
+                        pipe.hset(cache_key, "__empty__", "1")
+                        pipe.expire(cache_key, 300)
+                        await pipe.execute()
             except Exception as e:
                 print(f"⚠️ Redis 인삿말 캐싱 실패: {e}")
 
@@ -168,9 +175,12 @@ class RedisConfigService:
         """인삿말 하나를 Redis에 추가하거나 갱신합니다."""
         cache_key = f"greetings:{channel_id}"
         try:
-            # 캐시가 존재하면 부분 업데이트 (TTL 유지)
+            # 캐시가 존재하면 부분 업데이트 (sentinel 제거 + 실제 항목 추가, TTL 유지)
             if await redis_client.exists(cache_key):
-                await redis_client.hset(cache_key, keyword, response)
+                async with redis_client.pipeline(transaction=True) as pipe:
+                    pipe.hdel(cache_key, "__empty__")
+                    pipe.hset(cache_key, keyword, response)
+                    await pipe.execute()
             else:
                 # 캐시가 없으면 전체 로드 (TTL 설정 포함)
                 await self.refresh_greetings_cache(channel_id)
