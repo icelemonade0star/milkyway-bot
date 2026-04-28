@@ -1,9 +1,13 @@
 import redis.asyncio as redis
 import app.core.config as config
 import re
+import httpx
+import json
 
 from app.core.database import get_session_factory
 from app.features.chat.service import ChatService
+
+_http_client = httpx.AsyncClient(timeout=5.0)
 
 redis_client = redis.Redis(
     host=config.REDIS_HOST,
@@ -109,22 +113,41 @@ class RedisConfigService:
         
         return False
 
+    async def _prefetch_live_status(self, channel_id: str):
+        """방송 상태를 API로 확인하고 Redis에 캐싱합니다. DB 쓰기 없음."""
+        cache_key = f"live_status:{channel_id}"
+        try:
+            if await redis_client.exists(cache_key):
+                return
+            url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
+            res = await _http_client.get(url)
+            if res.status_code != 200:
+                return
+            content = res.json().get("content", {})
+            if not content or content.get("status") != "OPEN":
+                await redis_client.set(cache_key, "CLOSE", ex=60)
+            else:
+                await redis_client.set(cache_key, json.dumps(content), ex=300)
+        except Exception as e:
+            print(f"⚠️ 방송 상태 사전 캐싱 실패: {e}")
+
     async def get_greeting_response(self, channel_id: str, message: str) -> tuple[str | None, bool]:
         """
         메시지에 인삿말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
         반환값: (응답 메시지, 인삿말 매칭 여부)
         """
         cache_key = f"greetings:{channel_id}"
-        
+
         try:
             # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
             greetings = await redis_client.hgetall(cache_key)
-                
-            # 2. 데이터가 없으면 DB에서 로드 후 캐싱
+
+            # 2. 데이터가 없으면 DB에서 로드 후 캐싱, 방송 상태도 함께 프리워밍
             if not greetings:
                 await self.refresh_greetings_cache(channel_id)
+                await self._prefetch_live_status(channel_id)
                 greetings = await redis_client.hgetall(cache_key)
-            
+
             # 3. 키워드 포함 여부 검사
             if greetings:
                 for keyword, response in greetings.items():
@@ -135,10 +158,10 @@ class RedisConfigService:
                         if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10):
                             return None, True
                         return response, True
-                
+
         except Exception as e:
             print(f"⚠️ Redis 인삿말 조회 실패: {e}")
-            
+
         return None, False
 
     async def refresh_greetings_cache(self, channel_id: str):

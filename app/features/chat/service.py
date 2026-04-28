@@ -409,7 +409,7 @@ class ChatService:
                 if not content or content.get("status") != "OPEN":
                     await redis_client.set(cache_key, "CLOSE", ex=60)
                     return None # 방송 중 아님
-                await redis_client.set(cache_key, json.dumps(content), ex=60)
+                await redis_client.set(cache_key, json.dumps(content), ex=300)
 
             open_date_str = content.get("openDate")
             if not open_date_str:
