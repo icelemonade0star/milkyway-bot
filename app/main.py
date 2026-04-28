@@ -4,6 +4,7 @@ from app.lifespan import lifespan
 from app.features.auth import router as auth_router
 from app.features.chat import router as chat_router
 from app.features.guide import router as guide_router
+from app.features.admin.router import admin_router
 
 
 # api
@@ -17,6 +18,7 @@ app = FastAPI(
 app.include_router(auth_router.auth_router)
 app.include_router(chat_router.chat_router)
 app.include_router(guide_router.guide_router)
+app.include_router(admin_router)
 
 @app.get("/")
 async def root():
