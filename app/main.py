@@ -11,7 +11,7 @@ from app.features.admin.router import admin_router
 app = FastAPI(
     lifespan=lifespan,
     title="milkyway bot",
-    version = "1.3.0",
+    version = "1.4.0",
     docs_url = "/api/swagger",
     description = "밀키웨이 봇 API 문서입니다."
     )
