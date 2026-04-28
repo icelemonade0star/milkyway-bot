@@ -88,7 +88,7 @@ class RedisConfigService:
 
     def _should_respond(self, message: str, keyword: str) -> bool:
         """
-        메시지가 인삿말 키워드에 반응해야 하는지 판단합니다.
+        메시지가 인사말 키워드에 반응해야 하는지 판단합니다.
         1. 단순 포함 여부 체크 (빠른 필터링)
         2. 왼쪽 경계 검사 (Lookbehind): 앞에 다른 글자가 붙어있는지 확인
         3. 오른쪽 경계 검사 (Lookahead): 뒤에 다른 글자가 붙어있는지 확인
@@ -107,7 +107,7 @@ class RedisConfigService:
             # (?:...)+: 키워드가 1번 이상 반복됨 (비캡처 그룹)
             # (?!\w): 뒤 경계 확인 (뒤에 문자 없음)
             pattern = rf"(?<!\w)(?:{re.escape(k)})+(?!\w)"
-            # re.IGNORECASE를 추가하여 영어 인삿말(Hi/hi)도 구분 없이 인식하도록 개선
+            # re.IGNORECASE를 추가하여 영어 인사말(Hi/hi)도 구분 없이 인식하도록 개선
             if re.search(pattern, message, re.IGNORECASE):
                 return True
         
@@ -133,8 +133,8 @@ class RedisConfigService:
 
     async def get_greeting_response(self, channel_id: str, message: str) -> tuple[str | None, bool]:
         """
-        메시지에 인삿말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
-        반환값: (응답 메시지, 인삿말 매칭 여부)
+        메시지에 인사말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
+        반환값: (응답 메시지, 인사말 매칭 여부)
         """
         cache_key = f"greetings:{channel_id}"
 
@@ -160,12 +160,12 @@ class RedisConfigService:
                         return response, True
 
         except Exception as e:
-            print(f"⚠️ Redis 인삿말 조회 실패: {e}")
+            print(f"⚠️ Redis 인사말 조회 실패: {e}")
 
         return None, False
 
     async def refresh_greetings_cache(self, channel_id: str):
-        """DB에서 인삿말을 불러와 Redis에 캐싱합니다."""
+        """DB에서 인사말을 불러와 Redis에 캐싱합니다."""
         session_factory = get_session_factory()
         if not session_factory:
             return
@@ -192,10 +192,10 @@ class RedisConfigService:
                         pipe.expire(cache_key, 300)
                         await pipe.execute()
             except Exception as e:
-                print(f"⚠️ Redis 인삿말 캐싱 실패: {e}")
+                print(f"⚠️ Redis 인사말 캐싱 실패: {e}")
 
     async def add_greeting_cache(self, channel_id: str, keyword: str, response: str):
-        """인삿말 하나를 Redis에 추가하거나 갱신합니다."""
+        """인사말 하나를 Redis에 추가하거나 갱신합니다."""
         cache_key = f"greetings:{channel_id}"
         try:
             # 캐시가 존재하면 부분 업데이트 (sentinel 제거 + 실제 항목 추가, TTL 유지)
@@ -208,16 +208,16 @@ class RedisConfigService:
                 # 캐시가 없으면 전체 로드 (TTL 설정 포함)
                 await self.refresh_greetings_cache(channel_id)
         except Exception as e:
-            print(f"⚠️ Redis 인삿말 추가 실패: {e}")
+            print(f"⚠️ Redis 인사말 추가 실패: {e}")
 
     async def delete_greeting_cache(self, channel_id: str, keyword: str):
-        """인삿말 하나를 Redis에서 삭제합니다."""
+        """인사말 하나를 Redis에서 삭제합니다."""
         cache_key = f"greetings:{channel_id}"
         try:
             if await redis_client.exists(cache_key):
                 await redis_client.hdel(cache_key, keyword)
         except Exception as e:
-            print(f"⚠️ Redis 인삿말 삭제 실패: {e}")
+            print(f"⚠️ Redis 인사말 삭제 실패: {e}")
 
     async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
         """

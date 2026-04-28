@@ -14,8 +14,8 @@ redis_service = RedisConfigService()
 
 @admin_router.get(
     "/greeting/redis/{channel_id}",
-    summary="채널 Redis 인삿말 조회",
-    description="특정 채널에 캐싱된 Redis 인삿말 목록을 반환합니다.",
+    summary="채널 Redis 인사말 조회",
+    description="특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
 )
 async def get_channel_greeting_cache(channel_id: str):
     cache_key = f"greetings:{channel_id}"
@@ -51,8 +51,8 @@ async def get_channel_greeting_cache(channel_id: str):
 
 @admin_router.get(
     "/greeting/redis",
-    summary="전체 채널 Redis 인삿말 조회",
-    description="Redis에 캐싱된 모든 채널의 인삿말 목록을 반환합니다.",
+    summary="전체 채널 Redis 인사말 조회",
+    description="Redis에 캐싱된 모든 채널의 인사말 목록을 반환합니다.",
 )
 async def get_all_greeting_cache():
     try:
@@ -89,8 +89,8 @@ async def get_all_greeting_cache():
 
 @admin_router.post(
     "/greeting/refresh/{channel_id}",
-    summary="채널 인삿말 Redis 수동 갱신",
-    description="DB에 등록된 특정 채널의 인삿말을 Redis에 즉시 갱신합니다.",
+    summary="채널 인사말 Redis 수동 갱신",
+    description="DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
 )
 async def refresh_channel_greeting_cache(
     channel_id: str,
@@ -105,14 +105,14 @@ async def refresh_channel_greeting_cache(
         "status": "success",
         "channel_id": channel_id,
         "count": len(greetings),
-        "message": f"인삿말 {len(greetings)}개가 Redis에 갱신되었습니다.",
+        "message": f"인사말 {len(greetings)}개가 Redis에 갱신되었습니다.",
     }
 
 
 @admin_router.post(
     "/greeting/refresh",
-    summary="전체 채널 인삿말 Redis 수동 갱신",
-    description="DB에 등록된 모든 채널의 인삿말을 Redis에 즉시 갱신합니다.",
+    summary="전체 채널 인사말 Redis 수동 갱신",
+    description="DB에 등록된 모든 채널의 인사말을 Redis에 즉시 갱신합니다.",
 )
 async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
@@ -137,5 +137,5 @@ async def refresh_all_greeting_cache(
         "refreshed_channels": len(channel_ids) - len(failed_channels),
         "total_greetings": total_greetings,
         "failed_channels": failed_channels,
-        "message": f"{len(channel_ids) - len(failed_channels)}개 채널의 인삿말이 Redis에 갱신되었습니다.",
+        "message": f"{len(channel_ids) - len(failed_channels)}개 채널의 인사말이 Redis에 갱신되었습니다.",
     }

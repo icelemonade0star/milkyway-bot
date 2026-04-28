@@ -224,10 +224,10 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             return False
 
-    # --- 인삿말(Greeting) 관련 메서드 ---
+    # --- 인사말(Greeting) 관련 메서드 ---
 
     async def get_channel_greetings(self, channel_id: str):
-        """특정 채널의 모든 인삿말 조회"""
+        """특정 채널의 모든 인사말 조회"""
         try:
             stmt = select(ChatGreeting).where(ChatGreeting.channel_id == channel_id)
             result = await self.db.execute(stmt)
@@ -237,7 +237,7 @@ class ChatService:
             return []
 
     async def get_greeting(self, channel_id: str, keyword: str):
-        """특정 인삿말 조회"""
+        """특정 인사말 조회"""
         try:
             # 1. 정확히 일치하는 인사말 조회
             stmt = select(ChatGreeting).where(
@@ -269,7 +269,7 @@ class ChatService:
             return None
 
     async def add_greeting(self, channel_id: str, keyword: str, response: str):
-        """인삿말 등록/수정 (있으면 수정, 없으면 등록). 반환: ('updated', actual_keyword) | ('created', keyword) | ('limit_exceeded', None) | (None, None)"""
+        """인사말 등록/수정 (있으면 수정, 없으면 등록). 반환: ('updated', actual_keyword) | ('created', keyword) | ('limit_exceeded', None) | (None, None)"""
         try:
             existing = await self.get_greeting(channel_id, keyword)
             if existing:
