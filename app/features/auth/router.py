@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_db
 from app.features.auth.service import AuthService
+from app.features.auth.schemas import AuthListResponse, TokenRefreshResponse
 from app.features.chat.session_manager import session_manager
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -119,7 +120,7 @@ async def callback_auth(
     return HTMLResponse(content=html_content)
 
 
-@auth_router.get("/list")
+@auth_router.get("/list", response_model=AuthListResponse)
 async def get_auth_token_list(
     channel_name: str = Query(None, description="검색할 채널 이름 (선택 사항)"),
     db: AsyncSession = Depends(get_async_db)
@@ -140,7 +141,7 @@ async def get_auth_token_list(
         ]
     }
 
-@auth_router.post("/refresh/{channel_id}")
+@auth_router.post("/refresh/{channel_id}", response_model=TokenRefreshResponse)
 async def refresh_token(
     channel_id: str, 
     chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth),

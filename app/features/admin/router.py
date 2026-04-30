@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -6,6 +6,12 @@ from app.core.database import get_async_db
 from app.db.models import AuthToken
 from app.redis.redis_service import redis_client, RedisConfigService
 from app.features.chat.service import ChatService
+from app.features.admin.schemas import (
+    ChannelGreetingCacheResponse,
+    AllGreetingCacheResponse,
+    GreetingRefreshResponse,
+    AllGreetingRefreshResponse,
+)
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -16,6 +22,7 @@ redis_service = RedisConfigService()
     "/greeting/redis/{channel_id}",
     summary="채널 Redis 인사말 조회",
     description="특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
+    response_model=ChannelGreetingCacheResponse,
 )
 async def get_channel_greeting_cache(channel_id: str):
     cache_key = f"greetings:{channel_id}"
@@ -23,7 +30,7 @@ async def get_channel_greeting_cache(channel_id: str):
         raw = await redis_client.hgetall(cache_key)
         ttl = await redis_client.ttl(cache_key)
     except Exception as e:
-        return {"status": "error", "message": f"Redis 조회 실패: {e}"}
+        raise HTTPException(status_code=500, detail=f"Redis 조회 실패: {e}")
 
     if not raw:
         return {
@@ -53,12 +60,13 @@ async def get_channel_greeting_cache(channel_id: str):
     "/greeting/redis",
     summary="전체 채널 Redis 인사말 조회",
     description="Redis에 캐싱된 모든 채널의 인사말 목록을 반환합니다.",
+    response_model=AllGreetingCacheResponse,
 )
 async def get_all_greeting_cache():
     try:
         keys = await redis_client.keys("greetings:*")
     except Exception as e:
-        return {"status": "error", "message": f"Redis 키 조회 실패: {e}"}
+        raise HTTPException(status_code=500, detail=f"Redis 키 조회 실패: {e}")
 
     channels = []
     for key in keys:
@@ -91,6 +99,7 @@ async def get_all_greeting_cache():
     "/greeting/refresh/{channel_id}",
     summary="채널 인사말 Redis 수동 갱신",
     description="DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
+    response_model=GreetingRefreshResponse,
 )
 async def refresh_channel_greeting_cache(
     channel_id: str,
@@ -113,6 +122,7 @@ async def refresh_channel_greeting_cache(
     "/greeting/refresh",
     summary="전체 채널 인사말 Redis 수동 갱신",
     description="DB에 등록된 모든 채널의 인사말을 Redis에 즉시 갱신합니다.",
+    response_model=AllGreetingRefreshResponse,
 )
 async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
