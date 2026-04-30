@@ -1,9 +1,15 @@
 from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_, func
 from fastapi import HTTPException
-from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance
+import httpx
+import json
+
+# 모듈 레벨 싱글톤 — 매 출석 체크마다 TCP 연결 재생성 방지
+_http_client = httpx.AsyncClient(timeout=5.0)
+from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance, StreamSession
+from app.core.config import MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
 
@@ -81,8 +87,14 @@ class ChatService:
             if exact:
                 return exact
 
-            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
-            stmt = select(GlobalCommand).where(GlobalCommand.command.contains('|'))
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원) — LIKE로 DB에서 선필터링
+            stmt = select(GlobalCommand).where(
+                or_(
+                    GlobalCommand.command.like(f'{command}|%'),
+                    GlobalCommand.command.like(f'%|{command}'),
+                    GlobalCommand.command.like(f'%|{command}|%'),
+                )
+            )
             result = await self.db.execute(stmt)
             for cmd_obj in result.scalars().all():
                 if command in cmd_obj.command.split('|'):
@@ -143,10 +155,14 @@ class ChatService:
             if exact:
                 return exact
 
-            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원)
+            # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원) — LIKE로 DB에서 선필터링
             stmt = select(ChatCommand).where(
                 ChatCommand.channel_id == channel_id,
-                ChatCommand.command.contains('|')
+                or_(
+                    ChatCommand.command.like(f'{command}|%'),
+                    ChatCommand.command.like(f'%|{command}'),
+                    ChatCommand.command.like(f'%|{command}|%'),
+                )
             )
             result = await self.db.execute(stmt)
             for cmd_obj in result.scalars().all():
@@ -199,8 +215,8 @@ class ChatService:
             cmd_obj = await self.get_chat_command(channel_id, command)
             if not cmd_obj:
                 return False
-            
-            await self.db.delete(cmd_obj)
+
+            self.db.delete(cmd_obj)
             await self.db.commit()
             return True
         except Exception as e:
@@ -208,10 +224,10 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             return False
 
-    # --- 인삿말(Greeting) 관련 메서드 ---
+    # --- 인사말(Greeting) 관련 메서드 ---
 
     async def get_channel_greetings(self, channel_id: str):
-        """특정 채널의 모든 인삿말 조회"""
+        """특정 채널의 모든 인사말 조회"""
         try:
             stmt = select(ChatGreeting).where(ChatGreeting.channel_id == channel_id)
             result = await self.db.execute(stmt)
@@ -221,62 +237,70 @@ class ChatService:
             return []
 
     async def get_greeting(self, channel_id: str, keyword: str):
-        """특정 인삿말 조회"""
+        """특정 인사말 조회"""
         try:
+            # 1. 정확히 일치하는 인사말 조회
             stmt = select(ChatGreeting).where(
                 ChatGreeting.channel_id == channel_id,
                 ChatGreeting.keyword == keyword
             )
             result = await self.db.execute(stmt)
-            return result.scalar_one_or_none()
+            exact = result.scalar_one_or_none()
+            if exact:
+                return exact
+
+            # 2. '|' 구분자가 포함된 인사말 조회 (별칭 지원) — LIKE로 DB에서 선필터링
+            stmt = select(ChatGreeting).where(
+                ChatGreeting.channel_id == channel_id,
+                or_(
+                    ChatGreeting.keyword.like(f'{keyword}|%'),
+                    ChatGreeting.keyword.like(f'%|{keyword}'),
+                    ChatGreeting.keyword.like(f'%|{keyword}|%'),
+                )
+            )
+            result = await self.db.execute(stmt)
+            for greet_obj in result.scalars().all():
+                if keyword in [k.strip() for k in greet_obj.keyword.split('|')]:
+                    return greet_obj
+            
+            return None
         except Exception as e:
             print(f"[DB Error] Get greeting failed: {str(e)}")
             return None
 
-    async def create_greeting(self, channel_id: str, keyword: str, response: str):
-        """인삿말 등록 (중복 시 실패)"""
+    async def add_greeting(self, channel_id: str, keyword: str, response: str):
+        """인사말 등록/수정 (있으면 수정, 없으면 등록). 반환: ('updated', actual_keyword) | ('created', keyword) | ('limit_exceeded', None) | (None, None)"""
         try:
             existing = await self.get_greeting(channel_id, keyword)
             if existing:
-                return False
-            
+                existing.response = response
+                await self.db.commit()
+                return "updated", existing.keyword
+
+            count_stmt = select(func.count()).select_from(ChatGreeting).where(
+                ChatGreeting.channel_id == channel_id
+            )
+            count = (await self.db.execute(count_stmt)).scalar()
+            if count >= MAX_GREETINGS_PER_CHANNEL:
+                return "limit_exceeded", None
+
             new_greeting = ChatGreeting(channel_id=channel_id, keyword=keyword, response=response)
             self.db.add(new_greeting)
             await self.db.commit()
-            return True
+            return "created", keyword
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Create greeting failed: {str(e)}")
-            return False
-
-    async def update_greeting(self, channel_id: str, keyword: str, response: str):
-        """인삿말 수정 (없으면 실패)"""
-        try:
-            existing = await self.get_greeting(channel_id, keyword)
-            if not existing:
-                return False
-            
-            existing.response = response
-            await self.db.commit()
-            return True
-        except Exception as e:
-            await self.db.rollback()
-            print(f"[DB Error] Update greeting failed: {str(e)}")
-            return False
+            print(f"[DB Error] Add greeting failed: {str(e)}")
+            return None, None
 
     async def delete_greeting(self, channel_id: str, keyword: str):
         try:
-            stmt = select(ChatGreeting).where(
-                ChatGreeting.channel_id == channel_id,
-                ChatGreeting.keyword == keyword
-            )
-            result = await self.db.execute(stmt)
-            target = result.scalar_one_or_none()
-            
+            target = await self.get_greeting(channel_id, keyword)
+
             if not target:
                 return False
-                
-            await self.db.delete(target)
+
+            self.db.delete(target)
             await self.db.commit()
             return True
         except Exception as e:
@@ -288,27 +312,33 @@ class ChatService:
 
     async def process_attendance(self, channel_id: str, user_id: str, user_name: str):
         """
-        출석 체크를 수행하고 결과를 반환합니다.
-        return: {
-            "status": "checked" | "already_checked",
-            "streak": 연속출석일,
-            "total": 총출석일,
-            "is_new": 신규출석여부
-        }
+        출석 체크를 수행하고 결과를 반환합니다 (방송 세션 단위 기준).
         """
         try:
-            # 한국 시간(KST) 기준 현재 날짜 계산
-            kst = timezone(timedelta(hours=9))
-            now = datetime.now(kst)
-            today = now.date()
+            # 1. 방송 세션 확인 및 동기화 (방송 중이 아니거나, 데이터가 없으면 None 반환)
+            latest_session = await self.sync_stream_session(channel_id)
 
-            # 기존 출석 기록 조회
-            stmt = select(Attendance).where(
+            if not latest_session:
+                # sync_stream_session에서 실패하면 방송 중이 아니거나, API 오류, openDate 없음 등의 이유.
+                # 사용자에게는 방송 중이 아니라는 메시지로 통일하여 안내.
+                return {"status": "not_streaming"}
+
+            current_opened_at = latest_session.opened_at
+
+            # 2. 이전 방송 세션 조회 (연속 출석 체크용)
+            previous_session = (await self.db.execute(
+                select(StreamSession).where(
+                    StreamSession.chzzk_channel_id == channel_id,
+                    StreamSession.opened_at < current_opened_at
+                ).order_by(StreamSession.opened_at.desc()).limit(1)
+            )).scalar_one_or_none()
+
+            # 3. 기존 출석 기록 확인
+            stmt_att = select(Attendance).where(
                 Attendance.channel_id == channel_id,
                 Attendance.user_id == user_id
             )
-            result = await self.db.execute(stmt)
-            attendance = result.scalar_one_or_none()
+            attendance = (await self.db.execute(stmt_att)).scalar_one_or_none()
 
             if not attendance:
                 # 첫 출석
@@ -317,29 +347,93 @@ class ChatService:
                     user_id=user_id,
                     user_name=user_name,
                     attendance_count=1,
-                    streak_count=0,
-                    last_attendance_at=now
+                    streak_count=1,
+                    last_attendance_at=current_opened_at
                 )
                 self.db.add(new_attendance)
                 await self.db.commit()
-                return {"status": "checked", "streak": 0, "total": 1, "is_new": True}
-            
-            # 마지막 출석일 확인 (DB에 저장된 시간도 KST로 변환해서 비교 권장)
-            last_date = attendance.last_attendance_at.astimezone(kst).date()
+                return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
 
-            if last_date == today:
-                return {"status": "already_checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
-            
+            # 중복 출석 확인 (단계 3)
+            if attendance.last_attendance_at == current_opened_at:
+                return {
+                    "status": "already_checked", 
+                    "streak": attendance.streak_count, 
+                    "total": attendance.attendance_count, 
+                    "is_new": False
+                }
+
+            # 4. 연속 출석 검사 (단계 4)
+            if previous_session and attendance.last_attendance_at == previous_session.opened_at:
+                attendance.streak_count += 1
+            else:
+                attendance.streak_count = 1
+
+            # 5. 출석 업데이트 (단계 5)
             attendance.attendance_count += 1
-            attendance.last_attendance_at = now
-            attendance.user_name = user_name # 닉네임 변경 시 업데이트
+            attendance.last_attendance_at = current_opened_at
+            attendance.user_name = user_name
             
             await self.db.commit()
-            return {"status": "checked", "streak": 0, "total": attendance.attendance_count, "is_new": False}
+            return {"status": "checked", "streak": attendance.streak_count, "total": attendance.attendance_count, "is_new": False}
 
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] Attendance check failed: {str(e)}")
+            return None
+
+    async def sync_stream_session(self, channel_id: str):
+        """
+        현재 방송 상태를 확인하고, 방송 중이면 StreamSession을 기록합니다.
+        """
+        # 순환 참조 방지를 위해 Redis 객체만 함수 내에서 임포트
+        from app.redis.redis_service import redis_client
+        try:
+            cache_key = f"live_status:{channel_id}"
+            content = None
+            
+            # 1. Redis 캐시에서 60초 이내에 조회한 방송 상태가 있는지 확인 (API Rate Limit 방지)
+            cached_status = await redis_client.get(cache_key)
+            
+            if cached_status:
+                if cached_status == "CLOSE":
+                    return None
+                content = json.loads(cached_status)
+            else:
+                # 2. 캐시가 없을 때만 API 호출 후 60초간 캐싱
+                status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
+                res = await _http_client.get(status_url)
+                if res.status_code != 200:
+                    return None # API 실패
+                content = res.json().get("content", {})
+                if not content or content.get("status") != "OPEN":
+                    await redis_client.set(cache_key, "CLOSE", ex=60)
+                    return None # 방송 중 아님
+                await redis_client.set(cache_key, json.dumps(content), ex=300)
+
+            open_date_str = content.get("openDate")
+            if not open_date_str:
+                return None # 방송 시작 정보 없음
+
+            kst_tz = timezone(timedelta(hours=9))
+            current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
+
+            stmt_find_session = select(StreamSession).where(
+                StreamSession.chzzk_channel_id == channel_id,
+                StreamSession.opened_at == current_opened_at
+            )
+            existing_session = (await self.db.execute(stmt_find_session)).scalar_one_or_none()
+
+            if not existing_session:
+                new_session = StreamSession(chzzk_channel_id=channel_id, opened_at=current_opened_at, stream_title=content.get("liveTitle"))
+                self.db.add(new_session)
+                await self.db.commit()
+                return new_session
+            
+            return existing_session
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Sync stream session failed: {str(e)}")
             return None
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):

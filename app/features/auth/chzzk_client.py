@@ -4,6 +4,9 @@ import secrets
 import asyncio
 from datetime import datetime, timedelta
 
+# 모듈 레벨 클라이언트 — 매 호출마다 TCP 연결 재생성 방지
+_http_client = httpx.AsyncClient(timeout=10.0)
+
 from urllib.parse import quote
 
 from app.features.auth.service import AuthService
@@ -58,51 +61,53 @@ class ChzzkAuth:
             "redirectUri": self.redirect_url        
         }
         
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(self.chzzk_token_url, headers=headers, json=data)
-                
-                if response.status_code == 200:
-                    res_json = response.json()
-                    self.access_token = res_json["content"]["accessToken"]
-                    self.refresh_token = res_json["content"]["refreshToken"]
-                    
-                    # 만료 시간 계산 및 저장 (기본값 1일)
-                    expires_in = res_json["content"].get("expiresIn", 86400)
-                    self.expires_at = datetime.now() + timedelta(seconds=expires_in)
-                    return res_json
-                return None
-            except Exception as e:
-                print(f"Token Error: {str(e)}")
-                return None
+        try:
+            response = await _http_client.post(self.chzzk_token_url, headers=headers, json=data)
+
+            if response.status_code == 200:
+                res_json = response.json()
+                self.access_token = res_json["content"]["accessToken"]
+                self.refresh_token = res_json["content"]["refreshToken"]
+
+                # 만료 시간 계산 및 저장 (기본값 1일)
+                expires_in = res_json["content"].get("expiresIn", 86400)
+                self.expires_at = datetime.now() + timedelta(seconds=expires_in)
+                return res_json
+            return None
+        except Exception as e:
+            print(f"Token Error: {str(e)}")
+            return None
 
     async def get_user_info(self):
-        headers = {          
+        headers = {
             'Content-Type': 'application/json',
             "Authorization": f"Bearer {self.access_token}"
         }
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(self.chzzk_user_info_url, headers=headers)
-                
-                if response.status_code == 200:
-                    res_json = response.json()
-                    self.channel_id = res_json["content"]["channelId"]
-                    self.channel_name = res_json["content"]["channelName"]
-                    return res_json
-                return f"Error: {response.status_code} - {response.text}"
-                
-            except Exception as e:
-                return f"Error: {str(e)}"
+
+        try:
+            response = await _http_client.get(self.chzzk_user_info_url, headers=headers)
+
+            if response.status_code == 200:
+                res_json = response.json()
+                self.channel_id = res_json["content"]["channelId"]
+                self.channel_name = res_json["content"]["channelName"]
+                return res_json
+            print(f"유저 정보 조회 실패: {response.status_code} - {response.text}")
+            return None
+
+        except Exception as e:
+            print(f"유저 정보 조회 오류: {str(e)}")
+            return None
         
     async def refresh_access_token(self, channel_id: str):
+        """(new_access_token, failure_status_code) 튜플 반환.
+        성공: (token, None) / API 오류: (None, status_code) / 네트워크 오류: (None, None)
+        """
         # 1. DB에서 기존 리프레시 토큰 가져오기
         auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
-        print(f"[DEBUG] DB에서 가져온 데이터: {auth_data}")
         if not auth_data or not auth_data.refresh_token:
             print(f"❌ 갱신 불가: {channel_id}의 리프레시 토큰이 없습니다.")
-            return None
+            return None, None
 
         # 2. 치지직 토큰 갱신 API 호출
         data = {
@@ -112,14 +117,16 @@ class ChzzkAuth:
             "refreshToken": auth_data.refresh_token
         }
 
-        print(f"[DEBUG] 전송 페이로드: RT={auth_data.refresh_token[:10]}..., ID={self.client_id[:5]}...")
+        try:
+            resp = await _http_client.post(self.chzzk_token_url, json=data)
+        except Exception as e:
+            print(f"❌ 토큰 갱신 네트워크 오류: {str(e)}")
+            return None, None
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(self.chzzk_token_url, json=data)
-            if resp.status_code == 200:
-                res_json = resp.json()
-                token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
-                return token
-            else:
-                print(f"❌ 토큰 갱신 실패: {resp.status_code} - {resp.text}")
-                return None
+        if resp.status_code == 200:
+            res_json = resp.json()
+            token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
+            return token, None
+        else:
+            print(f"❌ 토큰 갱신 실패: {resp.status_code} - {resp.text}")
+            return None, resp.status_code

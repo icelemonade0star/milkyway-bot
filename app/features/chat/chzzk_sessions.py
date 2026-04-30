@@ -1,6 +1,5 @@
 import httpx
 import asyncio
-from datetime import datetime
 import random
 
 import app.core.config as config
@@ -11,22 +10,21 @@ from app.core.logger import get_logger
 
 logger = get_logger("ChzzkSessions")
 
+# 모듈 레벨 싱글톤 — 채널 수만큼 커넥션 풀이 생기는 문제 방지
+# base_url은 모든 인스턴스가 동일한 config.OPENAPI_BASE를 사용하므로 공유 가능
+_client = httpx.AsyncClient(base_url=config.OPENAPI_BASE, timeout=10.0)
+
 class ChzzkSessions:
     def __init__(self, channel_id: str):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
-        self.openapi_base = config.OPENAPI_BASE
 
         self.channel_id = channel_id
         self.channel_name = None
         self.access_token = None
         self.socket_url = None
         self.session_key = None
-        self.socket_client = None # 소켓 클라이언트 인스턴스 저장
-
-        # HTTP 클라이언트를 하나로 유지
-        # base_url을 설정하여 이후 요청 시 상대 경로만 사용
-        self.client = httpx.AsyncClient(base_url=self.openapi_base, timeout=10.0)
+        self.socket_client = None
 
     async def _ensure_auth(self, force_refresh=False):
 
@@ -43,26 +41,14 @@ class ChzzkSessions:
             auth_service = AuthService(db)
             auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
 
-            if auth_data:
-                # 만료 시간 확인 (DB에 저장된 시간)
-                # 백그라운드 태스크(13시간)보다 조금 더 여유 있게 14시간(50400초) 전이면 미리 갱신
-                expires_at = auth_data.expires_at
-                now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
-                
-                if (expires_at - now).total_seconds() < 50400:
-                    logger.warning(f"⚠️ [{self.channel_id}] 토큰 만료 임박(14시간 이내). 선제적 갱신 시도...")
-                    from app.features.auth.chzzk_client import ChzzkAuth
-                    chzzk_auth = ChzzkAuth(auth_service)
-                    new_token = await chzzk_auth.refresh_access_token(self.channel_id)
-                    if new_token:
-                        auth_data.access_token = new_token
-                        logger.info(f"✅ [{self.channel_id}] 선제적 토큰 갱신 완료")
-
-                self.access_token = auth_data.access_token
-                self.channel_name = auth_data.channel_name
-                logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
-            else:
+            if not auth_data:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
+
+            # DB에서 꺼내온 토큰을 그대로 메모리에 적재 (만료 여부는 API 호출 시 401 에러로 판단)
+            self.access_token = auth_data.access_token
+
+            self.channel_name = auth_data.channel_name
+            logger.info(f"🔑 [{self.channel_id}] 인증 정보 로드 완료")
 
     async def _refresh_token(self):
         """401 에러 발생 시 토큰을 갱신하고 메모리에 반영합니다."""
@@ -79,16 +65,24 @@ class ChzzkSessions:
         async with factory() as db:
             auth_service = AuthService(db)
             chzzk_auth = ChzzkAuth(auth_service)
-            
-            new_token = await chzzk_auth.refresh_access_token(self.channel_id)
-            
-            if new_token:
-                self.access_token = new_token
-                logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
-                return True
-            else:
-                logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패")
-                return False
+            new_token, status_code = await chzzk_auth.refresh_access_token(self.channel_id)
+
+        if new_token:
+            self.access_token = new_token
+            logger.info(f"✅ [{self.channel_id}] 토큰 갱신 및 메모리 업데이트 완료")
+            return True
+
+        logger.error(f"❌ [{self.channel_id}] 토큰 갱신 실패 (status={status_code})")
+
+        # 401/400 → 리프레시 토큰 만료로 확정 판단, DB에서 삭제
+        # 5xx/네트워크 오류(None) → 일시 장애 가능성, 삭제하지 않음
+        if status_code in (400, 401):
+            logger.warning(f"🗑️ [{self.channel_id}] 인증 오류({status_code}) 확인. DB에서 인증 정보를 삭제합니다.")
+            async with factory() as db:
+                auth_service = AuthService(db)
+                await auth_service.delete_auth_token(self.channel_id)
+
+        return False
 
     async def create_socket_url(self):
         # 세션 발급을 위한 치지직 API 주소
@@ -102,7 +96,7 @@ class ChzzkSessions:
         }
         
         # 서버에 세션 생성 url 요청
-        response = await self.client.get(url, headers=headers)
+        response = await _client.get(url, headers=headers)
         
         if response.status_code == 200:
             logger.debug(f"url 정상: {response.json()}")
@@ -143,6 +137,8 @@ class ChzzkSessions:
             return self.session_key
         except asyncio.TimeoutError:
             logger.warning("⚠️ 세션 키 확인 실패: 타임아웃")
+            await self.socket_client.disconnect()
+            self.socket_client = None
             return None
     
     async def subscribe_chat(self):
@@ -166,26 +162,21 @@ class ChzzkSessions:
         }
         uri = "/open/v1/sessions/events/subscribe/chat"
 
-        response = await self.client.post(uri, headers=headers, params=params)
+        response = await _client.post(uri, headers=headers, params=params)
 
         # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
         if response.status_code == 401:
             if await self._refresh_token():
                 headers['Authorization'] = f'Bearer {self.access_token}'
-                response = await self.client.post(uri, headers=headers, params=params)
+                response = await _client.post(uri, headers=headers, params=params)
         
         # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
         if response.status_code == 200:
             logger.info(f"✅ [{self.channel_id}] 채팅 구독 성공")
-            return response.json() 
-        # 실패하면 에러 코드랑 메시지 반환
+            return response.json()
         else:
             logger.error(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
-            return {
-                "error": "API request failed", 
-                "status_code": response.status_code,
-                "detail": response.json() if response.text else "No detail"
-            }
+            return False
     
     async def send_chat(self, message: str):
 
@@ -204,29 +195,36 @@ class ChzzkSessions:
             if options:
                 message = random.choice(options)
 
-        # 메시지 데이터 구성
-        data = {
-            "message": message
-        }
+        # 300자 초과 시 자르고 ... 붙이기
+        if len(message) > 300:
+            message = message[:297] + "..."
+            
+        # 100자 단위로 분할 (최대 3개)
+        chunks = [message[i:i+100] for i in range(0, len(message), 100)]
 
         uri = "/open/v1/chats/send"
 
-        # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
-        if config.CHAT_DELAY > 0:
-            await asyncio.sleep(config.CHAT_DELAY)
+        success_all = True
+        for chunk in chunks:
+            data = {"message": chunk}
 
-        response = await self.client.post(uri, headers=headers, json=data)
+            # 채팅창 순서 꼬임 방지를 위한 전송 딜레이
+            if config.CHAT_DELAY > 0:
+                await asyncio.sleep(config.CHAT_DELAY)
 
-        # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
-        if response.status_code == 401:
-            if await self._refresh_token():
-                headers['Authorization'] = f'Bearer {self.access_token}'
-                response = await self.client.post(uri, headers=headers, json=data)
-        
-        if response.status_code == 200:
-            logger.info(f"✅ 채팅 전송 성공: {message}")
-            return True
-        else:
-            logger.error(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
-            return False
+            response = await _client.post(uri, headers=headers, json=data)
+
+            # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
+            if response.status_code == 401:
+                if await self._refresh_token():
+                    headers['Authorization'] = f'Bearer {self.access_token}'
+                    response = await _client.post(uri, headers=headers, json=data)
+            
+            if response.status_code == 200:
+                logger.info(f"✅ 채팅 전송 성공: {chunk}")
+            else:
+                logger.error(f"❌ 채팅 전송 실패: {response.status_code} - {response.text}")
+                success_all = False
+                
+        return success_all
         

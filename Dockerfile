@@ -8,9 +8,10 @@ ENV PYTHONPATH=/app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# 의존성 설치
+# 의존성 설치 (BuildKit 캐시 마운트로 재빌드 시 다운로드 생략)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # 프로덕션 스테이지
 FROM python:${PYTHON_VERSION}-slim AS final

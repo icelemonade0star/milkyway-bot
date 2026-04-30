@@ -6,16 +6,20 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 ## 📝 업데이트 내역 (Update Log)
 
 - **2026.02.23**: v1.0.0 오픈
-- **2026.02.24**: v1.1.0 인삿말 관련 명령어 추가 (인사등록, 변경, 삭제 등) 출석 로직 및 명령어 추가
+- **2026.02.24**: v1.1.0 인사말 및 기본 출석 기능 추가
 - **2026.03.11**: v1.2.0 디스코드 봇 추가 (치지직 방송 알림 연동)
+- **2026.03.31**: v1.3.0 출석 시스템 고도화 (방송 세션 기반, 연속/누적 출석)
+- **2026.04.26**: v1.4.0 인사말 Redis 캐시 안정성 개선 및 채널당 등록 한도 추가
 
 ## ✨ 주요 기능
 
 - **치지직 연동**: OAuth 인증, 실시간 채팅 수신 및 전송
 - **비동기 처리**: `asyncio`와 `FastAPI`를 활용한 Non-blocking I/O
+- **출석 체크**: 방송 세션 기반의 출석, 연속 출석, 총 출석 횟수 관리
 - **명령어 시스템**:
   - 전역 명령어 (Global Commands)
   - 채널별 커스텀 명령어 (Custom Commands)
+- **인사말 기능**: 특정 키워드에 반응하는 자동 응답 메시지
 - **데이터베이스**: PostgreSQL (SQLAlchemy ORM 사용)
 - **디스코드 연동**: 치지직 방송 시작 시 실시간 채널 알림
 - **보안**: SSH 터널링을 통한 안전한 DB 연결 지원
@@ -48,6 +52,7 @@ pip install sqlalchemy asyncpg
 pip install python-socketio aiohttp
 pip install python-dotenv
 pip install discord.py
+pip install jinja2
 pip install paramiko
 pip install requests httpx
 ```
@@ -74,6 +79,13 @@ SSH_PASSWORD=ssh_password
 CLIENT_ID=your_chzzk_client_id
 CLIENT_SECRET=your_chzzk_client_secret
 OPENAPI_BASE=https://openapi.chzzk.naver.com
+
+# Chat Bot Config
+# 봇 자신의 닉네임이나 다른 봇의 닉네임을 입력해 무한 응답 루프를 방지합니다. (쉼표로 구분)
+BOT_NICKNAMES=밀키웨이 봇, 다른 봇닉네임
+CHAT_DELAY=0.5
+# 채널당 최대 인사말 등록 개수 (기본값: 30)
+MAX_GREETINGS_PER_CHANNEL=30
 
 # Discord Config
 DISCORD_TOKEN=your_discord_bot_token

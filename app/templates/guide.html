@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milkyway Bot 사용 설명서</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #2c2c2e;
+            padding: 20px 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        h1, h2, h3 {
+            color: #00c73c;
+            border-bottom: 2px solid #00c73c;
+            padding-bottom: 10px;
+        }
+        h1 { font-size: 2.5em; text-align: center; border: none; }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; margin-top: 30px; border-bottom: 1px solid #444; }
+        code {
+            background-color: #3a3a3c;
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            border-radius: 6px;
+            font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+        }
+        .command {
+            background: #3a3a3c;
+            border-left: 5px solid #00c73c;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .command .usage {
+            font-weight: bold;
+            color: #f2f2f7;
+        }
+        .command .desc {
+            margin-top: 5px;
+            color: #c7c7cc;
+        }
+        .admin-only {
+            color: #ff453a;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .note {
+            background-color: rgba(0, 199, 60, 0.1);
+            border-left: 4px solid #00c73c;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .note a {
+            color: #f2f2f7; /* 밝은 텍스트 색상으로 가시성 확보 */
+            text-decoration: none; /* 밑줄 제거 */
+        }
+        .note a:visited {
+            color: #c7c7cc; /* 방문한 링크는 약간 어둡게 처리 */
+        }
+        .note a:hover {
+            color: #00c73c; /* 마우스 오버 시 테마 색상으로 강조 */
+            text-decoration: underline; /* 마우스 오버 시 밑줄 표시 */
+        }
+        .auth-link {
+            display: block;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #00c73c;
+            color: #1c1c1e;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+        }
+        .auth-link:hover {
+            background-color: #00a330;
+        }
+        .recommend {
+            background-color: rgba(0, 199, 60, 0.12);
+            border: 1.5px solid #00c73c;
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin: 24px 0;
+        }
+        .recommend .recommend-title {
+            color: #00c73c;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .recommend ol {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+            color: #c7c7cc;
+        }
+        .recommend ol li {
+            margin-bottom: 6px;
+        }
+        .recommend ol li strong {
+            color: #f2f2f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <h1>🌌 Milkyway Bot 사용 설명서</h1>
+        <a href="https://milkywaybot.cloud/auth/" class="auth-link">방송에 밀키웨이 봇 초대 및 권한 부여하기</a>
+        
+        <h2>소개</h2>
+        <p>Milkyway Bot은 치지직 스트리머를 위한 다기능 챗봇입니다. 출석 체크, 커스텀 명령어, 자동 인사말, 디스코드 방송 알림 등 다양한 기능을 제공하여 방송을 더 편리하고 재미있게 만들어줍니다.</p>
+        <p>기본 명령어 접두사는 <code>!</code> 입니다. (스트리머가 변경할 수 있습니다)</p>
+        <p>제작자 : 별아레</p>
+        <p>피드백 환영!</p>
+
+        <div class="recommend">
+            <div class="recommend-title">💡 처음 봇을 설정하신다면?</div>
+            <p style="color:#c7c7cc; margin: 0 0 10px 0;">방송에 봇을 초대한 뒤 아래 순서대로 설정하시면 바로 활용할 수 있습니다.</p>
+            <ol>
+                <li><strong>인사말 등록을 먼저 해주세요.</strong> 시청자가 채팅창에 인사를 입력하면 봇이 자동으로 반응하며 출석 체크도 함께 처리됩니다.<br>
+                <code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!|반갑습니다!|환영합니다!</code><br>
+                <small style="color:#888;">(응답에도 <code>|</code>를 쓰면 그 중 하나가 랜덤으로 출력됩니다)</small></li>
+                <li>필요에 따라 커스텀 명령어를 추가해 방송 규칙, 일정 등을 안내하세요.<br>
+                <code>!명령어등록 규칙 채널 규칙입니다.</code></li>
+                <li>디스코드 알림을 원하신다면 <code>!알림설정</code>으로 연동하세요.</li>
+            </ol>
+        </div>
+
+        <h2>기본 명령어 (모든 사용자)</h2>
+        
+        <div class="command">
+            <div class="usage">!출석</div>
+            <div class="desc">현재 진행 중인 방송에 출석 체크를 합니다. 연속 출석과 총 출석 횟수가 기록됩니다.</div>
+        </div>
+        
+        <div class="command">
+            <div class="usage">!명령어</div>
+            <div class="desc">봇에 등록된 모든 기본 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!채널명령어</div>
+            <div class="desc">현재 채널에 스트리머가 직접 등록한 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <h2>관리자 명령어 (스트리머/매니저)</h2>
+
+        <h3>명령어 관리</h3>
+        <div class="command">
+            <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                새로운 채널 명령어를 등록합니다. 이미 등록된 명령어를 다시 등록하면 응답이 수정됩니다.<br>
+                <strong>명령어 별칭:</strong> <code>|</code>로 여러 명령어를 한 번에 등록할 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 규칙|룰 채널 규칙입니다.</code> → <code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답<br>
+                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 주사위 1|2|3|4|5|6</code> → <code>!주사위</code> 입력 시 1~6 중 하나 출력<br>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!명령어삭제 [명령어] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 채널 명령어를 삭제합니다.</div>
+        </div>
+
+        <h3>인사말관리</h3>
+        <div class="command">
+            <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. 이미 등록된 키워드를 다시 등록하면 응답이 수정됩니다.<br>
+                <strong>키워드 별칭:</strong> <code>|</code>로 여러 키워드를 하나의 응답에 묶을 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!</code> → '안녕', '하이', 'ㅎㅇ' 중 하나라도 포함되면 반응<br>
+                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요!|반갑습니다!|환영합니다!</code> → 응답 3개 중 하나가 랜덤 출력<br>
+                <small style="color:#888;">※ 동일 키워드는 10초 쿨타임이 적용됩니다. 채널당 최대 30개까지 등록할 수 있습니다.</small>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사삭제 [키워드] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 인사말 키워드를 삭제합니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사목록</div>
+            <div class="desc">현재 채널에 등록된 모든 인사말 키워드를 보여줍니다.</div>
+        </div>
+
+        <h3>봇 설정</h3>
+        <div class="command">
+            <div class="usage">!접두사수정 [새 접두사] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                명령어 접두사를 변경합니다. 허용되는 접두사는 <code>!</code>, <code>@</code>, <code>#</code>, <code>$</code>, <code>%</code>, <code>^</code>, <code>&</code>, <code>*</code> 입니다.
+            </div>
+        </div>
+
+        <h3>디스코드 알림</h3>
+        <div class="command">
+            <div class="usage">!알림설정 [디스코드채널ID] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                방송 시작 알림을 받을 디스코드 채널을 설정합니다.
+                <div class="note">
+                    <strong>설정 방법:</strong><br>
+                    1. <a href="https://discord.com/oauth2/authorize?client_id=1480744234029158410&permissions=8&integration_type=0&scope=bot" target="_blank" rel="noopener noreferrer"><strong>[디스코드 봇 초대 링크 바로가기]</strong></a>를 클릭하여 봇을 디스코드 서버에 초대해주세요.<br>
+                    2. 알림을 받을 채널에 마우스 우클릭 후 'ID 복사하기'를 눌러 채널 ID를 확인합니다.<br>
+                    3. 치지직 채팅창에 <code>!알림설정 [복사한 ID]</code>를 입력합니다.
+                </div>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!알림삭제 <span class="admin-only">관리자용</span></div>
+            <div class="desc">설정된 디스코드 방송 알림을 해제합니다.</div>
+        </div>
+    </div>
+</body>
+</html>

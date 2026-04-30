@@ -14,6 +14,10 @@ services:
     - TZ=Asia/Seoul
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 64m
 
   api:
     # image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
@@ -36,7 +40,11 @@ services:
       options:
         max-size: "10m"  # 파일 한 개당 최대 10MB
         max-file: "3"    # 최대 3개까지만 보관 (총 30MB)
-    restart: unless-stopped 
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 300m
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import urllib.request, sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:8000/health\").getcode() == 200 else 1)'"]
       interval: 30s
@@ -63,12 +71,20 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - TZ=Asia/Seoul
       - PGTZ=Asia/Seoul
+    # 1GB 서버에 맞게 메모리 튜닝 (기본값: shared_buffers=128MB, max_connections=100)
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=128MB
+      -c work_mem=2MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=20
     networks:
       - app-network
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 256m
     logging:
       driver: "json-file"
       options:
@@ -77,11 +93,15 @@ services:
 
   redis:
     image: redis:6
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 50mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 64m
     logging:
         driver: "json-file"
         options:

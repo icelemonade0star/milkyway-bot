@@ -88,6 +88,18 @@ class Attendance(Base):
         UniqueConstraint('channel_id', 'user_id', name='unique_user_per_channel_attendance'),
     )
 
+class StreamSession(Base):
+    __tablename__ = "stream_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chzzk_channel_id = Column(String(50), nullable=False, index=True, comment="치지직 채널 ID")
+    opened_at = Column(DateTime(timezone=True), nullable=False, index=True, comment="방송 시작 시각")
+    closed_at = Column(DateTime(timezone=True), nullable=True, comment="방송 종료 시각")
+    stream_title = Column(String(200), nullable=True)
+
+    def __repr__(self):
+        return f"<StreamSession(channel={self.chzzk_channel_id}, opened={self.opened_at})>"
+
 class ChzzkNotification(Base):
     __tablename__ = "chzzk_notifications"
 

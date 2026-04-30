@@ -1,14 +1,18 @@
 from app.features.auth.chzzk_client import ChzzkAuth
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import TEMPLATE_DIR
 from app.core.database import get_async_db
 from app.features.auth.service import AuthService
+from app.features.auth.schemas import AuthListResponse, TokenRefreshResponse
 from app.features.chat.session_manager import session_manager
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 # 인증 객체 생성
 # auth = ChzzkAuth()
@@ -31,6 +35,7 @@ async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
 
 @auth_router.get("/callback", response_class=HTMLResponse)
 async def callback_auth(
+    request: Request,
     background_tasks: BackgroundTasks,
     code: str = Query(...),
     state: str = Query(...),
@@ -63,63 +68,13 @@ async def callback_auth(
     
     channel_name = getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="ko">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>인증 완료 - Milkyway Bot</title>
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                background-color: #f4f7f6;
-                display: flex;
-                justify-content: center; 
-                align-items: center;
-                height: 100vh;
-                margin: 0;
-            }}
-            .container {{
-                background: white;
-                padding: 40px;
-                border-radius: 16px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-                text-align: center;
-                max-width: 400px;
-                width: 85%;
-                margin: auto; 
-            }}
-            h1 {{ color: #2c3e50; margin-bottom: 16px; font-size: 24px; }}
-            p {{ color: #576574; margin-bottom: 32px; line-height: 1.6; font-size: 16px; }}
-            .channel-name {{ color: #00c73c; font-weight: bold; }}
-            .btn {{ 
-                background-color: #00c73c; 
-                color: white; 
-                border: none; 
-                padding: 14px 28px; 
-                border-radius: 8px; 
-                font-size: 16px; 
-                font-weight: 600;
-                cursor: pointer; 
-                transition: background 0.2s;
-                width: 100%;
-            }}
-            .btn:hover {{ background-color: #00b035; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>✨ 인증 성공!</h1>
-            <p><span class="channel-name">{channel_name}</span>님, 환영합니다.<br>이제 봇이 정상적으로 연동되었습니다.</p>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+    return templates.TemplateResponse(
+        "auth_callback.html",
+        {"request": request, "channel_name": channel_name}
+    )
 
 
-@auth_router.get("/list")
+@auth_router.get("/list", response_model=AuthListResponse)
 async def get_auth_token_list(
     channel_name: str = Query(None, description="검색할 채널 이름 (선택 사항)"),
     db: AsyncSession = Depends(get_async_db)
@@ -140,13 +95,26 @@ async def get_auth_token_list(
         ]
     }
 
-@auth_router.post("/refresh/{channel_id}")
+@auth_router.post("/refresh/{channel_id}", response_model=TokenRefreshResponse)
 async def refresh_token(
     channel_id: str, 
-    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth)
+    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth),
+    db: AsyncSession = Depends(get_async_db)
 ):
-    new_token = await chzzk_auth.refresh_access_token(channel_id)
-    return {"status": "success", "token": new_token}
+    # 1. 토큰 갱신
+    new_token, status_code = await chzzk_auth.refresh_access_token(channel_id)
+    if not new_token:
+        raise HTTPException(status_code=500, detail="토큰 갱신에 실패했습니다.")
+
+    # 2. 스트림 세션 동기화 (방송 중일 시 기록)
+    from app.features.chat.service import ChatService
+    chat_service = ChatService(db)
+    await chat_service.sync_stream_session(channel_id)
+
+    # 3. 활성화된 세션이 있다면 메모리 상의 토큰도 업데이트
+    await session_manager.update_session_token(channel_id, new_token)
+
+    return {"status": "success", "new_access_token": new_token}
 
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")

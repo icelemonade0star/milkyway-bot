@@ -1,8 +1,13 @@
 # config.py
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
+
+# 디렉터리 설정
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_DIR = BASE_DIR / "app" / "templates"
 
 OPENAPI_BASE = "https://openapi.chzzk.naver.com"
 
@@ -36,3 +41,6 @@ BOT_NICKNAMES = [name.strip() for name in os.getenv("BOT_NICKNAME", "밀키웨�
 
 # 채팅 전송 딜레이 (초 단위, 기본값 0.1초)
 CHAT_DELAY = float(os.getenv("CHAT_DELAY", "0.1"))
+
+# 채널당 최대 인사말 등록 개수
+MAX_GREETINGS_PER_CHANNEL = int(os.getenv("MAX_GREETINGS_PER_CHANNEL", "30"))
