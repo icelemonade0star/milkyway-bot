@@ -28,6 +28,17 @@ async def lifespan(app: FastAPI):
     db_module.AsyncSessionLocal = session_factory
     app.state.SessionLocal = session_factory
 
+    # 비활성 채널 정리 (30일 이상 방송 없는 채널 인증 삭제) → 세션 복구 전에 실행
+    # 실패해도 서비스는 정상 기동
+    try:
+        async with session_factory() as db_session:
+            from app.features.auth.service import AuthService
+            removed = await AuthService(db_session).cleanup_inactive_channels(days=30)
+            if removed:
+                print(f"🗑️ 비활성 채널 {len(removed)}개 정리 완료: {removed}")
+    except Exception as e:
+        print(f"⚠️ 비활성 채널 정리 중 오류 (서비스는 계속 기동): {e}")
+
     # 세션 매니저 초기화 및 DB에서 세션 복구 시도
     async with session_factory() as db_session:
         await session_manager.restore_all_sessions_from_db(db_session)

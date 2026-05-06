@@ -1,10 +1,10 @@
 from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
-from datetime import datetime, timedelta
+from sqlalchemy import select, update, delete, func
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
-from app.db.models import AuthToken, ChannelConfig
+from app.db.models import AuthToken, ChannelConfig, StreamSession, ChzzkNotification
 
 from app.core.database import get_async_db
 
@@ -115,6 +115,82 @@ class AuthService:
             await self.db.rollback()
             print(f"[DB Error] Token delete failed: {str(e)}")
             return False
+
+    async def cleanup_inactive_channels(self, days: int = 30) -> list[str]:
+        """비활성 채널의 인증 정보를 삭제합니다. 반환: 삭제된 channel_id 목록
+
+        삭제 대상:
+        - 스트림 기록 있음 + 가장 최근 방송이 {days}일 초과
+        - 스트림 기록 없음 + 인증 등록일이 {days}일 초과 (방치된 신규 등록)
+        """
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+            # Case 1: 스트림 기록 있음 + 최근 방송이 cutoff 이전
+            case1 = (
+                select(AuthToken.channel_id)
+                .join(StreamSession, AuthToken.channel_id == StreamSession.chzzk_channel_id)
+                .group_by(AuthToken.channel_id)
+                .having(func.max(StreamSession.opened_at) < cutoff)
+            )
+
+            # Case 2: 스트림 기록 없음 + 등록일이 cutoff 이전
+            stream_exists = (
+                select(StreamSession.chzzk_channel_id)
+                .where(StreamSession.chzzk_channel_id == AuthToken.channel_id)
+                .correlate(AuthToken)
+                .exists()
+            )
+            case2 = (
+                select(AuthToken.channel_id)
+                .where(AuthToken.created_at < cutoff)
+                .where(~stream_exists)
+            )
+
+            from sqlalchemy import union
+            combined = union(case1, case2).subquery()
+            result = await self.db.execute(select(combined.c.channel_id))
+            inactive_ids = result.scalars().all()
+
+            if not inactive_ids:
+                return []
+
+            # StreamSession 삭제 — 재등록 시 과거 기록으로 오탐 방지 (FK 없어서 명시적 삭제)
+            await self.db.execute(
+                delete(StreamSession).where(StreamSession.chzzk_channel_id.in_(inactive_ids))
+            )
+            # ChzzkNotification 삭제 (FK 없어서 CASCADE 안 됨)
+            await self.db.execute(
+                delete(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id.in_(inactive_ids))
+            )
+            # AuthToken 삭제 → ChannelConfig, ChatCommand, ChatGreeting, Attendance CASCADE 삭제
+            await self.db.execute(
+                delete(AuthToken).where(AuthToken.channel_id.in_(inactive_ids))
+            )
+            await self.db.commit()
+
+            # Redis 캐시 정리 (실패해도 DB 삭제는 이미 완료됐으므로 무시)
+            try:
+                from app.redis.redis_service import redis_client
+                keys_to_delete = []
+                for ch_id in inactive_ids:
+                    keys_to_delete += [
+                        f"greetings:{ch_id}",
+                        f"config:prefix:{ch_id}",
+                        f"live_status:{ch_id}",
+                    ]
+                if keys_to_delete:
+                    await redis_client.delete(*keys_to_delete)
+            except Exception as e:
+                print(f"[Cleanup] Redis 캐시 정리 실패 (무시): {e}")
+
+            return list(inactive_ids)
+
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[Cleanup] 비활성 채널 정리 중 오류 발생: {e}")
+            return []
+
 
 async def get_auth_service(db: AsyncSession = Depends(get_async_db)):
     return AuthService(db)
