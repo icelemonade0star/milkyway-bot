@@ -94,9 +94,6 @@ DISCORD_TOKEN=your_discord_bot_token
 # /admin/*, /chat/send, /chat/create/session, /chat/close/session, /auth/list, /auth/refresh 보호
 ADMIN_TOKEN=your_secure_admin_token_here
 
-# Naver Login Config (For Notifications)
-NID_AUT=your_naver_nid_aut
-NID_SES=your_naver_nid_ses
 ```
 
 ### 4. API 보안 (Admin Token)
