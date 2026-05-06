@@ -20,7 +20,7 @@ services:
           memory: 64m
 
   api:
-    image: ${DOCKERHUB_USERNAME}/milkyway_bot:${DEPLOY_SHA}
+    image: ${DOCKERHUB_USERNAME}/milkyway_bot:${DEPLOY_SHA:-latest}
     expose:
       - 8000
     volumes:

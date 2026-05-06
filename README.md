@@ -47,14 +47,7 @@ py -3.13 -m venv .venv
 ### 2. 의존성 패키지 설치
 
 ```bash
-pip install fastapi uvicorn[standard]
-pip install sqlalchemy asyncpg
-pip install python-socketio aiohttp
-pip install python-dotenv
-pip install discord.py
-pip install jinja2
-pip install paramiko
-pip install requests httpx
+pip install -r requirements.txt
 ```
 
 ### 3. 환경 변수 설정 (.env)
@@ -62,6 +55,9 @@ pip install requests httpx
 프로젝트 루트에 `.env` 파일을 생성하고 아래 내용을 채워주세요.
 
 ```ini
+# Docker Config
+DOCKERHUB_USERNAME=your_dockerhub_username
+
 # Database Config
 DB_USER=your_db_user
 DB_PASSWORD=your_db_password
@@ -125,3 +121,4 @@ curl -H "X-Admin-Token: your_token" https://milkywaybot.cloud/auth/list
 ```bash
 # 개발 모드 실행 (코드 변경 시 자동 재시작)
 uvicorn app.main:app --reload
+```

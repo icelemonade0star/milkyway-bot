@@ -37,7 +37,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 # --- 기타 설정 ---
 ALLOWED_PREFIXES = os.getenv("ALLOWED_PREFIXES", "!@#$%^&*")
 # 여러 봇 닉네임을 쉼표로 구분하여 리스트로 변환 (예: "밀키웨이 봇,싹둑,나이트봇")
-BOT_NICKNAMES = [name.strip() for name in os.getenv("BOT_NICKNAME", "밀키웨이 봇").split(',')]
+BOT_NICKNAMES = [name.strip() for name in os.getenv("BOT_NICKNAMES", "밀키웨이 봇").split(',')]
 
 # 채팅 전송 딜레이 (초 단위, 기본값 0.1초)
 CHAT_DELAY = float(os.getenv("CHAT_DELAY", "0.1"))
