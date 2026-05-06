@@ -20,8 +20,7 @@ services:
           memory: 64m
 
   api:
-    # image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-    image: ${DOCKERHUB_USERNAME}/milkyway_bot:latest
+    image: ${DOCKERHUB_USERNAME}/milkyway_bot:${DEPLOY_SHA}
     expose:
       - 8000
     volumes:
