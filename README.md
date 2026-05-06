@@ -22,7 +22,7 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 - **인사말 기능**: 특정 키워드에 반응하는 자동 응답 메시지
 - **데이터베이스**: PostgreSQL (SQLAlchemy ORM 사용)
 - **디스코드 연동**: 치지직 방송 시작 시 실시간 채널 알림
-- **보안**: SSH 터널링을 통한 안전한 DB 연결 지원
+- **보안**: SSH 터널링을 통한 안전한 DB 연결 지원, 관리자 API 토큰 인증
 
 ## 🛠️ 기술 스택
 
@@ -90,12 +90,40 @@ MAX_GREETINGS_PER_CHANNEL=30
 # Discord Config
 DISCORD_TOKEN=your_discord_bot_token
 
+# Admin API Token
+# /admin/*, /chat/send, /chat/create/session, /chat/close/session, /auth/list, /auth/refresh 보호
+ADMIN_TOKEN=your_secure_admin_token_here
+
 # Naver Login Config (For Notifications)
 NID_AUT=your_naver_nid_aut
 NID_SES=your_naver_nid_ses
 ```
 
-### 4. 서버 실행
+### 4. API 보안 (Admin Token)
+
+관리자 전용 엔드포인트는 `X-Admin-Token` 헤더로 보호됩니다.
+
+**보호 대상 엔드포인트:**
+
+- `GET /admin/*` — 전체 관리자 API
+- `GET /chat/send`
+- `GET /chat/create/session`, `/chat/create/session/force`, `/chat/close/session`
+- `GET /auth/list`
+- `POST /auth/refresh/{channel_id}`
+
+**Swagger UI에서 인증하기:**
+
+1. `/api/swagger` 접속
+2. 우측 상단 **Authorize** 버튼 클릭
+3. `X-Admin-Token` 필드에 `.env`의 `ADMIN_TOKEN` 값 입력
+
+**직접 호출 시:**
+
+```bash
+curl -H "X-Admin-Token: your_token" https://milkywaybot.cloud/auth/list
+```
+
+### 5. 서버 실행
 
 ```bash
 # 개발 모드 실행 (코드 변경 시 자동 재시작)

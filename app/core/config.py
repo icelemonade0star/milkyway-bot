@@ -44,3 +44,6 @@ CHAT_DELAY = float(os.getenv("CHAT_DELAY", "0.1"))
 
 # 채널당 최대 인사말 등록 개수
 MAX_GREETINGS_PER_CHANNEL = int(os.getenv("MAX_GREETINGS_PER_CHANNEL", "30"))
+
+# --- 관리자 인증 ---
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.security import verify_admin_token
 from app.features.chat.session_manager import session_manager
 from app.features.chat.schemas import (
     ChatSendResponse,
@@ -11,7 +12,7 @@ from app.features.chat.schemas import (
 chat_router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-@chat_router.get("/send", response_model=ChatSendResponse)
+@chat_router.get("/send", response_model=ChatSendResponse, dependencies=[Depends(verify_admin_token)])
 async def send_message(
     channel_id: str,
     message: str
@@ -27,7 +28,7 @@ async def send_message(
     return {"status": "success", "message": "채팅 전송에 성공했습니다."}
 
 
-@chat_router.get("/create/session", response_model=SessionCreateResponse)
+@chat_router.get("/create/session", response_model=SessionCreateResponse, dependencies=[Depends(verify_admin_token)])
 async def create_session(
     channel_id: str
 ):
@@ -47,7 +48,7 @@ async def create_session(
     }
 
 
-@chat_router.get("/create/session/force", response_model=SessionCreateResponse)
+@chat_router.get("/create/session/force", response_model=SessionCreateResponse, dependencies=[Depends(verify_admin_token)])
 async def force_create_session(
     channel_id: str
 ):
@@ -68,7 +69,7 @@ async def get_active_sessions():
     }
 
 
-@chat_router.get("/close/session", response_model=MessageResponse)
+@chat_router.get("/close/session", response_model=MessageResponse, dependencies=[Depends(verify_admin_token)])
 async def close_session(channel_id: str):
     session = session_manager.get_existing_session(channel_id)
     if not session:

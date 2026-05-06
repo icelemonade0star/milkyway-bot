@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_async_db
+from app.core.security import verify_admin_token
 from app.db.models import AuthToken
 from app.redis.redis_service import redis_client, RedisConfigService
 from app.features.chat.service import ChatService
@@ -13,7 +14,11 @@ from app.features.admin.schemas import (
     AllGreetingRefreshResponse,
 )
 
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(verify_admin_token)],
+)
 
 redis_service = RedisConfigService()
 

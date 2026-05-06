@@ -13,7 +13,7 @@ app = FastAPI(
     title="milkyway bot",
     version="1.4.0",
     docs_url="/api/swagger",
-    description="밀키웨이 봇 API 문서입니다."
+    description="밀키웨이 봇 API 문서입니다.",
 )
 register_exception_handlers(app)
 app.include_router(auth_router.auth_router)

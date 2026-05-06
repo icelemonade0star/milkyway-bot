@@ -216,7 +216,7 @@ class ChatService:
             if not cmd_obj:
                 return False
 
-            self.db.delete(cmd_obj)
+            await self.db.delete(cmd_obj)
             await self.db.commit()
             return True
         except Exception as e:
@@ -300,7 +300,7 @@ class ChatService:
             if not target:
                 return False
 
-            self.db.delete(target)
+            await self.db.delete(target)
             await self.db.commit()
             return True
         except Exception as e:
