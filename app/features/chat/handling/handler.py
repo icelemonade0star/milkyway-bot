@@ -313,7 +313,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             elif result.command == "인사목록":
                 greetings = await chat_service.get_channel_greetings(channel_id)
                 if greetings:
-                    keywords = [g.keyword for g in greetings]
+                    keywords = [g.keyword.split('|')[0].strip() for g in greetings]
                     await session.send_chat(f"등록된 인사말: {', '.join(keywords)}")
                 else:
                     await session.send_chat("등록된 인사말이 없습니다.")
