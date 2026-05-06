@@ -18,4 +18,4 @@ class AuthListResponse(BaseModel):
 
 class TokenRefreshResponse(BaseModel):
     status: str
-    new_access_token: str
+    message: str

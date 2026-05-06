@@ -46,11 +46,6 @@ class SessionManager:
         """이미 생성된 세션만 반환합니다. 없으면 None."""
         return self.active_sessions.get(channel_id)
 
-    async def get_session(self, channel_id: str):
-        """세션이 있으면 반환하고, 없으면 생성해서 반환합니다."""
-        session, _ = await self.get_or_create_session(channel_id)
-        return session
-    
     async def get_or_create_session(self, channel_id: str, force_recreate: bool = False):
         """
         세션을 반환합니다. 없으면 새로 생성하고 초기화(연결)까지 마칩니다.

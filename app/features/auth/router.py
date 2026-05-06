@@ -111,7 +111,7 @@ async def refresh_token(
     # 3. 활성화된 세션이 있다면 메모리 상의 토큰도 업데이트
     await session_manager.update_session_token(channel_id, new_token)
 
-    return {"status": "success", "new_access_token": new_token}
+    return {"status": "success", "message": "토큰이 갱신되었습니다."}
 
 # 예외처리. 따로 분리할것
 @auth_router.post("/authenticate")
