@@ -105,7 +105,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
                     await chat_service.process_attendance(channel_id, user_id, user_name)
 
                 if greeting_resp:
-                    session = await session_manager.get_session(channel_id)
+                    session = session_manager.get_existing_session(channel_id)
                     if session:
                         await session.send_chat(greeting_resp)
         return
@@ -126,7 +126,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
         return
 
     async with session_factory() as db:
-        session = await session_manager.get_session(channel_id)
+        session = session_manager.get_existing_session(channel_id)
         if session:
             await on_command(db, session, channel_id, command, args, role, _redis_service, prefix, user_id, user_name)
 

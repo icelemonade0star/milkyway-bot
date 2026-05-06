@@ -41,7 +41,7 @@ class ParamikoTunnel:
 
     @property
     def local_port(self):
-        return self._server.local_bind_port if self._server else 5432
+        return self._server.local_bind_port if self._server else None
 
     def stop(self):
         if self._server:

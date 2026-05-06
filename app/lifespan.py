@@ -9,14 +9,13 @@ from app.core.tunnel import ParamikoTunnel
 from app.features.chat.session_manager import session_manager
 from app.features.discord_bot.main import bot, discord_token, start_discord_bot
 
-# 터널 인스턴스 생성
-tunnel = ParamikoTunnel()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP ---
     print("🚀 서버 시작")
-    
+
+    tunnel = ParamikoTunnel()
+
     # DB 엔진 및 세션 팩토리 초기화
     engine = create_db_engine(tunnel.local_port)
     session_factory = async_sessionmaker(

@@ -16,7 +16,7 @@ async def send_message(
     channel_id: str,
     message: str
 ):
-    chzzk_session = await session_manager.get_session(channel_id)
+    chzzk_session = session_manager.get_existing_session(channel_id)
     if not chzzk_session:
         raise HTTPException(status_code=404, detail="활성화된 세션이 없습니다.")
 
@@ -70,7 +70,7 @@ async def get_active_sessions():
 
 @chat_router.get("/close/session", response_model=MessageResponse)
 async def close_session(channel_id: str):
-    session = await session_manager.get_session(channel_id)
+    session = session_manager.get_existing_session(channel_id)
     if not session:
         raise HTTPException(status_code=404, detail="활성화된 세션이 없습니다.")
 

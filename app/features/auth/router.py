@@ -55,10 +55,6 @@ async def callback_auth(
         raise HTTPException(status_code=400, detail="유저 정보 조회 실패")
 
 
-    print("채널이름 : ",chzzk_auth.channel_name)
-    print("채널 ID : ",chzzk_auth.channel_id)
-    print("액세스 토큰 : ",chzzk_auth.access_token)
-
     auth_service = AuthService(db)
 
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
