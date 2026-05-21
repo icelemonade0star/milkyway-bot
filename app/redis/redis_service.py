@@ -1,5 +1,6 @@
 import redis.asyncio as redis
 import app.core.config as config
+import logging
 import re
 import httpx
 import json
@@ -8,6 +9,7 @@ from app.core.database import get_session_factory
 from app.features.chat.service import ChatService
 
 _http_client = httpx.AsyncClient(timeout=5.0)
+logger = logging.getLogger("RedisConfigService")
 
 redis_client = redis.Redis(
     host=config.REDIS_HOST,
@@ -34,7 +36,7 @@ class RedisConfigService:
             if prefix:
                 return prefix
         except Exception as e:
-            print(f"⚠️ Redis 조회 실패 (DB 조회로 전환): {e}")
+            logger.warning("Redis lookup failed; falling back to DB: %s", e)
         
         # 2. Redis에 없으면 DB에서 조회
         session_factory = get_session_factory()
@@ -52,7 +54,7 @@ class RedisConfigService:
                 try:
                     await redis_client.set(cache_key, db_prefix, ex=86400)
                 except Exception as e:
-                    print(f"⚠️ Redis 저장 실패: {e}")
+                    logger.warning("Redis prefix save failed: %s", e)
                 return db_prefix
         
         # 4. DB에도 정보가 없다면 기본값 반환
@@ -84,7 +86,7 @@ class RedisConfigService:
         try:
             await redis_client.set(cache_key, new_prefix, ex=86400)
         except Exception as e:
-            print(f"⚠️ Redis 갱신 실패: {e}")
+            logger.warning("Redis prefix refresh failed: %s", e)
 
     def _should_respond(self, message: str, keyword: str) -> bool:
         """
@@ -129,7 +131,7 @@ class RedisConfigService:
             else:
                 await redis_client.set(cache_key, json.dumps(content), ex=300)
         except Exception as e:
-            print(f"⚠️ 방송 상태 사전 캐싱 실패: {e}")
+            logger.warning("Live status prefetch failed: %s", e)
 
     async def get_greeting_response(self, channel_id: str, message: str) -> tuple[str | None, bool]:
         """
@@ -160,7 +162,7 @@ class RedisConfigService:
                         return response, True
 
         except Exception as e:
-            print(f"⚠️ Redis 인사말 조회 실패: {e}")
+            logger.warning("Redis greeting lookup failed: %s", e)
 
         return None, False
 
@@ -192,7 +194,7 @@ class RedisConfigService:
                         pipe.expire(cache_key, 300)
                         await pipe.execute()
             except Exception as e:
-                print(f"⚠️ Redis 인사말 캐싱 실패: {e}")
+                logger.warning("Redis greeting cache refresh failed: %s", e)
 
     async def add_greeting_cache(self, channel_id: str, keyword: str, response: str):
         """인사말 하나를 Redis에 추가하거나 갱신합니다."""
@@ -207,8 +209,10 @@ class RedisConfigService:
             else:
                 # 캐시가 없으면 전체 로드 (TTL 설정 포함)
                 await self.refresh_greetings_cache(channel_id)
+            return True
         except Exception as e:
-            print(f"⚠️ Redis 인사말 추가 실패: {e}")
+            logger.warning("Redis greeting cache update failed: %s", e)
+            return False
 
     async def delete_greeting_cache(self, channel_id: str, keyword: str):
         """인사말 하나를 Redis에서 삭제합니다."""
@@ -216,8 +220,10 @@ class RedisConfigService:
         try:
             if await redis_client.exists(cache_key):
                 await redis_client.hdel(cache_key, keyword)
+            return True
         except Exception as e:
-            print(f"⚠️ Redis 인사말 삭제 실패: {e}")
+            logger.warning("Redis greeting cache delete failed: %s", e)
+            return False
 
     async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
         """
@@ -238,5 +244,5 @@ class RedisConfigService:
             return not was_set
 
         except Exception as e:
-            print(f"⚠️ Redis 쿨타임 체크 실패: {e}")
+            logger.warning("Redis cooldown check failed: %s", e)
             return False # 에러 시 쿨타임 없이 실행 허용

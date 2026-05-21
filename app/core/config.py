@@ -15,6 +15,7 @@ OPENAPI_BASE = "https://openapi.chzzk.naver.com"
 CLIENT_ID = '9ebe5989-29c5-4ab5-a4bc-19071b95245a'
 CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 REDIRECT_URL = 'https://milkywaybot.cloud/auth/callback'
+DASHBOARD_COOKIE_SECURE = os.getenv("DASHBOARD_COOKIE_SECURE", "true").lower() == "true"
 
 # --- 데이터베이스 설정 ---
 DB_USER = os.getenv("DB_USER")

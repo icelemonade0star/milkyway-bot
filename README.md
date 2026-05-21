@@ -10,6 +10,7 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 - **2026.03.11**: v1.2.0 디스코드 봇 추가 (치지직 방송 알림 연동)
 - **2026.03.31**: v1.3.0 출석 시스템 고도화 (방송 세션 기반, 연속/누적 출석)
 - **2026.04.26**: v1.4.0 인사말 Redis 캐시 안정성 개선 및 채널당 등록 한도 추가
+- **2026.05.21**: v1.5.0 스트리머 대시보드 추가 (치지직 OAuth 로그인, 명령어/인사말 조회 및 수정, 명령어 쿨타임 관리)
 
 ## ✨ 주요 기능
 
@@ -20,6 +21,8 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
   - 전역 명령어 (Global Commands)
   - 채널별 커스텀 명령어 (Custom Commands)
 - **인사말 기능**: 특정 키워드에 반응하는 자동 응답 메시지
+- **스트리머 대시보드**: 치지직 OAuth 로그인 기반으로 채널 명령어, 인사말, 출석 랭킹, 디스코드 알림 상태 확인
+- **대시보드 관리 기능**: 명령어/인사말 추가, 수정, 삭제 및 명령어 쿨타임 변경
 - **데이터베이스**: PostgreSQL (SQLAlchemy ORM 사용)
 - **디스코드 연동**: 치지직 방송 시작 시 실시간 채널 알림
 - **보안**: SSH 터널링을 통한 안전한 DB 연결 지원, 관리자 API 토큰 인증
@@ -86,6 +89,8 @@ SSH_PASSWORD=ssh_password
 CLIENT_ID=your_chzzk_client_id
 CLIENT_SECRET=your_chzzk_client_secret
 OPENAPI_BASE=https://openapi.chzzk.naver.com
+# 로컬 HTTP 테스트 시 false, 운영 HTTPS 환경에서는 true 권장
+DASHBOARD_COOKIE_SECURE=true
 
 # Chat Bot Config
 # 봇 자신의 닉네임이나 다른 봇의 닉네임을 입력해 무한 응답 루프를 방지합니다. (쉼표로 구분)
@@ -114,6 +119,22 @@ ADMIN_TOKEN=your_secure_admin_token_here
 - `GET /chat/create/session`, `/chat/create/session/force`, `/chat/close/session`
 - `GET /auth/list`
 - `POST /auth/refresh/{channel_id}`
+
+**대시보드 로그인:**
+
+- `/auth/dashboard` 접속
+- `/auth/dashboard/login`에서 치지직 OAuth 인증
+- 치지직 redirect URI는 기존 `/auth/callback` 하나만 사용
+- callback에서 등록된 채널 여부 확인 후 대시보드 세션 발급
+
+**대시보드에서 가능한 작업:**
+
+- 채널 명령어 목록 조회
+- 채널 명령어 추가, 응답 수정, 삭제
+- 명령어별 쿨타임 초 단위 변경
+- 인사말 목록 조회
+- 인사말 추가, 응답 수정, 삭제
+- 출석 랭킹 및 디스코드 알림 설정 상태 확인
 
 **Swagger UI에서 인증하기:**
 

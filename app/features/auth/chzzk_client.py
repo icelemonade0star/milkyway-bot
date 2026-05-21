@@ -32,8 +32,8 @@ class ChzzkAuth:
         self.refresh_token = None
         self.expires_at = None
 
-    def get_auth_url(self):
-        state = secrets.token_urlsafe(16)
+    def get_auth_url(self, state: str | None = None):
+        state = state or secrets.token_urlsafe(16)
         # redirect_url을 URL 인코딩
         encoded_redirect = quote(self.redirect_url)
         

@@ -5,9 +5,9 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import TEMPLATE_DIR
+from app.core.config import DASHBOARD_COOKIE_SECURE, TEMPLATE_DIR
 from app.core.database import get_async_db
-from app.core.security import verify_admin_token
+from app.core import security
 from app.features.auth.service import AuthService
 from app.features.auth.schemas import AuthListResponse, TokenRefreshResponse
 from app.features.chat.session_manager import session_manager
@@ -21,7 +21,6 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuth:
     auth_service = AuthService(db)
     return ChzzkAuth(auth_service)
-
 
 @auth_router.get("/")
 async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
@@ -57,6 +56,24 @@ async def callback_auth(
 
 
     auth_service = AuthService(db)
+    state_payload = security.verify_oauth_state_token(state)
+    if state_payload and state_payload.get("purpose") == security.OAUTH_STATE_PURPOSE_DASHBOARD:
+        registered_channel = await auth_service.get_auth_token_by_id(chzzk_auth.channel_id)
+        if not registered_channel:
+            raise HTTPException(status_code=403, detail="등록된 채널만 대시보드에 접근할 수 있습니다.")
+
+        session_token = security.create_dashboard_session_token(chzzk_auth.channel_id, chzzk_auth.channel_name)
+        response = RedirectResponse(url="/auth/dashboard", status_code=303)
+        response.delete_cookie("oauth_state")
+        response.set_cookie(
+            key=security.DASHBOARD_SESSION_COOKIE,
+            value=session_token,
+            httponly=True,
+            secure=DASHBOARD_COOKIE_SECURE,
+            samesite="lax",
+            max_age=security.DASHBOARD_SESSION_TTL_SECONDS,
+        )
+        return response
 
     inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
     
@@ -71,7 +88,7 @@ async def callback_auth(
     )
 
 
-@auth_router.get("/list", response_model=AuthListResponse, dependencies=[Depends(verify_admin_token)])
+@auth_router.get("/list", response_model=AuthListResponse, dependencies=[Depends(security.verify_admin_token)])
 async def get_auth_token_list(
     channel_name: str = Query(None, description="검색할 채널 이름 (선택 사항)"),
     db: AsyncSession = Depends(get_async_db)
@@ -92,7 +109,11 @@ async def get_auth_token_list(
         ]
     }
 
-@auth_router.post("/refresh/{channel_id}", response_model=TokenRefreshResponse, dependencies=[Depends(verify_admin_token)])
+@auth_router.post(
+    "/refresh/{channel_id}",
+    response_model=TokenRefreshResponse,
+    dependencies=[Depends(security.verify_admin_token)],
+)
 async def refresh_token(
     channel_id: str,
     chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth),

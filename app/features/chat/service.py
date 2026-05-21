@@ -106,6 +106,9 @@ class ChatService:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
+
+    async def get_global_command(self, command: str):
+        return await self.get_global_commands(command)
         
     async def get_all_global_commands(self):
         """
