@@ -32,6 +32,17 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 - **Socket**: python-socketio, aiohttp
 - **Infra/Tools**: Paramiko (SSH Tunneling), Uvicorn, Discord.py
 
+## 📄 개발 환경 및 인코딩
+
+- 소스 코드, 문서, 템플릿은 모두 **UTF-8** 기준으로 관리합니다.
+- Windows PowerShell에서 한글이 깨져 보이면 터미널 코드 페이지를 UTF-8로 변경한 뒤 다시 확인하세요.
+
+```powershell
+chcp 65001
+```
+
+- 저장 시 에디터 인코딩은 `UTF-8`, 줄바꿈은 `LF`를 사용합니다. 기본 설정은 `.editorconfig`와 `.gitattributes`에 정의되어 있습니다.
+
 ## 🚀 설치 및 실행 가이드
 
 ### 1. 프로젝트 클론 및 가상환경 설정
