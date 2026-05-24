@@ -31,6 +31,9 @@ _redis_service = RedisConfigService()
 def has_chzzk_emoticon(text: str) -> bool:
     return bool(_EMOTICON_PATTERN.search(text))
 
+def render_user_placeholders(text: str, user_name: str | None) -> str:
+    return text.replace("[닉네임]", user_name or "시청자")
+
 # 헬퍼 함수: 한국어 조사 판별
 def get_josa(word: str, josa_pair: str) -> str:
     """
@@ -107,7 +110,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
                 if greeting_resp:
                     session = session_manager.get_existing_session(channel_id)
                     if session:
-                        await session.send_chat(greeting_resp)
+                        await session.send_chat(render_user_placeholders(greeting_resp, user_name))
         return
 
     # 3. 명령어 파싱
@@ -149,7 +152,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             command = custom_cmd.response
             result = await chat_service.get_global_commands(command)
         else:
-            await session.send_chat(custom_cmd.response)
+            await session.send_chat(render_user_placeholders(custom_cmd.response, user_name))
             return
 
     if result and result.is_active:
@@ -164,7 +167,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
         if result.type == "text":
             # 텍스트 응답 전송
-            await session.send_chat(result.response)
+            await session.send_chat(render_user_placeholders(result.response, user_name))
 
         elif result.type == "system":
 

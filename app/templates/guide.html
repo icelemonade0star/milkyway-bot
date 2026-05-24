@@ -36,6 +36,10 @@
             border-radius: 6px;
             font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         }
+        .placeholder-token {
+            color: #ffd60a;
+            font-weight: 700;
+        }
         .command {
             background: #3a3a3c;
             border-left: 5px solid #00c73c;
@@ -153,7 +157,7 @@
             <p style="color:#c7c7cc; margin: 0 0 10px 0;">방송에 봇을 초대한 뒤 아래 순서대로 설정하시면 바로 활용할 수 있습니다.</p>
             <ol>
                 <li><strong>인사말 등록을 먼저 해주세요.</strong> 시청자가 채팅창에 인사를 입력하면 봇이 자동으로 반응하며 출석 체크도 함께 처리됩니다.<br>
-                <code>!인사등록 안녕하세요 어서오세요!</code><br>
+                <code>!인사등록 안녕하세요 어서오세요!</code></li>
                 <li>필요에 따라 커스텀 명령어를 추가해 방송 규칙, 일정 등을 안내하세요.<br>
                 <code>!명령어등록 규칙 채널 규칙입니다.</code></li>
                 <li>디스코드 알림을 원하신다면 <code>!알림설정</code>으로 연동하세요.</li>
@@ -179,15 +183,25 @@
 
         <h2>관리자 명령어 (스트리머/매니저)</h2>
 
+        <h3>공통 규칙</h3>
+        <div class="command">
+            <div class="usage"><code>|</code>, <code><span class="placeholder-token">[닉네임]</span></code></div>
+            <div class="desc">
+                <strong>입력 별칭:</strong> 명령어 또는 인사말 키워드에 <code>|</code>를 넣으면 여러 입력을 하나로 묶을 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 규칙|룰 채널 규칙입니다.</code> → <code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!</code> → '안녕', '하이', 'ㅎㅇ' 중 하나라도 포함되면 반응<br>
+                <strong>랜덤 응답:</strong> 명령어 또는 인사말 응답에 <code>|</code>를 넣으면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요!|반갑습니다!|환영합니다!</code><br>
+                <strong>닉네임 치환:</strong> 응답에 <code><span class="placeholder-token">[닉네임]</span></code>을 넣으면 채팅을 입력한 시청자 닉네임으로 바뀝니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요 <span class="placeholder-token">[닉네임]</span>님!</code>
+            </div>
+        </div>
+
         <h3>명령어 관리</h3>
         <div class="command">
             <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
-                새로운 채널 명령어를 등록합니다. 이미 등록된 명령어를 다시 등록하면 응답이 수정됩니다.<br>
-                <strong>명령어 별칭:</strong> <code>|</code>로 여러 명령어를 한 번에 등록할 수 있습니다.<br>
-                &nbsp;&nbsp;<code>!명령어등록 규칙|룰 채널 규칙입니다.</code> → <code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답<br>
-                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
-                &nbsp;&nbsp;<code>!명령어등록 주사위 1|2|3|4|5|6</code> → <code>!주사위</code> 입력 시 1~6 중 하나 출력<br>
+                새로운 채널 명령어를 등록합니다. 이미 등록된 명령어를 다시 등록하면 응답이 수정됩니다.
             </div>
         </div>
 
@@ -201,10 +215,7 @@
             <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
             <div class="desc">
                 채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. 이미 등록된 키워드를 다시 등록하면 응답이 수정됩니다.<br>
-                <strong>키워드 별칭:</strong> <code>|</code>로 여러 키워드를 하나의 응답에 묶을 수 있습니다.<br>
-                &nbsp;&nbsp;<code>!인사등록 안녕|하이|ㅎㅇ 어서오세요!</code> → '안녕', '하이', 'ㅎㅇ' 중 하나라도 포함되면 반응<br>
-                <strong>랜덤 응답:</strong> 응답에도 <code>|</code>를 쓰면 그 중 하나를 랜덤으로 출력합니다.<br>
-                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요!|반갑습니다!|환영합니다!</code> → 응답 3개 중 하나가 랜덤 출력<br>
+                치지직 이모티콘은 인사말 키워드에 등록할 수 있지만, 응답 내용에는 포함할 수 없습니다.<br>
                 <small style="color:#888;">※ 동일 키워드는 10초 쿨타임이 적용됩니다. 채널당 최대 30개까지 등록할 수 있습니다.</small>
             </div>
         </div>
