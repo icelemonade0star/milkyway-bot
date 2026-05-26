@@ -67,6 +67,6 @@ jobs:
             git reset --hard $DEPLOY_SHA
             mv .env.bak .env
 
-            DEPLOY_SHA=$DEPLOY_SHA docker compose pull
+            DEPLOY_SHA=$DEPLOY_SHA docker compose pull api
             DEPLOY_SHA=$DEPLOY_SHA docker compose up -d --remove-orphans --wait --wait-timeout 120
             docker image prune -f
