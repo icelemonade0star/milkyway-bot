@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.db.models import ChzzkNotification
 from app.features.chat.service import ChatService
-from app.core.config import MAX_GREETINGS_PER_CHANNEL
+from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.config import ALLOWED_PREFIXES
 from app.features.discord_bot.cogs.discord_service import DiscordService
 from app.features.discord_bot.cogs.chzzk_notifications import invalidate_notification_cache
@@ -222,20 +222,22 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat("명령어 또는 내용에 이모티콘을 포함할 수 없습니다.")
                     return
 
-                # 명령어 등록 전에 기존 명령어 존재 여부 확인 (업데이트/등록 구분)
-                existing_cmd = await chat_service.get_chat_command(channel_id, new_cmd)
-                
                 # 명령어 등록/업데이트 시 글로벌 명령어와의 충돌 체크
-                success = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
+                status, actual_cmd = await chat_service.add_chat_command(channel_id, new_cmd, new_response)
                 
-                if success:
-                    if existing_cmd:
-                        actual_cmd = existing_cmd.command
+                if status in ("created", "updated"):
+                    if status == "updated":
                         josa = get_josa(actual_cmd, "이/가")
                         await session.send_chat(f"명령어 '{actual_cmd}'{josa} 수정되었습니다.")
                     else:
-                        josa = get_josa(new_cmd, "이/가")
-                        await session.send_chat(f"명령어 '{new_cmd}'{josa} 등록되었습니다.")
+                        josa = get_josa(actual_cmd, "이/가")
+                        await session.send_chat(f"명령어 '{actual_cmd}'{josa} 등록되었습니다.")
+                elif status == "response_too_long":
+                    await session.send_chat(f"응답은 구분자(|)로 나눈 각 항목이 {MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.")
+                elif status == "command_too_long":
+                    await session.send_chat(f"명령어는 {MAX_COMMAND_NAME_CHARS}자 이하여야 합니다.")
+                elif status == "limit_exceeded":
+                    await session.send_chat(f"명령어는 최대 {MAX_COMMANDS_PER_CHANNEL}개까지 등록할 수 있습니다.")
                 else:
                     # 글로벌 명령어와 충돌하는 경우
                     josa = get_josa(new_cmd, "은/는")
@@ -301,6 +303,8 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 status, actual_keyword = await chat_service.add_greeting(channel_id, keywords_str, response)
                 if status == "limit_exceeded":
                     await session.send_chat(f"인사말은 최대 {MAX_GREETINGS_PER_CHANNEL}개까지 등록할 수 있습니다.")
+                elif status == "response_too_long":
+                    await session.send_chat(f"응답은 구분자(|)로 나눈 각 항목이 {MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.")
                 elif status == "updated":
                     await redis_service.add_greeting_cache(channel_id, actual_keyword, response)
                     josa = get_josa(actual_keyword, "이/가")

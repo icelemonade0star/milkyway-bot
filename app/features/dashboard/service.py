@@ -70,38 +70,22 @@ class DashboardService:
             },
         }
 
-    async def save_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int) -> bool:
-        command = command.strip()
-        response = response.strip()
-        try:
-            command_obj = await self.chat_service.get_chat_command(channel_id, command)
-            if command_obj:
-                command_obj.response = response
-                command_obj.cooldown_seconds = cooldown_seconds
-                await self.db.commit()
-                return True
-
-            global_cmd = await self.chat_service.get_global_command(command)
-            if global_cmd:
-                return False
-
-            self.db.add(models.ChatCommand(
-                channel_id=channel_id,
-                command=command,
-                response=response,
-                cooldown_seconds=cooldown_seconds,
-            ))
-            await self.db.commit()
-            return True
-        except Exception as e:
-            await self.db.rollback()
-            logger.warning("Dashboard command save failed: %s", e)
-            return False
+    async def save_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int, is_active: bool = True) -> tuple[bool, str | None]:
+        status, _ = await self.chat_service.add_chat_command(
+            channel_id,
+            command,
+            response,
+            cooldown_seconds,
+            is_active,
+        )
+        if status in ("created", "updated"):
+            return True, None
+        return False, status
 
     async def delete_command(self, channel_id: str, command: str) -> bool:
         return await self.chat_service.delete_chat_command(channel_id, command.strip())
 
-    async def save_greeting(self, channel_id: str, keyword: str, response: str) -> bool:
+    async def save_greeting(self, channel_id: str, keyword: str, response: str) -> tuple[bool, str | None]:
         status, actual_keyword = await self.chat_service.add_greeting(
             channel_id,
             keyword.strip(),
@@ -110,8 +94,8 @@ class DashboardService:
         if status in ("created", "updated") and actual_keyword:
             if not await self.redis_service.add_greeting_cache(channel_id, actual_keyword, response.strip()):
                 logger.warning("Greeting cache update failed: channel_id=%s keyword=%s", channel_id, actual_keyword)
-            return True
-        return False
+            return True, None
+        return False, status
 
     async def delete_greeting(self, channel_id: str, keyword: str) -> bool:
         target = await self.chat_service.get_greeting(channel_id, keyword.strip())

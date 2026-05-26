@@ -179,6 +179,9 @@ class ChzzkSessions:
             return False
     
     async def send_chat(self, message: str):
+        message = message.strip()
+        if not message:
+            return False
 
         # 토큰 확인
         await self._ensure_auth()
@@ -194,6 +197,10 @@ class ChzzkSessions:
             options = [m.strip() for m in message.split('|') if m.strip()]
             if options:
                 message = random.choice(options)
+
+        message = message.strip()
+        if not message:
+            return False
 
         # 300자 초과 시 자르고 ... 붙이기
         if len(message) > 300:

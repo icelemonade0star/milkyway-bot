@@ -108,11 +108,24 @@
             gap: 12px;
         }
 
+        .panel-title {
+            display: grid;
+            gap: 4px;
+        }
+
         h2 {
             margin: 0;
             font-size: 15px;
             line-height: 1.3;
             letter-spacing: 0;
+        }
+
+        .token-help {
+            display: grid;
+            gap: 2px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.35;
         }
 
         .panel-body {
@@ -178,6 +191,50 @@
         textarea {
             min-height: 38px;
             resize: vertical;
+        }
+
+        .status-toggle {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .status-toggle input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .switch-track {
+            width: 34px;
+            height: 20px;
+            padding: 2px;
+            border-radius: 999px;
+            background: var(--line);
+            transition: background 0.15s ease;
+        }
+
+        .switch-thumb {
+            display: block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+            transition: transform 0.15s ease;
+        }
+
+        .status-toggle input:checked + .switch-track {
+            background: var(--accent);
+        }
+
+        .status-toggle input:checked + .switch-track .switch-thumb {
+            transform: translateX(14px);
+        }
+
+        .status-toggle input:focus-visible + .switch-track {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
         }
 
         button {
@@ -324,13 +381,19 @@
         <section class="grid">
             <article class="panel wide">
                 <div class="panel-head">
-                    <h2>명령어</h2>
+                    <div class="panel-title">
+                        <h2>명령어</h2>
+                        <div class="token-help">
+                            <span>구분자: |</span>
+                            <span>치환자: [닉네임]</span>
+                        </div>
+                    </div>
                     <span class="badge">{{ dashboard.commands|length }}개</span>
                 </div>
                 <div class="panel-body">
                     <form class="editor command-editor" data-resource="commands">
                         <input name="command" placeholder="명령어">
-                        <input name="response" placeholder="응답">
+                        <input name="response" placeholder="응답 (각 항목 {{ limits.max_chat_response_chars }}자 이하)" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">
                         <input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="5" title="쿨타임 초">
                         <button class="primary" type="submit">추가</button>
                     </form>
@@ -350,9 +413,14 @@
                             {% for command in dashboard.commands %}
                             <tr data-resource="commands" data-key="{{ command.command }}">
                                 <td>{{ command.command }}</td>
-                                <td><textarea name="response">{{ command.response }}</textarea></td>
+                                <td><textarea name="response" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">{{ command.response }}</textarea></td>
                                 <td><input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="{{ command.cooldown_seconds }}"></td>
-                                <td>{{ "활성" if command.is_active else "비활성" }}</td>
+                                <td>
+                                    <label class="status-toggle">
+                                        <input name="is_active" type="checkbox" {% if command.is_active %}checked{% endif %}>
+                                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                                    </label>
+                                </td>
                                 <td>
                                     <div class="actions">
                                         <button class="primary" type="button" data-action="save">저장</button>
@@ -378,7 +446,7 @@
                 <div class="panel-body">
                     <form class="editor" data-resource="greetings">
                         <input name="keyword" placeholder="키워드">
-                        <input name="response" placeholder="응답">
+                        <input name="response" placeholder="응답 (각 항목 {{ limits.max_chat_response_chars }}자 이하)" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">
                         <button class="primary" type="submit">추가</button>
                     </form>
 
@@ -396,7 +464,7 @@
                             {% for greeting in dashboard.greetings %}
                             <tr data-resource="greetings" data-key="{{ greeting.keyword }}">
                                 <td>{{ greeting.keyword }}</td>
-                                <td><textarea name="response">{{ greeting.response }}</textarea></td>
+                                <td><textarea name="response" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">{{ greeting.response }}</textarea></td>
                                 <td>{{ greeting.created_at.strftime("%Y-%m-%d") if greeting.created_at else "-" }}</td>
                                 <td>
                                     <div class="actions">
@@ -452,12 +520,27 @@
     </main>
 
     <script>
+        const MAX_CHAT_RESPONSE_CHARS = {{ limits.max_chat_response_chars }};
+
         function setStatus(resource, message) {
             const target = document.querySelector(`[data-status="${resource}"]`);
             if (target) target.textContent = message;
         }
 
+        function assertResponseLength(response) {
+            const parts = response.split("|").map((part) => part.trim()).filter(Boolean);
+            const targets = parts.length ? parts : [response.trim()];
+            const tooLong = targets.some((part) => part.length > MAX_CHAT_RESPONSE_CHARS);
+            if (tooLong) {
+                throw new Error(`응답은 구분자(|)로 나눈 각 항목이 ${MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.`);
+            }
+        }
+
         async function request(resource, method, body) {
+            if (method === "POST" && body.response) {
+                assertResponseLength(body.response);
+            }
+
             const response = await fetch(`/auth/dashboard/${resource}`, {
                 method,
                 headers: {"Content-Type": "application/json"},
@@ -504,6 +587,7 @@
                         };
                         if (resource === "commands") {
                             body.cooldown_seconds = Number(row.querySelector("[name='cooldown_seconds']").value || 0);
+                            body.is_active = row.querySelector("[name='is_active']").checked;
                         }
                         await request(resource, "POST", body);
                         setStatus(resource, "저장되었습니다.");

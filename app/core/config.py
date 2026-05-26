@@ -46,5 +46,14 @@ CHAT_DELAY = float(os.getenv("CHAT_DELAY", "0.1"))
 # 채널당 최대 인사말 등록 개수
 MAX_GREETINGS_PER_CHANNEL = int(os.getenv("MAX_GREETINGS_PER_CHANNEL", "30"))
 
+# 채널당 최대 명령어 등록 개수
+MAX_COMMANDS_PER_CHANNEL = int(os.getenv("MAX_COMMANDS_PER_CHANNEL", "100"))
+
+# 명령어 이름 최대 글자 수
+MAX_COMMAND_NAME_CHARS = int(os.getenv("MAX_COMMAND_NAME_CHARS", "100"))
+
+# 치지직 채팅 1회 전송 기준 응답 글자 수
+MAX_CHAT_RESPONSE_CHARS = int(os.getenv("MAX_CHAT_RESPONSE_CHARS", "100"))
+
 # --- 관리자 인증 ---
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")

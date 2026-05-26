@@ -9,13 +9,19 @@ import json
 # 모듈 레벨 싱글톤 — 매 출석 체크마다 TCP 연결 재생성 방지
 _http_client = httpx.AsyncClient(timeout=5.0)
 from app.db.models import ChannelConfig, GlobalCommand, ChatCommand, ChatGreeting, Attendance, StreamSession
-from app.core.config import MAX_GREETINGS_PER_CHANNEL
+from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from datetime import datetime, timedelta, timezone
 
 class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def is_response_within_chat_limit(response: str) -> bool:
+        parts = [part.strip() for part in response.split('|') if part.strip()]
+        targets = parts or [response.strip()]
+        return all(len(part) <= MAX_CHAT_RESPONSE_CHARS for part in targets)
 
     async def set_channel_config(self, channel_id: str):
         """
@@ -178,34 +184,71 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             return None
 
-    async def add_chat_command(self, channel_id: str, command: str, response: str):
+    async def add_chat_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
         try:
+            command = command.strip()
+            response = response.strip()
+            if not command or not response:
+                return "empty", None
+            if len(command) > MAX_COMMAND_NAME_CHARS:
+                return "command_too_long", None
+
+            if not self.is_response_within_chat_limit(response):
+                return "response_too_long", None
+
             # 중복 체크
             existing = await self.get_chat_command(channel_id, command)
             if existing:
-                return await self.update_chat_command(channel_id, command, response)
+                if await self.update_chat_command(channel_id, command, response, cooldown_seconds, is_active):
+                    return "updated", existing.command
+                return None, None
             
             # 글로벌 명령어 중복 확인
             global_cmd = await self.get_global_commands(command)
             if global_cmd:
-                return False
+                return "reserved", None
 
-            new_cmd = ChatCommand(channel_id=channel_id, command=command, response=response)
+            count_stmt = select(func.count()).select_from(ChatCommand).where(
+                ChatCommand.channel_id == channel_id
+            )
+            count = (await self.db.execute(count_stmt)).scalar()
+            if count >= MAX_COMMANDS_PER_CHANNEL:
+                return "limit_exceeded", None
+
+            new_cmd = ChatCommand(
+                channel_id=channel_id,
+                command=command,
+                response=response,
+                cooldown_seconds=5 if cooldown_seconds is None else cooldown_seconds,
+                is_active=True if is_active is None else is_active,
+            )
             self.db.add(new_cmd)
             await self.db.commit()
-            return True
+            return "created", command
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
-            return False
+            return None, None
 
-    async def update_chat_command(self, channel_id: str, command: str, response: str):
+    async def update_chat_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
         try:
+            command = command.strip()
+            response = response.strip()
+            if not command or not response:
+                return False
+
+            if not self.is_response_within_chat_limit(response):
+                return False
+
             cmd_obj = await self.get_chat_command(channel_id, command)
             if not cmd_obj:
                 return False
             
             cmd_obj.response = response
+            if cooldown_seconds is not None:
+                cmd_obj.cooldown_seconds = cooldown_seconds
+            if is_active is not None:
+                cmd_obj.is_active = is_active
             await self.db.commit()
             return True
         except Exception as e:
@@ -272,8 +315,16 @@ class ChatService:
             return None
 
     async def add_greeting(self, channel_id: str, keyword: str, response: str):
-        """인사말 등록/수정 (있으면 수정, 없으면 등록). 반환: ('updated', actual_keyword) | ('created', keyword) | ('limit_exceeded', None) | (None, None)"""
+        """인사말 등록/수정. 반환: ('updated', actual_keyword) | ('created', keyword) | ('empty', None) | ('limit_exceeded', None) | ('response_too_long', None) | (None, None)"""
         try:
+            keyword = keyword.strip()
+            response = response.strip()
+            if not keyword or not response:
+                return "empty", None
+
+            if not self.is_response_within_chat_limit(response):
+                return "response_too_long", None
+
             existing = await self.get_greeting(channel_id, keyword)
             if existing:
                 existing.response = response
