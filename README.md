@@ -89,6 +89,7 @@ SSH_PASSWORD=ssh_password
 CLIENT_ID=your_chzzk_client_id
 CLIENT_SECRET=your_chzzk_client_secret
 OPENAPI_BASE=https://openapi.chzzk.naver.com
+PUBLIC_SITE_URL=https://milkywaybot.cloud
 # 로컬 HTTP 테스트 시 false, 운영 HTTPS 환경에서는 true 권장
 DASHBOARD_COOKIE_SECURE=true
 
