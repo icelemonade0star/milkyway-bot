@@ -327,9 +327,9 @@ class ChatService:
 
             existing = await self.get_greeting(channel_id, keyword)
             if existing:
-                existing.response = response
-                await self.db.commit()
-                return "updated", existing.keyword
+                if await self.update_greeting(channel_id, keyword, response):
+                    return "updated", existing.keyword
+                return None, None
 
             count_stmt = select(func.count()).select_from(ChatGreeting).where(
                 ChatGreeting.channel_id == channel_id
@@ -346,6 +346,28 @@ class ChatService:
             await self.db.rollback()
             print(f"[DB Error] Add greeting failed: {str(e)}")
             return None, None
+
+    async def update_greeting(self, channel_id: str, keyword: str, response: str):
+        try:
+            keyword = keyword.strip()
+            response = response.strip()
+            if not keyword or not response:
+                return False
+
+            if not self.is_response_within_chat_limit(response):
+                return False
+
+            target = await self.get_greeting(channel_id, keyword)
+            if not target:
+                return False
+
+            target.response = response
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] Update greeting failed: {str(e)}")
+            return False
 
     async def delete_greeting(self, channel_id: str, keyword: str):
         try:
