@@ -37,6 +37,12 @@ async def robots_txt():
     )
 
 
+# Google Search Console HTML 파일 소유권 확인용 엔드포인트입니다.
+@guide_router.get("/googleedb72741be7a79c4.html", response_class=PlainTextResponse)
+async def google_site_verification():
+    return "google-site-verification: googleedb72741be7a79c4.html\n"
+
+
 @guide_router.get("/sitemap.xml")
 async def sitemap_xml():
     content = f"""<?xml version="1.0" encoding="UTF-8"?>
