@@ -1,3 +1,7 @@
+import paramiko
+if not hasattr(paramiko, 'DSSKey'):
+    paramiko.DSSKey = type('DSSKey', (paramiko.PKey,), {})
+
 from sshtunnel import SSHTunnelForwarder
 import app.core.config as config
 from app.core.logger import get_logger
