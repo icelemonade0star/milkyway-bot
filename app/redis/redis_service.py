@@ -2,13 +2,12 @@ import redis.asyncio as redis
 import app.core.config as config
 import logging
 import re
-import httpx
 import json
 
 from app.core.database import get_session_factory
 from app.features.chat.service import ChatService
+from app.platforms.registry import get_live_provider
 
-_http_client = httpx.AsyncClient(timeout=5.0)
 logger = logging.getLogger("RedisConfigService")
 
 redis_client = redis.Redis(
@@ -116,20 +115,20 @@ class RedisConfigService:
         return False
 
     async def _prefetch_live_status(self, channel_id: str):
-        """방송 상태를 API로 확인하고 Redis에 캐싱합니다. DB 쓰기 없음."""
+        """Cache live status through the platform live provider. No DB writes here."""
         cache_key = f"live_status:{channel_id}"
         try:
             if await redis_client.exists(cache_key):
                 return
-            url = f"https://api.chzzk.naver.com/polling/v2/channels/{channel_id}/live-status"
-            res = await _http_client.get(url)
-            if res.status_code != 200:
-                return
-            content = res.json().get("content", {})
-            if not content or content.get("status") != "OPEN":
+
+            provider = get_live_provider("chzzk")
+            live_status = await provider.get_live_status(channel_id)
+
+            if not live_status or live_status.status != "OPEN":
                 await redis_client.set(cache_key, "CLOSE", ex=60)
-            else:
-                await redis_client.set(cache_key, json.dumps(content), ex=300)
+                return
+
+            await redis_client.set(cache_key, json.dumps(live_status.raw or {}), ex=300)
         except Exception as e:
             logger.warning("Live status prefetch failed: %s", e)
 

@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.core.database import get_async_db
 from app.core.security import verify_admin_token
-from app.db.models import AuthToken
+from app.db import models
 from app.redis.redis_service import redis_client, RedisConfigService
 from app.features.chat.service import ChatService
 from app.features.admin.schemas import (
@@ -132,7 +132,7 @@ async def refresh_channel_greeting_cache(
 async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
 ):
-    result = await db.execute(select(AuthToken.channel_id))
+    result = await db.execute(select(models.AuthToken.channel_id))
     channel_ids = result.scalars().all()
 
     total_greetings = 0

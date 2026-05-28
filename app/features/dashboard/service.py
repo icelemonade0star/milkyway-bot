@@ -22,38 +22,48 @@ class DashboardService:
         auth_token = await auth_service.get_auth_token_by_id(channel_id)
         if not auth_token:
             return None
+        v2_channel = await auth_service.get_v2_channel_by_platform_id("chzzk", channel_id)
 
-        config = await self.db.get(models.ChannelConfig, channel_id)
+        config = await self.chat_service.get_channel_config(channel_id)
+
+        attendance_model = models.V2ViewerAttendance if v2_channel else models.Attendance
+        attendance_channel_id = v2_channel.id if v2_channel else channel_id
 
         attendance_stats = (await self.db.execute(
             select(
-                func.count(models.Attendance.id),
-                func.coalesce(func.sum(models.Attendance.attendance_count), 0),
+                func.count(attendance_model.id),
+                func.coalesce(func.sum(attendance_model.attendance_count), 0),
             )
-            .where(models.Attendance.channel_id == channel_id)
+            .where(attendance_model.channel_id == attendance_channel_id)
         )).one()
         attendance_users, attendance_total = attendance_stats
 
-        notification = (await self.db.execute(
-            select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
-        )).scalar_one_or_none()
+        if v2_channel:
+            notification = (await self.db.execute(
+                select(models.V2LiveNotification).where(
+                    models.V2LiveNotification.channel_id == v2_channel.id,
+                    models.V2LiveNotification.destination_platform == "discord",
+                ).limit(1)
+            )).scalar_one_or_none()
+        else:
+            notification = (await self.db.execute(
+                select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
+            )).scalar_one_or_none()
 
-        commands = (await self.db.execute(
-            select(models.ChatCommand)
-            .where(models.ChatCommand.channel_id == channel_id)
-            .order_by(models.ChatCommand.command.asc())
-        )).scalars().all()
+        commands = sorted(
+            await self.chat_service.get_channel_commands(channel_id),
+            key=lambda command: command.command,
+        )
 
-        greetings = (await self.db.execute(
-            select(models.ChatGreeting)
-            .where(models.ChatGreeting.channel_id == channel_id)
-            .order_by(models.ChatGreeting.keyword.asc())
-        )).scalars().all()
+        greetings = sorted(
+            await self.chat_service.get_channel_greetings(channel_id),
+            key=lambda greeting: greeting.keyword,
+        )
 
         attendance_rank = (await self.db.execute(
-            select(models.Attendance)
-            .where(models.Attendance.channel_id == channel_id)
-            .order_by(models.Attendance.attendance_count.desc(), models.Attendance.streak_count.desc())
+            select(attendance_model)
+            .where(attendance_model.channel_id == attendance_channel_id)
+            .order_by(attendance_model.attendance_count.desc(), attendance_model.streak_count.desc())
             .limit(10)
         )).scalars().all()
 

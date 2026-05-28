@@ -55,7 +55,7 @@ class ChzzkSessions:
         logger.warning(f"🔄 [{self.channel_id}] API 401 응답 감지. 토큰 갱신 시도...")
         
         # 순환 참조 방지를 위해 함수 내부에서 import
-        from app.features.auth.chzzk_client import ChzzkAuth
+        from app.platforms.chzzk.auth import ChzzkAuthProvider
         
         factory = get_session_factory()
         if not factory:
@@ -64,7 +64,7 @@ class ChzzkSessions:
 
         async with factory() as db:
             auth_service = AuthService(db)
-            chzzk_auth = ChzzkAuth(auth_service)
+            chzzk_auth = ChzzkAuthProvider(auth_service)
             new_token, status_code = await chzzk_auth.refresh_access_token(self.channel_id)
 
         if new_token:

@@ -1,10 +1,10 @@
-from fastapi import Depends
+﻿from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
-from app.db.models import AuthToken, ChannelConfig, StreamSession, ChzzkNotification
+from app.db import models
 
 from app.core.database import get_async_db
 
@@ -13,13 +13,77 @@ class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def get_v2_channel_by_platform_id(self, platform: str, platform_channel_id: str):
+        stmt = select(models.V2Channel).where(
+            models.V2Channel.platform == platform,
+            models.V2Channel.platform_channel_id == platform_channel_id,
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def save_platform_auth(
+        self,
+        *,
+        platform: str,
+        platform_channel_id: str,
+        channel_name: str,
+        access_token: str | None,
+        refresh_token: str | None,
+        expires_at,
+        token_type: str | None = None,
+        scope: str | None = None,
+        raw_token_response: dict | None = None,
+        profile_image_url: str | None = None,
+    ):
+        channel = await self.get_v2_channel_by_platform_id(platform, platform_channel_id)
+        if not channel:
+            channel = models.V2Channel(
+                platform=platform,
+                platform_channel_id=platform_channel_id,
+                channel_name=channel_name,
+                profile_image_url=profile_image_url,
+                is_active=True,
+            )
+            self.db.add(channel)
+            await self.db.flush()
+        else:
+            channel.channel_name = channel_name
+            if profile_image_url is not None:
+                channel.profile_image_url = profile_image_url
+            channel.is_active = True
+
+        config_exists = await self.db.get(models.V2ChannelConfig, channel.id)
+        if not config_exists:
+            self.db.add(models.V2ChannelConfig(channel_id=channel.id))
+
+        stmt = select(models.V2PlatformCredential).where(
+            models.V2PlatformCredential.channel_id == channel.id,
+            models.V2PlatformCredential.platform == platform,
+        )
+        credential = (await self.db.execute(stmt)).scalar_one_or_none()
+        if not credential:
+            credential = models.V2PlatformCredential(
+                channel_id=channel.id,
+                platform=platform,
+            )
+            self.db.add(credential)
+
+        credential.access_token = access_token
+        credential.refresh_token = refresh_token
+        credential.expires_at = expires_at
+        credential.token_type = token_type
+        credential.scope = scope
+        credential.raw_token_response = raw_token_response
+
+        return channel
+
     async def save_chzzk_auth(self, chzzk_auth):
         """
         치지직 인증 정보를 DB에 저장하고 결과를 반환합니다.
         """
         try:
-            # 1. AuthToken 저장 (Merge는 없으면 Insert, 있으면 Update를 수행)
-            token_model = await self.db.merge(AuthToken(
+            # 1. models.AuthToken 저장 (Merge는 없으면 Insert, 있으면 Update를 수행)
+            token_model = await self.db.merge(models.AuthToken(
                 channel_id=chzzk_auth.channel_id,
                 channel_name=chzzk_auth.channel_name,
                 access_token=chzzk_auth.access_token,
@@ -29,10 +93,20 @@ class AuthService:
             
             # 2. 채널 설정 초기값 생성 (이미 존재하면 무시)
             # get으로 먼저 확인
-            config_exists = await self.db.get(ChannelConfig, chzzk_auth.channel_id)
+            config_exists = await self.db.get(models.ChannelConfig, chzzk_auth.channel_id)
             if not config_exists:
-                new_config = ChannelConfig(channel_id=chzzk_auth.channel_id)
+                new_config = models.ChannelConfig(channel_id=chzzk_auth.channel_id)
                 self.db.add(new_config)
+
+            await self.save_platform_auth(
+                platform=getattr(chzzk_auth, "platform", "chzzk"),
+                platform_channel_id=chzzk_auth.channel_id,
+                channel_name=chzzk_auth.channel_name,
+                access_token=chzzk_auth.access_token,
+                refresh_token=chzzk_auth.refresh_token,
+                expires_at=chzzk_auth.expires_at,
+                raw_token_response=getattr(chzzk_auth, "raw_token_response", None),
+            )
 
             await self.db.commit()
             
@@ -47,10 +121,10 @@ class AuthService:
 
     async def get_auth_list(self, channel_name: str = None):
         # ORM 스타일 조회
-        stmt = select(AuthToken)
+        stmt = select(models.AuthToken)
         
         if channel_name:
-            stmt = stmt.where(AuthToken.channel_name.like(f"%{channel_name}%"))
+            stmt = stmt.where(models.AuthToken.channel_name.like(f"%{channel_name}%"))
         
         try:
             result = await self.db.execute(stmt)
@@ -62,7 +136,7 @@ class AuthService:
     async def get_auth_token_by_id(self, channel_id: str = None):
         try:
             # 기본 키로 조회할 때는 get()이 가장 빠르고 간편합니다.
-            row = await self.db.get(AuthToken, channel_id)
+            row = await self.db.get(models.AuthToken, channel_id)
         
             if not row:
                 print(f"⚠️ [DB] 해당 ID의 토큰이 없습니다: {channel_id}")
@@ -97,18 +171,38 @@ class AuthService:
     
     async def update_token(self, channel_id, access_token, refresh_token, expires_at):
         stmt = (
-            update(AuthToken)
-            .where(AuthToken.channel_id == channel_id)
+            update(models.AuthToken)
+            .where(models.AuthToken.channel_id == channel_id)
             .values(access_token=access_token, refresh_token=refresh_token, expires_at=expires_at)
         )
         
         await self.db.execute(stmt)
+
+        v2_channel = await self.get_v2_channel_by_platform_id("chzzk", channel_id)
+        if v2_channel:
+            stmt_v2 = (
+                update(models.V2PlatformCredential)
+                .where(
+                    models.V2PlatformCredential.channel_id == v2_channel.id,
+                    models.V2PlatformCredential.platform == "chzzk",
+                )
+                .values(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_at=expires_at,
+                )
+            )
+            await self.db.execute(stmt_v2)
+
         await self.db.commit()
 
     async def delete_auth_token(self, channel_id: str):
-        stmt = delete(AuthToken).where(AuthToken.channel_id == channel_id)
+        stmt = delete(models.AuthToken).where(models.AuthToken.channel_id == channel_id)
         try:
             await self.db.execute(stmt)
+            v2_channel = await self.get_v2_channel_by_platform_id("chzzk", channel_id)
+            if v2_channel:
+                await self.db.delete(v2_channel)
             await self.db.commit()
             return True
         except Exception as e:
@@ -128,22 +222,22 @@ class AuthService:
 
             # Case 1: 스트림 기록 있음 + 최근 방송이 cutoff 이전
             case1 = (
-                select(AuthToken.channel_id)
-                .join(StreamSession, AuthToken.channel_id == StreamSession.chzzk_channel_id)
-                .group_by(AuthToken.channel_id)
-                .having(func.max(StreamSession.opened_at) < cutoff)
+                select(models.AuthToken.channel_id)
+                .join(models.StreamSession, models.AuthToken.channel_id == models.StreamSession.chzzk_channel_id)
+                .group_by(models.AuthToken.channel_id)
+                .having(func.max(models.StreamSession.opened_at) < cutoff)
             )
 
             # Case 2: 스트림 기록 없음 + 등록일이 cutoff 이전
             stream_exists = (
-                select(StreamSession.chzzk_channel_id)
-                .where(StreamSession.chzzk_channel_id == AuthToken.channel_id)
-                .correlate(AuthToken)
+                select(models.StreamSession.chzzk_channel_id)
+                .where(models.StreamSession.chzzk_channel_id == models.AuthToken.channel_id)
+                .correlate(models.AuthToken)
                 .exists()
             )
             case2 = (
-                select(AuthToken.channel_id)
-                .where(AuthToken.created_at < cutoff)
+                select(models.AuthToken.channel_id)
+                .where(models.AuthToken.created_at < cutoff)
                 .where(~stream_exists)
             )
 
@@ -155,17 +249,23 @@ class AuthService:
             if not inactive_ids:
                 return []
 
-            # StreamSession 삭제 — 재등록 시 과거 기록으로 오탐 방지 (FK 없어서 명시적 삭제)
+            # models.StreamSession 삭제 — 재등록 시 과거 기록으로 오탐 방지 (FK 없어서 명시적 삭제)
             await self.db.execute(
-                delete(StreamSession).where(StreamSession.chzzk_channel_id.in_(inactive_ids))
+                delete(models.StreamSession).where(models.StreamSession.chzzk_channel_id.in_(inactive_ids))
             )
             # ChzzkNotification 삭제 (FK 없어서 CASCADE 안 됨)
             await self.db.execute(
-                delete(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id.in_(inactive_ids))
+                delete(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id.in_(inactive_ids))
             )
-            # AuthToken 삭제 → ChannelConfig, ChatCommand, ChatGreeting, Attendance CASCADE 삭제
+            # models.AuthToken 삭제 → models.ChannelConfig, models.ChatCommand, models.ChatGreeting, models.Attendance CASCADE 삭제
             await self.db.execute(
-                delete(AuthToken).where(AuthToken.channel_id.in_(inactive_ids))
+                delete(models.V2Channel).where(
+                    models.V2Channel.platform == "chzzk",
+                    models.V2Channel.platform_channel_id.in_(inactive_ids),
+                )
+            )
+            await self.db.execute(
+                delete(models.AuthToken).where(models.AuthToken.channel_id.in_(inactive_ids))
             )
             await self.db.commit()
 
@@ -194,3 +294,4 @@ class AuthService:
 
 async def get_auth_service(db: AsyncSession = Depends(get_async_db)):
     return AuthService(db)
+

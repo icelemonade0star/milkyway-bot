@@ -1,24 +1,25 @@
+﻿import asyncio
 import time
-import asyncio
-import discord
-from discord.ext import tasks, commands
-import aiohttp
 from dataclasses import dataclass, field
-from typing import List, Optional
-from sqlalchemy import select
-from app.core.database import get_session_factory
-from app.db.models import ChzzkNotification as ChzzkNotificationModel
 from datetime import datetime, timedelta, timezone
-from app.core.chzzk_api import ChzzkAPIClient
+from typing import List, Optional
 
-_CACHE_TTL = 300.0          # 5분마다 DB 재조회
-_OPEN_POLL_INTERVAL = 300.0  # OPEN 채널은 5분마다만 확인
+import discord
+from discord.ext import commands, tasks
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from app.core.chzzk_api import ChzzkAPIClient
+from app.core.database import get_session_factory
+from app.db import models
+
+_CACHE_TTL = 300.0
+_OPEN_POLL_INTERVAL = 300.0
 
 _active_cog: Optional["ChzzkNotification"] = None
 
 
 def invalidate_notification_cache():
-    """알림 설정이 변경됐을 때 외부(handler.py 등)에서 호출해 캐시를 즉시 만료."""
     if _active_cog is not None:
         _active_cog._cache_loaded_at = 0.0
 
@@ -37,24 +38,26 @@ class LiveNotificationData:
 
 @dataclass
 class _CachedNotification:
-    """DB 모델과 분리된 경량 캐시 엔트리."""
     chzzk_channel_id: str
     discord_channel_id: str
     streamer_name: str
     mention_role: Optional[str]
     last_status: str
-    # API가 순간적으로 CLOSE를 잘못 반환하는 경우를 걸러내기 위한 연속 카운터.
-    # 캐시 갱신 시에도 보존된다 (_load_cache 참고).
+    notification_id: Optional[int] = None
+    v2_channel_id: Optional[object] = None
+    current_stream_session_id: Optional[object] = field(default=None, repr=False)
     _consecutive_close_count: int = field(default=0, repr=False)
-    # 마지막으로 실제 API를 호출한 시각 (monotonic). OPEN 채널 폴링 간격 제어에 사용.
     _last_polled_at: float = field(default=0.0, repr=False)
+
+    @property
+    def is_v2(self) -> bool:
+        return self.notification_id is not None and self.v2_channel_id is not None
 
 
 class ChzzkNotification(commands.Cog):
     def __init__(self, bot):
         global _active_cog
         self.bot = bot
-        self.session = None
         self.chzzk_client = ChzzkAPIClient()
         self._cache: dict[str, _CachedNotification] = {}
         self._cache_loaded_at: float = 0.0
@@ -64,8 +67,6 @@ class ChzzkNotification(commands.Cog):
     def cog_unload(self):
         global _active_cog
         self.check_chzzk.cancel()
-        if self.session:
-            asyncio.create_task(self.session.close())
         if self.chzzk_client:
             asyncio.create_task(self.chzzk_client.close())
         _active_cog = None
@@ -77,39 +78,64 @@ class ChzzkNotification(commands.Cog):
 
         try:
             async with factory() as db:
-                stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.is_active == True)
-                result = await db.execute(stmt)
-                notifications = result.scalars().all()
+                new_cache: dict[str, _CachedNotification] = {}
 
-                new_cache = {
-                    n.chzzk_channel_id: _CachedNotification(
-                        chzzk_channel_id=n.chzzk_channel_id,
-                        discord_channel_id=n.discord_channel_id,
-                        streamer_name=n.streamer_name,
-                        mention_role=getattr(n, "mention_role", None),
-                        last_status=n.last_status,
+                v2_stmt = (
+                    select(models.V2LiveNotification, models.V2Channel, models.V2ChannelLiveState)
+                    .join(models.V2Channel, models.V2LiveNotification.channel_id == models.V2Channel.id)
+                    .outerjoin(models.V2ChannelLiveState, models.V2ChannelLiveState.channel_id == models.V2Channel.id)
+                    .where(
+                        models.V2LiveNotification.is_active == True,
+                        models.V2LiveNotification.destination_platform == "discord",
+                        models.V2Channel.platform == "chzzk",
+                        models.V2Channel.is_active == True,
                     )
-                    for n in notifications
-                }
+                )
+                for notification, channel, live_state in (await db.execute(v2_stmt)).all():
+                    key = f"v2:{notification.id}"
+                    new_cache[key] = _CachedNotification(
+                        chzzk_channel_id=channel.platform_channel_id,
+                        discord_channel_id=notification.destination_channel_id,
+                        streamer_name=channel.channel_name,
+                        mention_role=notification.mention_role,
+                        last_status=(live_state.status if live_state else "CLOSE"),
+                        notification_id=notification.id,
+                        v2_channel_id=channel.id,
+                    )
 
-                # 캐시 갱신 시 인메모리 상태 유지 (갱신으로 카운터/타이머가 리셋되지 않도록)
-                for chzzk_id, new_entry in new_cache.items():
-                    if chzzk_id in self._cache:
-                        old = self._cache[chzzk_id]
+                legacy_stmt = select(models.ChzzkNotification).where(models.ChzzkNotification.is_active == True)
+                legacy_notifications = (await db.execute(legacy_stmt)).scalars().all()
+                for notification in legacy_notifications:
+                    key = f"legacy:{notification.chzzk_channel_id}:{notification.discord_channel_id}"
+                    if any(
+                        entry.chzzk_channel_id == notification.chzzk_channel_id and entry.is_v2
+                        for entry in new_cache.values()
+                    ):
+                        continue
+                    new_cache[key] = _CachedNotification(
+                        chzzk_channel_id=notification.chzzk_channel_id,
+                        discord_channel_id=notification.discord_channel_id,
+                        streamer_name=notification.streamer_name or notification.chzzk_channel_id,
+                        mention_role=getattr(notification, "mention_role", None),
+                        last_status=notification.last_status,
+                    )
+
+                for key, new_entry in new_cache.items():
+                    if key in self._cache:
+                        old = self._cache[key]
                         new_entry._consecutive_close_count = old._consecutive_close_count
                         new_entry._last_polled_at = old._last_polled_at
 
                 self._cache = new_cache
                 self._cache_loaded_at = time.monotonic()
-                print(f"✅ [ChzzkNotification] 캐시 로드 완료: {len(self._cache)}개")
+                print(f"[ChzzkNotification] cache loaded: {len(self._cache)}")
         except Exception as e:
-            print(f"🚨 [ChzzkNotification] 캐시 로드 실패: {e}")
-            # 실패해도 TTL 적용 — DB를 매 틱마다 재시도하지 않도록
+            print(f"[ChzzkNotification] cache load failed: {e}")
             self._cache_loaded_at = time.monotonic()
 
     @tasks.loop(seconds=30.0)
     async def check_chzzk(self):
-        print("👀 [ChzzkNotification] 방송 상태 체크 중... (30s interval)")
+        print("[ChzzkNotification] checking live status...")
         try:
             if time.monotonic() - self._cache_loaded_at > _CACHE_TTL:
                 await self._load_cache()
@@ -117,7 +143,6 @@ class ChzzkNotification(commands.Cog):
             if not self._cache:
                 return
 
-            # 채널 수가 늘어도 30초 주기를 지킬 수 있도록 병렬 처리 (최대 5개 동시 요청)
             sem = asyncio.Semaphore(5)
 
             async def bounded(entry: _CachedNotification):
@@ -128,131 +153,226 @@ class ChzzkNotification(commands.Cog):
                 *[bounded(e) for e in self._cache.values()],
                 return_exceptions=True,
             )
-
         except Exception as e:
-            print(f"🚨 [ChzzkNotification] 루프 에러 발생: {e}")
+            print(f"[ChzzkNotification] loop error: {e}")
 
     async def process_notification(self, entry: _CachedNotification):
         chzzk_id = entry.chzzk_channel_id
         last_status = entry.last_status
 
-        # OPEN 채널은 5분마다만 확인 — 이미 방송 중인 채널에 불필요한 API 요청 방지
         if last_status == "OPEN" and time.monotonic() - entry._last_polled_at < _OPEN_POLL_INTERVAL:
             return
 
-        print(f"[ChzzkNotification] 채널 확인 중: {chzzk_id} (Last: {last_status})")
+        print(f"[ChzzkNotification] checking channel: {chzzk_id} (Last: {last_status})")
         entry._last_polled_at = time.monotonic()
 
-        status_url = f"https://api.chzzk.naver.com/polling/v2/channels/{chzzk_id}/live-status"
-
         try:
-            content = {}
-            current_status = None
-            async with self.session.get(status_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                if response.status != 200:
-                    print(f"[ChzzkNotification] Status API 에러 {chzzk_id} - 상태코드: {response.status}")
-                    return
-
-                data = await response.json()
-                content = data.get("content") or {}
-                current_status = content.get("status")
-
-            if current_status not in ("OPEN", "CLOSE"):
-                print(f"[ChzzkNotification] ⚠️ 알 수 없는 상태값: {chzzk_id} = {current_status}")
+            live_status = await self.chzzk_client.get_live_status(chzzk_id)
+            if not live_status:
+                print(f"[ChzzkNotification] status lookup failed: {chzzk_id}")
                 return
 
-            print(f"[ChzzkNotification] {chzzk_id} 현재 상태: {current_status}")
+            content = live_status.raw or {}
+            current_status = live_status.status
+
+            if current_status not in ("OPEN", "CLOSE"):
+                print(f"[ChzzkNotification] unknown status: {chzzk_id} = {current_status}")
+                return
+
+            print(f"[ChzzkNotification] {chzzk_id} current status: {current_status}")
 
             if current_status == "OPEN":
                 entry._consecutive_close_count = 0
                 if last_status == "CLOSE":
-                    print(f"[ChzzkNotification] 🟢 방송 시작 감지! {chzzk_id}")
+                    print(f"[ChzzkNotification] live started: {chzzk_id}")
 
                     channel_info = await self.chzzk_client.get_channel_info(chzzk_id) or {}
                     live_data = LiveNotificationData(
                         channel_id=chzzk_id,
                         streamer_name=entry.streamer_name,
-                        live_title=content.get("liveTitle", ""),
-                        category=content.get("liveCategoryValue", "") or content.get("liveCategory", ""),
+                        live_title=live_status.title or "",
+                        category=live_status.category or "",
                         tags=content.get("tags", []),
-                        thumbnail_url=content.get("liveImageUrl"),
+                        thumbnail_url=live_status.thumbnail_url,
                         channel_image_url=channel_info.get("channelImageUrl"),
                         open_date=content.get("openDate"),
                     )
 
-                    # DB를 먼저 갱신 — 실패 시 알림 발송 스킵해 재시작 후 중복 알림 방지
-                    if await self._update_status_in_db(chzzk_id, "OPEN", update_time=True, content=content):
+                    if await self._update_status_in_db(entry, "OPEN", content=content):
                         entry.last_status = "OPEN"
-                        await self.send_live_notification(entry, live_data)
+                        if not await self.send_live_notification(entry, live_data):
+                            await self._mark_delivery_failed(entry, "Discord send failed")
                     else:
-                        print(f"[ChzzkNotification] ⚠️ DB 업데이트 실패, 알림 발송 스킵: {chzzk_id}")
+                        entry.last_status = "OPEN"
+                        print(f"[ChzzkNotification] already delivered or DB update failed: {chzzk_id}")
 
             elif current_status == "CLOSE" and last_status == "OPEN":
-                # API가 일시적으로 CLOSE를 반환하는 경우를 걸러낸다.
-                # 2회 연속 CLOSE일 때만 실제 종료로 처리한다 (약 30~60초 딜레이).
                 entry._consecutive_close_count += 1
                 if entry._consecutive_close_count >= 2:
-                    print(f"[ChzzkNotification] 🔴 방송 종료 확정! {chzzk_id}")
-                    if await self._update_status_in_db(chzzk_id, "CLOSE", update_time=False):
+                    print(f"[ChzzkNotification] live closed: {chzzk_id}")
+                    if await self._update_status_in_db(entry, "CLOSE"):
                         entry.last_status = "CLOSE"
                         entry._consecutive_close_count = 0
                 else:
-                    print(f"[ChzzkNotification] 🟡 방송 종료 의심 ({entry._consecutive_close_count}/2): {chzzk_id}")
-
+                    print(f"[ChzzkNotification] possible close ({entry._consecutive_close_count}/2): {chzzk_id}")
         except Exception as e:
-            print(f"[ChzzkNotification] 에러 {chzzk_id}: {e}")
+            print(f"[ChzzkNotification] error {chzzk_id}: {e}")
 
-    async def _update_status_in_db(self, chzzk_id: str, status: str, update_time: bool, content: dict = None) -> bool:
-        """상태가 실제로 바뀔 때만 호출 — DB 세션을 자체적으로 관리. 성공 여부 반환."""
+    async def _update_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
+        if entry.is_v2:
+            return await self._update_v2_status_in_db(entry, status, content)
+        return await self._update_legacy_status_in_db(entry, status, content)
+
+    async def _update_v2_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
         factory = get_session_factory()
         if not factory:
             return False
 
         try:
             async with factory() as db:
-                stmt = select(ChzzkNotificationModel).where(ChzzkNotificationModel.chzzk_channel_id == chzzk_id)
+                now = datetime.now(timezone.utc)
+
+                if status == "OPEN":
+                    from app.features.chat.service import ChatService
+
+                    await ChatService(db).sync_stream_session(entry.chzzk_channel_id)
+                    live_state = await db.get(models.V2ChannelLiveState, entry.v2_channel_id)
+                    stream_session_id = live_state.current_stream_session_id if live_state else None
+
+                    if not stream_session_id:
+                        latest = (await db.execute(
+                            select(models.V2StreamSession)
+                            .where(
+                                models.V2StreamSession.channel_id == entry.v2_channel_id,
+                                models.V2StreamSession.closed_at.is_(None),
+                            )
+                            .order_by(models.V2StreamSession.opened_at.desc())
+                            .limit(1)
+                        )).scalar_one_or_none()
+                        stream_session_id = latest.id if latest else None
+
+                    if not stream_session_id:
+                        return False
+
+                    entry.current_stream_session_id = stream_session_id
+                    deliveries_table = models.V2LiveNotificationDelivery.__table__
+                    claim_stmt = (
+                        pg_insert(deliveries_table)
+                        .values(
+                            notification_id=entry.notification_id,
+                            stream_session_id=stream_session_id,
+                            delivered_at=now,
+                            delivery_status="success",
+                        )
+                        .on_conflict_do_nothing(
+                            constraint="unique_v2_live_notification_delivery",
+                        )
+                        .returning(deliveries_table.c.id)
+                    )
+                    delivery_id = (await db.execute(claim_stmt)).scalar_one_or_none()
+                    await db.commit()
+                    return delivery_id is not None
+
+                latest = (await db.execute(
+                    select(models.V2StreamSession)
+                    .where(
+                        models.V2StreamSession.channel_id == entry.v2_channel_id,
+                        models.V2StreamSession.closed_at.is_(None),
+                    )
+                    .order_by(models.V2StreamSession.opened_at.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+                if latest:
+                    latest.closed_at = now
+
+                live_state = await db.get(models.V2ChannelLiveState, entry.v2_channel_id)
+                if live_state:
+                    live_state.status = "CLOSE"
+                    live_state.current_stream_session_id = None
+                    live_state.last_checked_at = now
+                    live_state.raw_status = content
+
+                await self._close_legacy_session(db, entry.chzzk_channel_id)
+                await db.commit()
+                return True
+        except Exception as e:
+            print(f"[ChzzkNotification] v2 DB update failed: {e}")
+            return False
+
+    async def _update_legacy_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
+        factory = get_session_factory()
+        if not factory:
+            return False
+
+        try:
+            async with factory() as db:
+                stmt = select(models.ChzzkNotification).where(
+                    models.ChzzkNotification.chzzk_channel_id == entry.chzzk_channel_id,
+                    models.ChzzkNotification.discord_channel_id == entry.discord_channel_id,
+                )
                 setting = (await db.execute(stmt)).scalar_one_or_none()
                 if not setting:
                     return False
 
                 setting.last_status = status
-                if update_time:
-                    kst = timezone(timedelta(hours=9))
-                    setting.last_notified_at = datetime.now(kst)
+                if status == "OPEN":
+                    setting.last_notified_at = datetime.now(timezone(timedelta(hours=9)))
+                    if content:
+                        from app.features.chat.service import ChatService
 
-                # 방송 시작 시 스트림 세션 동기화
-                if status == "OPEN" and content:
-                    from app.features.chat.service import ChatService
-                    await ChatService(db).sync_stream_session(chzzk_id)
+                        await ChatService(db).sync_stream_session(entry.chzzk_channel_id)
 
-                # 방송 종료 시 세션 종료 시각 기록
                 if status == "CLOSE":
-                    from app.db.models import StreamSession
-                    stmt2 = (
-                        select(StreamSession)
-                        .where(
-                            StreamSession.chzzk_channel_id == chzzk_id,
-                            StreamSession.closed_at.is_(None),
-                        )
-                        .order_by(StreamSession.opened_at.desc())
-                        .limit(1)
-                    )
-                    latest = (await db.execute(stmt2)).scalar_one_or_none()
-                    if latest:
-                        latest.closed_at = datetime.now(timezone(timedelta(hours=9)))
+                    await self._close_legacy_session(db, entry.chzzk_channel_id)
 
                 await db.commit()
-                print(f"[ChzzkNotification] DB 상태 업데이트 완료: {chzzk_id} -> {status}")
+                print(f"[ChzzkNotification] legacy DB status updated: {entry.chzzk_channel_id} -> {status}")
                 return True
         except Exception as e:
-            print(f"[ChzzkNotification] DB Update Failed: {e}")
+            print(f"[ChzzkNotification] legacy DB update failed: {e}")
             return False
 
-    async def send_live_notification(self, entry: _CachedNotification, live_data: LiveNotificationData):
+    async def _close_legacy_session(self, db, chzzk_channel_id: str):
+        latest = (await db.execute(
+            select(models.StreamSession)
+            .where(
+                models.StreamSession.chzzk_channel_id == chzzk_channel_id,
+                models.StreamSession.closed_at.is_(None),
+            )
+            .order_by(models.StreamSession.opened_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if latest:
+            latest.closed_at = datetime.now(timezone(timedelta(hours=9)))
+
+    async def _mark_delivery_failed(self, entry: _CachedNotification, error_message: str):
+        if not entry.is_v2 or not entry.current_stream_session_id:
+            return
+
+        factory = get_session_factory()
+        if not factory:
+            return
+
+        try:
+            async with factory() as db:
+                delivery = (await db.execute(
+                    select(models.V2LiveNotificationDelivery).where(
+                        models.V2LiveNotificationDelivery.notification_id == entry.notification_id,
+                        models.V2LiveNotificationDelivery.stream_session_id == entry.current_stream_session_id,
+                    )
+                )).scalar_one_or_none()
+                if delivery:
+                    delivery.delivery_status = "failed"
+                    delivery.error_message = error_message
+                    await db.commit()
+        except Exception as e:
+            print(f"[ChzzkNotification] delivery failure mark failed: {e}")
+
+    async def send_live_notification(self, entry: _CachedNotification, live_data: LiveNotificationData) -> bool:
         target_channel = self.bot.get_channel(int(entry.discord_channel_id))
         if not target_channel:
-            print(f"[ChzzkNotification] 디스코드 채널을 찾을 수 없습니다: {entry.discord_channel_id}")
-            return
+            print(f"[ChzzkNotification] Discord channel not found: {entry.discord_channel_id}")
+            return False
 
         thumbnail_url = live_data.thumbnail_url.replace("{type}", "1080") if live_data.thumbnail_url else None
 
@@ -267,27 +387,37 @@ class ChzzkNotification(commands.Cog):
         if live_data.category:
             embed.add_field(name="카테고리", value=live_data.category, inline=True)
         if live_data.tags:
-            embed.add_field(name="태그", value=" ".join([f"`#{t}`" for t in live_data.tags]), inline=False)
+            embed.add_field(name="태그", value=" ".join([f"`#{tag}`" for tag in live_data.tags]), inline=False)
+        if thumbnail_url:
+            embed.set_image(url=thumbnail_url)
 
         channel_img = live_data.channel_image_url or "https://ssl.pstatic.net/cmstatic/nng/img/img_anonymous_square_gray_opacity2x.png"
         embed.set_thumbnail(url=channel_img)
-        embed.set_author(name=live_data.streamer_name, icon_url=live_data.channel_image_url, url=f"https://chzzk.naver.com/{live_data.channel_id}")
+        embed.set_author(
+            name=live_data.streamer_name,
+            icon_url=live_data.channel_image_url,
+            url=f"https://chzzk.naver.com/{live_data.channel_id}",
+        )
         embed.set_footer(text="치지직 방송 알림", icon_url="https://ssl.pstatic.net/static/nng/glive/icon/favicon.png")
 
-        mention_role = entry.mention_role
         content_msg = (
-            f"{mention_role} {live_data.streamer_name} 방송이 시작되었습니다!"
-            if mention_role
+            f"{entry.mention_role} {live_data.streamer_name} 방송이 시작되었습니다!"
+            if entry.mention_role
             else f"{live_data.streamer_name} 방송이 시작되었습니다!"
         )
 
         try:
             await target_channel.send(content=content_msg, embed=embed)
-            print(f"[ChzzkNotification] 알림 전송 성공: {live_data.streamer_name} -> {target_channel.name} ({target_channel.id})")
+            print(
+                f"[ChzzkNotification] notification sent: "
+                f"{live_data.streamer_name} -> {target_channel.name} ({target_channel.id})"
+            )
+            return True
         except Exception as e:
-            print(f"[ChzzkNotification] 메시지 전송 실패 {live_data.channel_id}: {e}")
+            print(f"[ChzzkNotification] message send failed {live_data.channel_id}: {e}")
+            return False
 
     @check_chzzk.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
-        self.session = aiohttp.ClientSession()
+

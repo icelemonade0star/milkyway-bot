@@ -1,4 +1,4 @@
-from app.features.auth.chzzk_client import ChzzkAuth
+from app.platforms.chzzk.auth import ChzzkAuthProvider
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -18,12 +18,12 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 # 인증 객체 생성
 # auth = ChzzkAuth()
 
-def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuth:
+def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuthProvider:
     auth_service = AuthService(db)
-    return ChzzkAuth(auth_service)
+    return ChzzkAuthProvider(auth_service)
 
 @auth_router.get("/")
-async def auth_redirect(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
+async def auth_redirect(chzzk: ChzzkAuthProvider = Depends(get_chzzk_auth)):
     url, state = chzzk.get_auth_url()
 
     response = RedirectResponse(url=url)
@@ -116,7 +116,7 @@ async def get_auth_token_list(
 )
 async def refresh_token(
     channel_id: str,
-    chzzk_auth: ChzzkAuth = Depends(get_chzzk_auth),
+    chzzk_auth: ChzzkAuthProvider = Depends(get_chzzk_auth),
     db: AsyncSession = Depends(get_async_db)
 ):
     # 1. 토큰 갱신

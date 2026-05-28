@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import security
 from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TEMPLATE_DIR
 from app.core.database import get_async_db
-from app.features.auth.chzzk_client import ChzzkAuth
+from app.platforms.chzzk.auth import ChzzkAuthProvider
 from app.features.auth.service import AuthService
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
@@ -16,9 +16,9 @@ dashboard_router = APIRouter(prefix="/auth/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
-def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuth:
+def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuthProvider:
     auth_service = AuthService(db)
-    return ChzzkAuth(auth_service)
+    return ChzzkAuthProvider(auth_service)
 
 
 def get_dashboard_session(dashboard_session: str = Cookie(None)):
@@ -26,7 +26,7 @@ def get_dashboard_session(dashboard_session: str = Cookie(None)):
 
 
 @dashboard_router.get("/login")
-async def dashboard_login(chzzk: ChzzkAuth = Depends(get_chzzk_auth)):
+async def dashboard_login(chzzk: ChzzkAuthProvider = Depends(get_chzzk_auth)):
     state = security.create_oauth_state_token(security.OAUTH_STATE_PURPOSE_DASHBOARD)
     url, state = chzzk.get_auth_url(state=state)
 

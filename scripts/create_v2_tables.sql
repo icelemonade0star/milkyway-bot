@@ -21,13 +21,14 @@ CREATE TABLE IF NOT EXISTS v2_channels (
     CONSTRAINT unique_v2_platform_channel UNIQUE (platform, platform_channel_id)
 );
 
+DROP TRIGGER IF EXISTS trg_v2_channels_updated_at ON v2_channels;
 CREATE TRIGGER trg_v2_channels_updated_at
 BEFORE UPDATE ON v2_channels
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_platform_credentials (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
     platform VARCHAR(50) NOT NULL,
     access_token TEXT,
@@ -42,9 +43,7 @@ CREATE TABLE IF NOT EXISTS v2_platform_credentials (
     CONSTRAINT unique_v2_platform_credentials_channel_platform UNIQUE (channel_id, platform)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_platform_credentials_channel_id
-ON v2_platform_credentials(channel_id);
-
+DROP TRIGGER IF EXISTS trg_v2_platform_credentials_updated_at ON v2_platform_credentials;
 CREATE TRIGGER trg_v2_platform_credentials_updated_at
 BEFORE UPDATE ON v2_platform_credentials
 FOR EACH ROW
@@ -59,13 +58,14 @@ CREATE TABLE IF NOT EXISTS v2_channel_configs (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+DROP TRIGGER IF EXISTS trg_v2_channel_configs_updated_at ON v2_channel_configs;
 CREATE TRIGGER trg_v2_channel_configs_updated_at
 BEFORE UPDATE ON v2_channel_configs
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_global_chat_commands (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     command VARCHAR(100) NOT NULL,
     response TEXT,
     type VARCHAR(20) NOT NULL DEFAULT 'text',
@@ -79,13 +79,14 @@ CREATE TABLE IF NOT EXISTS v2_global_chat_commands (
     CONSTRAINT unique_v2_global_chat_commands_command UNIQUE (command)
 );
 
+DROP TRIGGER IF EXISTS trg_v2_global_chat_commands_updated_at ON v2_global_chat_commands;
 CREATE TRIGGER trg_v2_global_chat_commands_updated_at
 BEFORE UPDATE ON v2_global_chat_commands
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_channel_chat_commands (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
     command VARCHAR(100) NOT NULL,
     response TEXT NOT NULL,
@@ -98,16 +99,14 @@ CREATE TABLE IF NOT EXISTS v2_channel_chat_commands (
     CONSTRAINT unique_v2_channel_chat_commands_channel_command UNIQUE (channel_id, command)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_channel_chat_commands_channel_id
-ON v2_channel_chat_commands(channel_id);
-
+DROP TRIGGER IF EXISTS trg_v2_channel_chat_commands_updated_at ON v2_channel_chat_commands;
 CREATE TRIGGER trg_v2_channel_chat_commands_updated_at
 BEFORE UPDATE ON v2_channel_chat_commands
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_channel_greetings (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
     keyword VARCHAR(100) NOT NULL,
     response TEXT NOT NULL,
@@ -118,16 +117,14 @@ CREATE TABLE IF NOT EXISTS v2_channel_greetings (
     CONSTRAINT unique_v2_channel_greetings_channel_keyword UNIQUE (channel_id, keyword)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_channel_greetings_channel_id
-ON v2_channel_greetings(channel_id);
-
+DROP TRIGGER IF EXISTS trg_v2_channel_greetings_updated_at ON v2_channel_greetings;
 CREATE TRIGGER trg_v2_channel_greetings_updated_at
 BEFORE UPDATE ON v2_channel_greetings
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_viewer_attendance (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
     platform_user_id VARCHAR(255) NOT NULL,
     user_name VARCHAR(255),
@@ -140,9 +137,7 @@ CREATE TABLE IF NOT EXISTS v2_viewer_attendance (
     CONSTRAINT unique_v2_viewer_attendance_channel_user UNIQUE (channel_id, platform_user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_viewer_attendance_channel_id
-ON v2_viewer_attendance(channel_id);
-
+DROP TRIGGER IF EXISTS trg_v2_viewer_attendance_updated_at ON v2_viewer_attendance;
 CREATE TRIGGER trg_v2_viewer_attendance_updated_at
 BEFORE UPDATE ON v2_viewer_attendance
 FOR EACH ROW
@@ -151,7 +146,6 @@ EXECUTE FUNCTION v2_set_updated_at();
 CREATE TABLE IF NOT EXISTS v2_stream_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
-    platform_stream_id VARCHAR(255),
     opened_at TIMESTAMP WITH TIME ZONE NOT NULL,
     closed_at TIMESTAMP WITH TIME ZONE,
     stream_title VARCHAR(255),
@@ -160,12 +154,8 @@ CREATE TABLE IF NOT EXISTS v2_stream_sessions (
     raw_live_response JSONB,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT unique_v2_stream_sessions_channel_opened_at UNIQUE (channel_id, opened_at)
 );
-
-CREATE INDEX IF NOT EXISTS idx_v2_stream_sessions_channel_id
-ON v2_stream_sessions(channel_id);
 
 CREATE INDEX IF NOT EXISTS idx_v2_stream_sessions_channel_opened_at
 ON v2_stream_sessions(channel_id, opened_at DESC);
@@ -174,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_v2_stream_sessions_open
 ON v2_stream_sessions(channel_id)
 WHERE closed_at IS NULL;
 
+DROP TRIGGER IF EXISTS trg_v2_stream_sessions_updated_at ON v2_stream_sessions;
 CREATE TRIGGER trg_v2_stream_sessions_updated_at
 BEFORE UPDATE ON v2_stream_sessions
 FOR EACH ROW
@@ -185,6 +176,7 @@ CREATE TABLE IF NOT EXISTS v2_channel_live_states (
     current_stream_session_id UUID REFERENCES v2_stream_sessions(id) ON DELETE SET NULL,
     last_checked_at TIMESTAMP WITH TIME ZONE,
     raw_status JSONB,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_v2_channel_live_states_status
@@ -194,13 +186,14 @@ CREATE TABLE IF NOT EXISTS v2_channel_live_states (
 CREATE INDEX IF NOT EXISTS idx_v2_channel_live_states_current_stream_session_id
 ON v2_channel_live_states(current_stream_session_id);
 
+DROP TRIGGER IF EXISTS trg_v2_channel_live_states_updated_at ON v2_channel_live_states;
 CREATE TRIGGER trg_v2_channel_live_states_updated_at
 BEFORE UPDATE ON v2_channel_live_states
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_live_notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
     destination_platform VARCHAR(50) NOT NULL,
     destination_channel_id VARCHAR(255) NOT NULL,
@@ -213,17 +206,15 @@ CREATE TABLE IF NOT EXISTS v2_live_notifications (
         UNIQUE (channel_id, destination_platform, destination_channel_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_live_notifications_channel_id
-ON v2_live_notifications(channel_id);
-
+DROP TRIGGER IF EXISTS trg_v2_live_notifications_updated_at ON v2_live_notifications;
 CREATE TRIGGER trg_v2_live_notifications_updated_at
 BEFORE UPDATE ON v2_live_notifications
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_live_notification_deliveries (
-    id BIGSERIAL PRIMARY KEY,
-    notification_id UUID NOT NULL REFERENCES v2_live_notifications(id) ON DELETE CASCADE,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    notification_id BIGINT NOT NULL REFERENCES v2_live_notifications(id) ON DELETE CASCADE,
     stream_session_id UUID NOT NULL REFERENCES v2_stream_sessions(id) ON DELETE CASCADE,
     delivered_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     delivery_status VARCHAR(20) NOT NULL DEFAULT 'success',
@@ -234,9 +225,6 @@ CREATE TABLE IF NOT EXISTS v2_live_notification_deliveries (
     CONSTRAINT chk_v2_live_notification_deliveries_status
         CHECK (delivery_status IN ('success', 'failed'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_v2_live_notification_deliveries_notification_id
-ON v2_live_notification_deliveries(notification_id);
 
 CREATE INDEX IF NOT EXISTS idx_v2_live_notification_deliveries_stream_session_id
 ON v2_live_notification_deliveries(stream_session_id);

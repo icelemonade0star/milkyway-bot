@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from app.features.chat.chzzk_sessions import ChzzkSessions
+from app.platforms.chzzk.chat import ChzzkSessions
 
 logger = logging.getLogger("SessionManager")
 

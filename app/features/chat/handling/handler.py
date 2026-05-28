@@ -6,7 +6,7 @@ from app.redis.redis_service import RedisConfigService
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_session_factory
-from app.db.models import ChzzkNotification
+from app.db import models
 from app.features.chat.service import ChatService
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.config import ALLOWED_PREFIXES
@@ -366,17 +366,56 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                     await session.send_chat(f"❌ 설정 실패: 디스코드 채널({discord_channel_id})에 테스트 메시지를 보낼 수 없습니다. 봇이 초대되었는지, 채널 ID가 맞는지 확인해주세요.")
                     return
                 
-                stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
-                existing = (await db.execute(stmt)).scalar_one_or_none()
-
                 try:
-                    if existing:
-                        existing.discord_channel_id = discord_channel_id
-                        existing.streamer_name = user_name
-                        existing.is_active = True
+                    v2_channel = (await db.execute(
+                        select(models.V2Channel).where(
+                            models.V2Channel.platform == "chzzk",
+                            models.V2Channel.platform_channel_id == channel_id,
+                        )
+                    )).scalar_one_or_none()
+
+                    if v2_channel:
+                        existing = (await db.execute(
+                            select(models.V2LiveNotification).where(
+                                models.V2LiveNotification.channel_id == v2_channel.id,
+                                models.V2LiveNotification.destination_platform == "discord",
+                            ).limit(1)
+                        )).scalar_one_or_none()
+
+                        if existing:
+                            existing.destination_channel_id = discord_channel_id
+                            existing.mention_role = existing.mention_role or "@everyone"
+                            existing.is_active = True
+                        else:
+                            db.add(models.V2LiveNotification(
+                                channel_id=v2_channel.id,
+                                destination_platform="discord",
+                                destination_channel_id=discord_channel_id,
+                                mention_role="@everyone",
+                                is_active=True,
+                            ))
+
+                        legacy_notifications = (await db.execute(
+                            select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
+                        )).scalars().all()
+                        for legacy_notification in legacy_notifications:
+                            legacy_notification.is_active = False
                     else:
-                        new_noti = ChzzkNotification(chzzk_channel_id=channel_id, streamer_name=user_name, discord_channel_id=discord_channel_id, last_status="CLOSE", is_active=True)
-                        db.add(new_noti)
+                        stmt = select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
+                        existing = (await db.execute(stmt)).scalar_one_or_none()
+                        if existing:
+                            existing.discord_channel_id = discord_channel_id
+                            existing.streamer_name = user_name
+                            existing.is_active = True
+                        else:
+                            db.add(models.ChzzkNotification(
+                                chzzk_channel_id=channel_id,
+                                streamer_name=user_name,
+                                discord_channel_id=discord_channel_id,
+                                last_status="CLOSE",
+                                is_active=True,
+                            ))
+
                     await db.commit()
                     invalidate_notification_cache()
                     msg = f"알림 설정이 {'업데이트' if existing else '등록'}되었습니다. (Discord ID: {discord_channel_id})"
@@ -388,11 +427,42 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 return
 
             elif result.command == "알림삭제":
-                stmt = select(ChzzkNotification).where(ChzzkNotification.chzzk_channel_id == channel_id)
-                existing = (await db.execute(stmt)).scalar_one_or_none()
-                
-                if existing and existing.is_active:
-                    existing.is_active = False
+                v2_channel = (await db.execute(
+                    select(models.V2Channel).where(
+                        models.V2Channel.platform == "chzzk",
+                        models.V2Channel.platform_channel_id == channel_id,
+                    )
+                )).scalar_one_or_none()
+
+                if v2_channel:
+                    notifications = (await db.execute(
+                        select(models.V2LiveNotification).where(
+                            models.V2LiveNotification.channel_id == v2_channel.id,
+                            models.V2LiveNotification.destination_platform == "discord",
+                            models.V2LiveNotification.is_active == True,
+                        )
+                    )).scalars().all()
+                    existing = notifications[0] if notifications else None
+                    for notification in notifications:
+                        notification.is_active = False
+
+                    legacy_notifications = (await db.execute(
+                        select(models.ChzzkNotification).where(
+                            models.ChzzkNotification.chzzk_channel_id == channel_id,
+                            models.ChzzkNotification.is_active == True,
+                        )
+                    )).scalars().all()
+                    if not existing and legacy_notifications:
+                        existing = legacy_notifications[0]
+                    for legacy_notification in legacy_notifications:
+                        legacy_notification.is_active = False
+                else:
+                    stmt = select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
+                    existing = (await db.execute(stmt)).scalar_one_or_none()
+                    if existing and existing.is_active:
+                        existing.is_active = False
+
+                if existing:
                     await db.commit()
                     invalidate_notification_cache()
                     await session.send_chat("알림 설정이 해제되었습니다.")
