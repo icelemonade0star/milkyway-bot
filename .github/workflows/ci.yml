@@ -25,15 +25,6 @@ jobs:
         python_version=$(python scripts/get_python_version.py | jq -r .full)
         echo "version=${python_version}" >> $GITHUB_OUTPUT
 
-    - name: Generate Requirements
-      run: python scripts/generate_requirements.py
-
-    - name: Cache requirements.txt
-      uses: actions/cache@v4
-      with:
-        path: requirements.txt
-        key: ${{ runner.os }}-requirements-${{ hashFiles('**/requirements.txt') }}
-
   test:
     needs: prepare
     runs-on: ubuntu-latest
@@ -45,12 +36,6 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ needs.prepare.outputs.python_version }}
-
-    - name: Restore cached requirements
-      uses: actions/cache@v4
-      with:
-        path: requirements.txt
-        key: ${{ runner.os }}-requirements-${{ hashFiles('**/requirements.txt') }}
 
     - name: Install dependencies
       run: |

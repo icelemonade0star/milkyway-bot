@@ -19,24 +19,23 @@ class ParamikoTunnel:
 
     def init_tunnel(self):
         try:
-            # 리모트 DB 설정
             remote_db_host = config.DB_HOST or "127.0.0.1"
             remote_db_port = int(config.DB_PORT)
 
-            # 터널 서버 설정
-            self._server = SSHTunnelForwarder(
+            server = SSHTunnelForwarder(
                 (config.SSH_HOST, config.SSH_PORT),
                 ssh_username=config.SSH_USER,
                 ssh_password=config.SSH_PASSWORD,
                 ssh_pkey=config.SSH_PRIVATE_KEY_PATH,
                 remote_bind_address=(remote_db_host, remote_db_port),
-                local_bind_address=('127.0.0.1', 0) # 로컬의 남는 포트에 바인딩
+                local_bind_address=('127.0.0.1', 0),
             )
-            
-            self._server.start()
+            server.start()
+            self._server = server
             logger.info(f"✅ SSH 터널 시작됨 - 로컬 포트: {self._server.local_bind_port}")
-            
+
         except Exception as e:
+            self._server = None
             logger.error(f"❌ SSH 터널 실패: {e}")
 
     @property
