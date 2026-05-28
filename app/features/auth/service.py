@@ -82,22 +82,26 @@ class AuthService:
         치지직 인증 정보를 DB에 저장하고 결과를 반환합니다.
         """
         try:
-            # 1. models.AuthToken 저장 (Merge는 없으면 Insert, 있으면 Update를 수행)
             token_model = await self.db.merge(models.AuthToken(
                 channel_id=chzzk_auth.channel_id,
                 channel_name=chzzk_auth.channel_name,
                 access_token=chzzk_auth.access_token,
                 refresh_token=chzzk_auth.refresh_token,
-                expires_at=chzzk_auth.expires_at
+                expires_at=chzzk_auth.expires_at,
             ))
-            
-            # 2. 채널 설정 초기값 생성 (이미 존재하면 무시)
-            # get으로 먼저 확인
+
             config_exists = await self.db.get(models.ChannelConfig, chzzk_auth.channel_id)
             if not config_exists:
-                new_config = models.ChannelConfig(channel_id=chzzk_auth.channel_id)
-                self.db.add(new_config)
+                self.db.add(models.ChannelConfig(channel_id=chzzk_auth.channel_id))
 
+            await self.db.commit()
+
+        except Exception as e:
+            await self.db.rollback()
+            print(f"[DB Error] save_chzzk_auth (v1) failed: {str(e)}")
+            raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
+
+        try:
             await self.save_platform_auth(
                 platform=getattr(chzzk_auth, "platform", "chzzk"),
                 platform_channel_id=chzzk_auth.channel_id,
@@ -107,17 +111,12 @@ class AuthService:
                 expires_at=chzzk_auth.expires_at,
                 raw_token_response=getattr(chzzk_auth, "raw_token_response", None),
             )
-
             await self.db.commit()
-            
-            # merge된 객체는 세션에 연결되어 있으므로 바로 반환 가능
-            return token_model
-
         except Exception as e:
-            # 에러 발생 시 롤백
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
-            raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
+            print(f"[DB Warning] save_platform_auth (v2) failed: {str(e)}")
+
+        return token_model
 
     async def get_auth_list(self, channel_name: str = None):
         # ORM 스타일 조회
