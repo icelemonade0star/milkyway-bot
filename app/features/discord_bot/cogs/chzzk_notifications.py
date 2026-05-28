@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import discord
 from discord.ext import commands, tasks
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.chzzk_api import ChzzkAPIClient
@@ -81,9 +81,21 @@ class ChzzkNotification(commands.Cog):
                 new_cache: dict[str, _CachedNotification] = {}
 
                 v2_stmt = (
-                    select(models.V2LiveNotification, models.V2Channel, models.V2ChannelLiveState)
+                    select(
+                        models.V2LiveNotification,
+                        models.V2Channel,
+                        models.V2ChannelLiveState,
+                        models.V2LiveNotificationDelivery.id,
+                    )
                     .join(models.V2Channel, models.V2LiveNotification.channel_id == models.V2Channel.id)
                     .outerjoin(models.V2ChannelLiveState, models.V2ChannelLiveState.channel_id == models.V2Channel.id)
+                    .outerjoin(
+                        models.V2LiveNotificationDelivery,
+                        and_(
+                            models.V2LiveNotificationDelivery.notification_id == models.V2LiveNotification.id,
+                            models.V2LiveNotificationDelivery.stream_session_id == models.V2ChannelLiveState.current_stream_session_id,
+                        ),
+                    )
                     .where(
                         models.V2LiveNotification.is_active == True,
                         models.V2LiveNotification.destination_platform == "discord",
@@ -91,14 +103,19 @@ class ChzzkNotification(commands.Cog):
                         models.V2Channel.is_active == True,
                     )
                 )
-                for notification, channel, live_state in (await db.execute(v2_stmt)).all():
+                for notification, channel, live_state, delivery_id in (await db.execute(v2_stmt)).all():
                     key = f"v2:{notification.id}"
+                    last_status = (
+                        "OPEN"
+                        if live_state and live_state.status == "OPEN" and delivery_id is not None
+                        else "CLOSE"
+                    )
                     new_cache[key] = _CachedNotification(
                         chzzk_channel_id=channel.platform_channel_id,
                         discord_channel_id=notification.destination_channel_id,
                         streamer_name=channel.channel_name,
                         mention_role=notification.mention_role,
-                        last_status=(live_state.status if live_state else "CLOSE"),
+                        last_status=last_status,
                         notification_id=notification.id,
                         v2_channel_id=channel.id,
                     )
@@ -420,4 +437,3 @@ class ChzzkNotification(commands.Cog):
     @check_chzzk.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
-

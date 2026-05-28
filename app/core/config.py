@@ -56,5 +56,9 @@ MAX_COMMAND_NAME_CHARS = int(os.getenv("MAX_COMMAND_NAME_CHARS", "100"))
 # 치지직 채팅 1회 전송 기준 응답 글자 수
 MAX_CHAT_RESPONSE_CHARS = int(os.getenv("MAX_CHAT_RESPONSE_CHARS", "100"))
 
+# --- Live state polling ---
+LIVE_STATE_POLL_INTERVAL_SECONDS = int(os.getenv("LIVE_STATE_POLL_INTERVAL_SECONDS", "60"))
+LIVE_STATE_POLL_CONCURRENCY = int(os.getenv("LIVE_STATE_POLL_CONCURRENCY", "5"))
+
 # --- 관리자 인증 ---
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")

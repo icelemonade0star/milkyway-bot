@@ -8,6 +8,7 @@ import app.core.database as db_module
 from app.core.tunnel import ParamikoTunnel
 from app.features.chat.session_manager import session_manager
 from app.features.discord_bot.main import bot, discord_token, start_discord_bot
+from app.features.live_state_poller import LiveStatePoller
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +44,10 @@ async def lifespan(app: FastAPI):
     async with session_factory() as db_session:
         await session_manager.restore_all_sessions_from_db(db_session)
     
+    # Live state polling 백그라운드 실행
+    live_state_poller = LiveStatePoller(session_factory)
+    live_state_task = asyncio.create_task(live_state_poller.run())
+
     # 디스코드 봇 백그라운드 실행
     discord_task = None
     if discord_token:
@@ -55,6 +60,13 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN ---
     print("🔒 리소스 정리 시작")
+    live_state_poller.stop()
+    live_state_task.cancel()
+    try:
+        await live_state_task
+    except asyncio.CancelledError:
+        pass
+
     if discord_task:
         await bot.close()
         discord_task.cancel()

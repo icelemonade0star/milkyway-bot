@@ -531,6 +531,46 @@ class ChatService:
             print(f"[DB Error] Attendance check failed: {str(e)}")
             return None
 
+    async def _mark_stream_closed(self, channel_id: str, raw_status: dict | None = None):
+        now = datetime.now(timezone.utc)
+
+        latest_legacy = (await self.db.execute(
+            select(models.StreamSession)
+            .where(
+                models.StreamSession.chzzk_channel_id == channel_id,
+                models.StreamSession.closed_at.is_(None),
+            )
+            .order_by(models.StreamSession.opened_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if latest_legacy:
+            latest_legacy.closed_at = now
+
+        v2_channel = await self._get_v2_channel(channel_id)
+        if not v2_channel:
+            return
+
+        latest_v2 = (await self.db.execute(
+            select(models.V2StreamSession)
+            .where(
+                models.V2StreamSession.channel_id == v2_channel.id,
+                models.V2StreamSession.closed_at.is_(None),
+            )
+            .order_by(models.V2StreamSession.opened_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if latest_v2:
+            latest_v2.closed_at = now
+
+        live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
+        if not live_state:
+            live_state = models.V2ChannelLiveState(channel_id=v2_channel.id)
+            self.db.add(live_state)
+        live_state.status = "CLOSE"
+        live_state.current_stream_session_id = None
+        live_state.last_checked_at = now
+        live_state.raw_status = raw_status
+
 
     async def sync_stream_session(self, channel_id: str):
         """Sync the current live stream session through the platform live provider."""
@@ -542,10 +582,14 @@ class ChatService:
 
             if cached_status:
                 if cached_status == "CLOSE":
+                    await self._mark_stream_closed(channel_id)
+                    await self.db.commit()
                     return None
                 content = json.loads(cached_status)
                 open_date_str = content.get("openDate")
                 if not open_date_str:
+                    await self._mark_stream_closed(channel_id, content)
+                    await self.db.commit()
                     return None
                 kst_tz = timezone(timedelta(hours=9))
                 current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
@@ -556,6 +600,8 @@ class ChatService:
 
                 if not live_status or live_status.status != "OPEN" or not live_status.opened_at:
                     await redis_client.set(cache_key, "CLOSE", ex=60)
+                    await self._mark_stream_closed(channel_id, live_status.raw if live_status else None)
+                    await self.db.commit()
                     return None
 
                 content = live_status.raw or {}
@@ -619,4 +665,3 @@ async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
 
    
-
