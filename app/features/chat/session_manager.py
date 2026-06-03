@@ -6,7 +6,7 @@ logger = logging.getLogger("SessionManager")
 
 class SessionManager:
     def __init__(self):
-        self.active_sessions = {}  # {channel_id: ChzzkSessions 인스턴스}
+        self.active_sessions = {}  # {channel_id: platform chat session instance}
         # 동시 생성 방지를 위한 락 (channel_id별로 관리)
         self._locks = {}
 
@@ -65,10 +65,10 @@ class SessionManager:
 
             logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
             
-            # TODO: 파일 구조 변경 시 from .session import ChzzkSession 으로 변경 필요
+            # 현재 채팅 세션 구현체는 기본 플랫폼(chzzk)을 사용한다.
             new_session = ChzzkSessions(channel_id)
             
-            # 2. 실제 치지직 서버와 연결 및 구독 (비동기 작업)
+            # 2. 실제 플랫폼 서버와 연결 및 구독 (비동기 작업)
             await new_session.create_session()
 
             if not new_session.socket_url:

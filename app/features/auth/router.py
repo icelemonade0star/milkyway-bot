@@ -1,30 +1,26 @@
-from app.platforms.chzzk.auth import ChzzkAuthProvider
-
 from fastapi import APIRouter, HTTPException, Depends, Query, Cookie, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import DASHBOARD_COOKIE_SECURE, TEMPLATE_DIR
+from app.core.config import DASHBOARD_COOKIE_SECURE, DEFAULT_PLATFORM, TEMPLATE_DIR
 from app.core.database import get_async_db
 from app.core import security
 from app.features.auth.service import AuthService
 from app.features.auth.schemas import AuthListResponse, TokenRefreshResponse
 from app.features.chat.session_manager import session_manager
+from app.platforms.registry import get_auth_provider
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
-# 인증 객체 생성
-# auth = ChzzkAuth()
-
-def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuthProvider:
+def get_platform_auth(db: AsyncSession = Depends(get_async_db)):
     auth_service = AuthService(db)
-    return ChzzkAuthProvider(auth_service)
+    return get_auth_provider(DEFAULT_PLATFORM, auth_service)
 
 @auth_router.get("/")
-async def auth_redirect(chzzk: ChzzkAuthProvider = Depends(get_chzzk_auth)):
-    url, state = chzzk.get_auth_url()
+async def auth_redirect(platform_auth = Depends(get_platform_auth)):
+    url, state = platform_auth.get_auth_url()
 
     response = RedirectResponse(url=url)
     # 쿠키에 state 저장 (유효기간 5분)
@@ -42,27 +38,27 @@ async def callback_auth(
     oauth_state: str = Cookie(None),
     db: AsyncSession = Depends(get_async_db),
 ):
-    chzzk_auth = get_chzzk_auth(db)
+    platform_auth = get_platform_auth(db)
    
     # 쿠키에 저장된 state와 네이버가 보낸 state 비교
     if not oauth_state or state != oauth_state:
         raise HTTPException(status_code=400, detail="Invalid state")
 
-    if not await chzzk_auth.get_access_token(code, state):
+    if not await platform_auth.get_access_token(code, state):
         raise HTTPException(status_code=400, detail="토큰 발급 실패")
     
-    if not await chzzk_auth.get_user_info():
+    if not await platform_auth.get_user_info():
         raise HTTPException(status_code=400, detail="유저 정보 조회 실패")
 
 
     auth_service = AuthService(db)
     state_payload = security.verify_oauth_state_token(state)
     if state_payload and state_payload.get("purpose") == security.OAUTH_STATE_PURPOSE_DASHBOARD:
-        registered_channel = await auth_service.get_auth_token_by_id(chzzk_auth.channel_id)
+        registered_channel = await auth_service.get_auth_token_by_id(platform_auth.channel_id)
         if not registered_channel:
             raise HTTPException(status_code=403, detail="등록된 채널만 대시보드에 접근할 수 있습니다.")
 
-        session_token = security.create_dashboard_session_token(chzzk_auth.channel_id, chzzk_auth.channel_name)
+        session_token = security.create_dashboard_session_token(platform_auth.channel_id, platform_auth.channel_name)
         response = RedirectResponse(url="/auth/dashboard", status_code=303)
         response.delete_cookie("oauth_state")
         response.set_cookie(
@@ -75,12 +71,12 @@ async def callback_auth(
         )
         return response
 
-    inserted_data = await auth_service.save_chzzk_auth(chzzk_auth)
+    inserted_data = await auth_service.save_default_platform_auth(platform_auth)
     
     # [추가] 인증 완료 후 백그라운드에서 세션 생성 및 채팅 연결 시작
-    background_tasks.add_task(session_manager.get_or_create_session, chzzk_auth.channel_id)
+    background_tasks.add_task(session_manager.get_or_create_session, platform_auth.channel_id)
     
-    channel_name = getattr(inserted_data, 'channel_name', chzzk_auth.channel_name)
+    channel_name = getattr(inserted_data, 'channel_name', platform_auth.channel_name)
 
     return templates.TemplateResponse(
         "auth_callback.html",
@@ -116,11 +112,11 @@ async def get_auth_token_list(
 )
 async def refresh_token(
     channel_id: str,
-    chzzk_auth: ChzzkAuthProvider = Depends(get_chzzk_auth),
+    platform_auth = Depends(get_platform_auth),
     db: AsyncSession = Depends(get_async_db)
 ):
     # 1. 토큰 갱신
-    new_token, status_code = await chzzk_auth.refresh_access_token(channel_id)
+    new_token, status_code = await platform_auth.refresh_access_token(channel_id)
     if not new_token:
         raise HTTPException(status_code=500, detail="토큰 갱신에 실패했습니다.")
 

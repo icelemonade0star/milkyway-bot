@@ -4,21 +4,21 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
-from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TEMPLATE_DIR
+from app.core.config import DASHBOARD_COOKIE_SECURE, DEFAULT_PLATFORM, MAX_CHAT_RESPONSE_CHARS, TEMPLATE_DIR
 from app.core.database import get_async_db
-from app.platforms.chzzk.auth import ChzzkAuthProvider
 from app.features.auth.service import AuthService
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
 from app.features.dashboard.service import DashboardService
+from app.platforms.registry import get_auth_provider
 
 dashboard_router = APIRouter(prefix="/auth/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
-def get_chzzk_auth(db: AsyncSession = Depends(get_async_db)) -> ChzzkAuthProvider:
+def get_platform_auth(db: AsyncSession = Depends(get_async_db)):
     auth_service = AuthService(db)
-    return ChzzkAuthProvider(auth_service)
+    return get_auth_provider(DEFAULT_PLATFORM, auth_service)
 
 
 def get_dashboard_session(dashboard_session: str = Cookie(None)):
@@ -26,9 +26,9 @@ def get_dashboard_session(dashboard_session: str = Cookie(None)):
 
 
 @dashboard_router.get("/login")
-async def dashboard_login(chzzk: ChzzkAuthProvider = Depends(get_chzzk_auth)):
+async def dashboard_login(platform_auth = Depends(get_platform_auth)):
     state = security.create_oauth_state_token(security.OAUTH_STATE_PURPOSE_DASHBOARD)
-    url, state = chzzk.get_auth_url(state=state)
+    url, state = platform_auth.get_auth_url(state=state)
 
     response = RedirectResponse(url=url)
     response.set_cookie(

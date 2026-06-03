@@ -17,11 +17,11 @@ async def send_message(
     channel_id: str,
     message: str
 ):
-    chzzk_session = session_manager.get_existing_session(channel_id)
-    if not chzzk_session:
+    chat_session = session_manager.get_existing_session(channel_id)
+    if not chat_session:
         raise HTTPException(status_code=404, detail="활성화된 세션이 없습니다.")
 
-    result = await chzzk_session.send_chat(message)
+    result = await chat_session.send_chat(message)
     if not result:
         raise HTTPException(status_code=500, detail="채팅 전송에 실패했습니다.")
 

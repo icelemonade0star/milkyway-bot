@@ -1,7 +1,7 @@
 ﻿import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import discord
@@ -9,14 +9,14 @@ from discord.ext import commands, tasks
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.chzzk_api import ChzzkAPIClient
 from app.core.database import get_session_factory
 from app.db import models
+from app.platforms.registry import get_live_provider
 
 _CACHE_TTL = 300.0
 _OPEN_POLL_INTERVAL = 300.0
 
-_active_cog: Optional["ChzzkNotification"] = None
+_active_cog: Optional["LiveNotification"] = None
 
 
 def invalidate_notification_cache():
@@ -26,11 +26,13 @@ def invalidate_notification_cache():
 
 @dataclass
 class LiveNotificationData:
-    channel_id: str
+    platform: str
+    platform_channel_id: str
     streamer_name: str
     live_title: str
     category: str
     tags: List[str]
+    live_url: str
     thumbnail_url: Optional[str] = None
     channel_image_url: Optional[str] = None
     open_date: Optional[str] = None
@@ -38,7 +40,8 @@ class LiveNotificationData:
 
 @dataclass
 class _CachedNotification:
-    chzzk_channel_id: str
+    platform: str
+    platform_channel_id: str
     discord_channel_id: str
     streamer_name: str
     mention_role: Optional[str]
@@ -54,21 +57,18 @@ class _CachedNotification:
         return self.notification_id is not None and self.v2_channel_id is not None
 
 
-class ChzzkNotification(commands.Cog):
+class LiveNotification(commands.Cog):
     def __init__(self, bot):
         global _active_cog
         self.bot = bot
-        self.chzzk_client = ChzzkAPIClient()
         self._cache: dict[str, _CachedNotification] = {}
         self._cache_loaded_at: float = 0.0
         _active_cog = self
-        self.check_chzzk.start()
+        self.check_live_notifications.start()
 
     def cog_unload(self):
         global _active_cog
-        self.check_chzzk.cancel()
-        if self.chzzk_client:
-            asyncio.create_task(self.chzzk_client.close())
+        self.check_live_notifications.cancel()
         _active_cog = None
 
     async def _load_cache(self):
@@ -99,7 +99,6 @@ class ChzzkNotification(commands.Cog):
                     .where(
                         models.V2LiveNotification.is_active == True,
                         models.V2LiveNotification.destination_platform == "discord",
-                        models.V2Channel.platform == "chzzk",
                         models.V2Channel.is_active == True,
                     )
                 )
@@ -111,30 +110,14 @@ class ChzzkNotification(commands.Cog):
                         else "CLOSE"
                     )
                     new_cache[key] = _CachedNotification(
-                        chzzk_channel_id=channel.platform_channel_id,
+                        platform=channel.platform,
+                        platform_channel_id=channel.platform_channel_id,
                         discord_channel_id=notification.destination_channel_id,
                         streamer_name=channel.channel_name,
                         mention_role=notification.mention_role,
                         last_status=last_status,
                         notification_id=notification.id,
                         v2_channel_id=channel.id,
-                    )
-
-                legacy_stmt = select(models.ChzzkNotification).where(models.ChzzkNotification.is_active == True)
-                legacy_notifications = (await db.execute(legacy_stmt)).scalars().all()
-                for notification in legacy_notifications:
-                    key = f"legacy:{notification.chzzk_channel_id}:{notification.discord_channel_id}"
-                    if any(
-                        entry.chzzk_channel_id == notification.chzzk_channel_id and entry.is_v2
-                        for entry in new_cache.values()
-                    ):
-                        continue
-                    new_cache[key] = _CachedNotification(
-                        chzzk_channel_id=notification.chzzk_channel_id,
-                        discord_channel_id=notification.discord_channel_id,
-                        streamer_name=notification.streamer_name or notification.chzzk_channel_id,
-                        mention_role=getattr(notification, "mention_role", None),
-                        last_status=notification.last_status,
                     )
 
                 for key, new_entry in new_cache.items():
@@ -145,14 +128,14 @@ class ChzzkNotification(commands.Cog):
 
                 self._cache = new_cache
                 self._cache_loaded_at = time.monotonic()
-                print(f"[ChzzkNotification] cache loaded: {len(self._cache)}")
+                print(f"[LiveNotification] cache loaded: {len(self._cache)}")
         except Exception as e:
-            print(f"[ChzzkNotification] cache load failed: {e}")
+            print(f"[LiveNotification] cache load failed: {e}")
             self._cache_loaded_at = time.monotonic()
 
     @tasks.loop(seconds=30.0)
-    async def check_chzzk(self):
-        print("[ChzzkNotification] checking live status...")
+    async def check_live_notifications(self):
+        print("[LiveNotification] checking live status...")
         try:
             if time.monotonic() - self._cache_loaded_at > _CACHE_TTL:
                 await self._load_cache()
@@ -171,45 +154,48 @@ class ChzzkNotification(commands.Cog):
                 return_exceptions=True,
             )
         except Exception as e:
-            print(f"[ChzzkNotification] loop error: {e}")
+            print(f"[LiveNotification] loop error: {e}")
 
     async def process_notification(self, entry: _CachedNotification):
-        chzzk_id = entry.chzzk_channel_id
+        platform_channel_id = entry.platform_channel_id
         last_status = entry.last_status
 
         if last_status == "OPEN" and time.monotonic() - entry._last_polled_at < _OPEN_POLL_INTERVAL:
             return
 
-        print(f"[ChzzkNotification] checking channel: {chzzk_id} (Last: {last_status})")
+        print(f"[LiveNotification] checking channel: {entry.platform}:{platform_channel_id} (Last: {last_status})")
         entry._last_polled_at = time.monotonic()
 
         try:
-            live_status = await self.chzzk_client.get_live_status(chzzk_id)
+            live_provider = get_live_provider(entry.platform)
+            live_status = await live_provider.get_live_status(platform_channel_id)
             if not live_status:
-                print(f"[ChzzkNotification] status lookup failed: {chzzk_id}")
+                print(f"[LiveNotification] status lookup failed: {entry.platform}:{platform_channel_id}")
                 return
 
             content = live_status.raw or {}
             current_status = live_status.status
 
             if current_status not in ("OPEN", "CLOSE"):
-                print(f"[ChzzkNotification] unknown status: {chzzk_id} = {current_status}")
+                print(f"[LiveNotification] unknown status: {entry.platform}:{platform_channel_id} = {current_status}")
                 return
 
-            print(f"[ChzzkNotification] {chzzk_id} current status: {current_status}")
+            print(f"[LiveNotification] {entry.platform}:{platform_channel_id} current status: {current_status}")
 
             if current_status == "OPEN":
                 entry._consecutive_close_count = 0
                 if last_status == "CLOSE":
-                    print(f"[ChzzkNotification] live started: {chzzk_id}")
+                    print(f"[LiveNotification] live started: {entry.platform}:{platform_channel_id}")
 
-                    channel_info = await self.chzzk_client.get_channel_info(chzzk_id) or {}
+                    channel_info = await live_provider.get_channel_info(platform_channel_id) or {}
                     live_data = LiveNotificationData(
-                        channel_id=chzzk_id,
+                        platform=entry.platform,
+                        platform_channel_id=platform_channel_id,
                         streamer_name=entry.streamer_name,
                         live_title=live_status.title or "",
                         category=live_status.category or "",
                         tags=content.get("tags", []),
+                        live_url=live_provider.get_live_url(platform_channel_id),
                         thumbnail_url=live_status.thumbnail_url,
                         channel_image_url=channel_info.get("channelImageUrl"),
                         open_date=content.get("openDate"),
@@ -221,24 +207,24 @@ class ChzzkNotification(commands.Cog):
                             await self._mark_delivery_failed(entry, "Discord send failed")
                     else:
                         entry.last_status = "OPEN"
-                        print(f"[ChzzkNotification] already delivered or DB update failed: {chzzk_id}")
+                        print(f"[LiveNotification] already delivered or DB update failed: {entry.platform}:{platform_channel_id}")
 
             elif current_status == "CLOSE" and last_status == "OPEN":
                 entry._consecutive_close_count += 1
                 if entry._consecutive_close_count >= 2:
-                    print(f"[ChzzkNotification] live closed: {chzzk_id}")
+                    print(f"[LiveNotification] live closed: {entry.platform}:{platform_channel_id}")
                     if await self._update_status_in_db(entry, "CLOSE"):
                         entry.last_status = "CLOSE"
                         entry._consecutive_close_count = 0
                 else:
-                    print(f"[ChzzkNotification] possible close ({entry._consecutive_close_count}/2): {chzzk_id}")
+                    print(f"[LiveNotification] possible close ({entry._consecutive_close_count}/2): {entry.platform}:{platform_channel_id}")
         except Exception as e:
-            print(f"[ChzzkNotification] error {chzzk_id}: {e}")
+            print(f"[LiveNotification] error {entry.platform}:{platform_channel_id}: {e}")
 
     async def _update_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
-        if entry.is_v2:
-            return await self._update_v2_status_in_db(entry, status, content)
-        return await self._update_legacy_status_in_db(entry, status, content)
+        if not entry.is_v2:
+            return False
+        return await self._update_v2_status_in_db(entry, status, content)
 
     async def _update_v2_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
         factory = get_session_factory()
@@ -252,7 +238,7 @@ class ChzzkNotification(commands.Cog):
                 if status == "OPEN":
                     from app.features.chat.service import ChatService
 
-                    await ChatService(db).sync_stream_session(entry.chzzk_channel_id)
+                    await ChatService(db).sync_stream_session(entry.platform_channel_id, entry.platform)
                     live_state = await db.get(models.V2ChannelLiveState, entry.v2_channel_id)
                     stream_session_id = live_state.current_stream_session_id if live_state else None
 
@@ -309,58 +295,11 @@ class ChzzkNotification(commands.Cog):
                     live_state.last_checked_at = now
                     live_state.raw_status = content
 
-                await self._close_legacy_session(db, entry.chzzk_channel_id)
                 await db.commit()
                 return True
         except Exception as e:
-            print(f"[ChzzkNotification] v2 DB update failed: {e}")
+            print(f"[LiveNotification] v2 DB update failed: {e}")
             return False
-
-    async def _update_legacy_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
-        factory = get_session_factory()
-        if not factory:
-            return False
-
-        try:
-            async with factory() as db:
-                stmt = select(models.ChzzkNotification).where(
-                    models.ChzzkNotification.chzzk_channel_id == entry.chzzk_channel_id,
-                    models.ChzzkNotification.discord_channel_id == entry.discord_channel_id,
-                )
-                setting = (await db.execute(stmt)).scalar_one_or_none()
-                if not setting:
-                    return False
-
-                setting.last_status = status
-                if status == "OPEN":
-                    setting.last_notified_at = datetime.now(timezone(timedelta(hours=9)))
-                    if content:
-                        from app.features.chat.service import ChatService
-
-                        await ChatService(db).sync_stream_session(entry.chzzk_channel_id)
-
-                if status == "CLOSE":
-                    await self._close_legacy_session(db, entry.chzzk_channel_id)
-
-                await db.commit()
-                print(f"[ChzzkNotification] legacy DB status updated: {entry.chzzk_channel_id} -> {status}")
-                return True
-        except Exception as e:
-            print(f"[ChzzkNotification] legacy DB update failed: {e}")
-            return False
-
-    async def _close_legacy_session(self, db, chzzk_channel_id: str):
-        latest = (await db.execute(
-            select(models.StreamSession)
-            .where(
-                models.StreamSession.chzzk_channel_id == chzzk_channel_id,
-                models.StreamSession.closed_at.is_(None),
-            )
-            .order_by(models.StreamSession.opened_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-        if latest:
-            latest.closed_at = datetime.now(timezone(timedelta(hours=9)))
 
     async def _mark_delivery_failed(self, entry: _CachedNotification, error_message: str):
         if not entry.is_v2 or not entry.current_stream_session_id:
@@ -383,12 +322,12 @@ class ChzzkNotification(commands.Cog):
                     delivery.error_message = error_message
                     await db.commit()
         except Exception as e:
-            print(f"[ChzzkNotification] delivery failure mark failed: {e}")
+            print(f"[LiveNotification] delivery failure mark failed: {e}")
 
     async def send_live_notification(self, entry: _CachedNotification, live_data: LiveNotificationData) -> bool:
         target_channel = self.bot.get_channel(int(entry.discord_channel_id))
         if not target_channel:
-            print(f"[ChzzkNotification] Discord channel not found: {entry.discord_channel_id}")
+            print(f"[LiveNotification] Discord channel not found: {entry.discord_channel_id}")
             return False
 
         thumbnail_url = live_data.thumbnail_url.replace("{type}", "1080") if live_data.thumbnail_url else None
@@ -397,7 +336,7 @@ class ChzzkNotification(commands.Cog):
             title=live_data.live_title,
             description=f"{live_data.streamer_name} 방송 시작!",
             color=0x00D169,
-            url=f"https://chzzk.naver.com/live/{live_data.channel_id}",
+            url=live_data.live_url,
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -413,9 +352,9 @@ class ChzzkNotification(commands.Cog):
         embed.set_author(
             name=live_data.streamer_name,
             icon_url=live_data.channel_image_url,
-            url=f"https://chzzk.naver.com/{live_data.channel_id}",
+            url=live_data.live_url,
         )
-        embed.set_footer(text="치지직 방송 알림", icon_url="https://ssl.pstatic.net/static/nng/glive/icon/favicon.png")
+        embed.set_footer(text="방송 알림", icon_url="https://ssl.pstatic.net/static/nng/glive/icon/favicon.png")
 
         content_msg = (
             f"{entry.mention_role} {live_data.streamer_name} 방송이 시작되었습니다!"
@@ -426,14 +365,14 @@ class ChzzkNotification(commands.Cog):
         try:
             await target_channel.send(content=content_msg, embed=embed)
             print(
-                f"[ChzzkNotification] notification sent: "
+                f"[LiveNotification] notification sent: "
                 f"{live_data.streamer_name} -> {target_channel.name} ({target_channel.id})"
             )
             return True
         except Exception as e:
-            print(f"[ChzzkNotification] message send failed {live_data.channel_id}: {e}")
+            print(f"[LiveNotification] message send failed {live_data.platform_channel_id}: {e}")
             return False
 
-    @check_chzzk.before_loop
+    @check_live_notifications.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()

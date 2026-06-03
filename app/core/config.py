@@ -17,6 +17,7 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 REDIRECT_URL = 'https://milkywaybot.cloud/auth/callback'
 DASHBOARD_COOKIE_SECURE = os.getenv("DASHBOARD_COOKIE_SECURE", "true").lower() == "true"
 PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL", "https://milkywaybot.cloud").rstrip("/")
+DEFAULT_PLATFORM = os.getenv("DEFAULT_PLATFORM", "chzzk")
 
 # --- 데이터베이스 설정 ---
 DB_USER = os.getenv("DB_USER")

@@ -55,25 +55,43 @@ class LiveStatePoller:
             )).scalars().all()
 
         if not channels:
-            return
+            return 0
 
         sem = asyncio.Semaphore(self.concurrency)
 
         async def bounded(channel):
             async with sem:
-                await self._poll_channel(channel)
+                return await self._poll_channel(channel)
 
         results = await asyncio.gather(*(bounded(channel) for channel in channels), return_exceptions=True)
+        refreshed_count = 0
         for result in results:
             if isinstance(result, Exception):
                 logger.warning("Live state poll task failed: %s", result)
+            elif result:
+                refreshed_count += 1
+        return refreshed_count
+
+    async def poll_channel_by_platform_id(self, platform: str, platform_channel_id: str) -> bool:
+        async with self.session_factory() as db:
+            channel = (await db.execute(
+                select(models.V2Channel).where(
+                    models.V2Channel.platform == platform,
+                    models.V2Channel.platform_channel_id == platform_channel_id,
+                )
+            )).scalar_one_or_none()
+
+        if not channel:
+            return False
+
+        return await self._poll_channel(channel)
 
     async def _poll_channel(self, channel: models.V2Channel):
         try:
             provider = get_live_provider(channel.platform)
         except ValueError:
             logger.debug("No live provider for platform=%s", channel.platform)
-            return
+            return False
 
         try:
             live_status = await provider.get_live_status(channel.platform_channel_id)
@@ -84,15 +102,15 @@ class LiveStatePoller:
                 channel.platform_channel_id,
                 e,
             )
-            return
+            return False
 
         async with self.session_factory() as db:
             db_channel = await db.get(models.V2Channel, channel.id)
             if not db_channel or not db_channel.is_active:
-                return
+                return False
 
             if not live_status:
-                return
+                return False
 
             if live_status.status == "OPEN" and live_status.opened_at:
                 await self._mark_open(db, db_channel, live_status)
@@ -104,6 +122,7 @@ class LiveStatePoller:
                 await self._mark_unknown(db, db_channel, live_status.raw)
 
             await db.commit()
+            return True
 
     async def _mark_open(self, db, channel: models.V2Channel, live_status):
         existing = (await db.execute(
@@ -142,33 +161,6 @@ class LiveStatePoller:
         live_state.last_checked_at = datetime.now(timezone.utc)
         live_state.raw_status = live_status.raw or {}
 
-        if channel.platform == "chzzk":
-            legacy_open_sessions = (await db.execute(
-                select(models.StreamSession).where(
-                    models.StreamSession.chzzk_channel_id == channel.platform_channel_id,
-                    models.StreamSession.closed_at.is_(None),
-                    models.StreamSession.opened_at != live_status.opened_at,
-                )
-            )).scalars().all()
-            for session in legacy_open_sessions:
-                session.closed_at = datetime.now(timezone.utc)
-
-            legacy = (await db.execute(
-                select(models.StreamSession).where(
-                    models.StreamSession.chzzk_channel_id == channel.platform_channel_id,
-                    models.StreamSession.opened_at == live_status.opened_at,
-                )
-            )).scalar_one_or_none()
-            if not legacy:
-                db.add(models.StreamSession(
-                    chzzk_channel_id=channel.platform_channel_id,
-                    opened_at=live_status.opened_at,
-                    stream_title=live_status.title,
-                ))
-            else:
-                legacy.closed_at = None
-                legacy.stream_title = live_status.title
-
     async def _mark_closed(self, db, channel: models.V2Channel, raw_status: dict | None):
         now = datetime.now(timezone.utc)
 
@@ -182,19 +174,6 @@ class LiveStatePoller:
         live_state.current_stream_session_id = None
         live_state.last_checked_at = now
         live_state.raw_status = raw_status
-
-        if channel.platform == "chzzk":
-            latest = (await db.execute(
-                select(models.StreamSession)
-                .where(
-                    models.StreamSession.chzzk_channel_id == channel.platform_channel_id,
-                    models.StreamSession.closed_at.is_(None),
-                )
-                .order_by(models.StreamSession.opened_at.desc())
-                .limit(1)
-            )).scalar_one_or_none()
-            if latest:
-                latest.closed_at = now
 
     async def _mark_unknown(self, db, channel: models.V2Channel, raw_status: dict | None):
         live_state = await db.get(models.V2ChannelLiveState, channel.id)

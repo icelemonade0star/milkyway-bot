@@ -1,7 +1,6 @@
 from app.platforms.chzzk.auth import ChzzkAuthProvider
 from app.platforms.chzzk.live import ChzzkLiveProvider
-
-DEFAULT_PLATFORM = "chzzk"
+from app.core.config import DEFAULT_PLATFORM
 
 _LIVE_PROVIDERS = {}
 

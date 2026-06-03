@@ -1,12 +1,12 @@
 ﻿from fastapi import Depends
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, or_, func
+from sqlalchemy import select, or_, func
 from fastapi import HTTPException
 import json
 
 from app.db import models
-from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
+from app.core.config import DEFAULT_PLATFORM, MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from app.platforms.registry import get_live_provider
 from datetime import datetime, timedelta, timezone
@@ -15,7 +15,7 @@ class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _get_v2_channel(self, platform_channel_id: str, platform: str = "chzzk"):
+    async def _get_v2_channel(self, platform_channel_id: str, platform: str = DEFAULT_PLATFORM):
         stmt = select(models.V2Channel).where(
             models.V2Channel.platform == platform,
             models.V2Channel.platform_channel_id == platform_channel_id,
@@ -32,17 +32,12 @@ class ChatService:
     async def set_channel_config(self, channel_id: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                config = await self.db.get(models.V2ChannelConfig, v2_channel.id)
-                if not config:
-                    config = models.V2ChannelConfig(channel_id=v2_channel.id)
-                    self.db.add(config)
-                    await self.db.commit()
-                return config
+            if not v2_channel:
+                return None
 
-            config = await self.db.get(models.ChannelConfig, channel_id)
+            config = await self.db.get(models.V2ChannelConfig, v2_channel.id)
             if not config:
-                config = models.ChannelConfig(channel_id=channel_id)
+                config = models.V2ChannelConfig(channel_id=v2_channel.id)
                 self.db.add(config)
                 await self.db.commit()
             return config
@@ -55,26 +50,18 @@ class ChatService:
     async def update_channel_config(self, channel_id: str, command_prefix: str, language: str, is_active: bool):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                config = await self.db.get(models.V2ChannelConfig, v2_channel.id)
-                if not config:
-                    config = models.V2ChannelConfig(channel_id=v2_channel.id)
-                    self.db.add(config)
-                config.command_prefix = command_prefix
-                config.language = language
-                config.is_active = is_active
-                await self.db.commit()
-                return config
+            if not v2_channel:
+                return None
 
-            stmt = (
-                update(models.ChannelConfig)
-                .where(models.ChannelConfig.channel_id == channel_id)
-                .values(command_prefix=command_prefix, language=language, is_active=is_active)
-                .execution_options(synchronize_session="fetch")
-            )
-            await self.db.execute(stmt)
+            config = await self.db.get(models.V2ChannelConfig, v2_channel.id)
+            if not config:
+                config = models.V2ChannelConfig(channel_id=v2_channel.id)
+                self.db.add(config)
+            config.command_prefix = command_prefix
+            config.language = language
+            config.is_active = is_active
             await self.db.commit()
-            return await self.get_channel_config(channel_id)
+            return config
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
@@ -84,10 +71,9 @@ class ChatService:
     async def get_channel_config(self, channel_id: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                return await self.db.get(models.V2ChannelConfig, v2_channel.id)
-
-            return await self.db.get(models.ChannelConfig, channel_id)
+            if not v2_channel:
+                return None
+            return await self.db.get(models.V2ChannelConfig, v2_channel.id)
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] {str(e)}")
@@ -101,18 +87,18 @@ class ChatService:
         try:
             # ORM Select
             # 1. 정확히 일치하는 명령어 조회
-            stmt = select(models.GlobalCommand).where(models.GlobalCommand.command == command)
+            stmt = select(models.V2GlobalChatCommand).where(models.V2GlobalChatCommand.command == command)
             result = await self.db.execute(stmt)
             exact = result.scalar_one_or_none()
             if exact:
                 return exact
 
             # 2. '|' 구분자가 포함된 명령어 조회 (별칭 지원) — LIKE로 DB에서 선필터링
-            stmt = select(models.GlobalCommand).where(
+            stmt = select(models.V2GlobalChatCommand).where(
                 or_(
-                    models.GlobalCommand.command.like(f'{command}|%'),
-                    models.GlobalCommand.command.like(f'%|{command}'),
-                    models.GlobalCommand.command.like(f'%|{command}|%'),
+                    models.V2GlobalChatCommand.command.like(f'{command}|%'),
+                    models.V2GlobalChatCommand.command.like(f'%|{command}'),
+                    models.V2GlobalChatCommand.command.like(f'%|{command}|%'),
                 )
             )
             result = await self.db.execute(stmt)
@@ -136,10 +122,10 @@ class ChatService:
         """
         try:
             # display_order가 0인 명령어는 목록 조회에서 제외
-            stmt = select(models.GlobalCommand).where(
-                models.GlobalCommand.is_active == True,
-                models.GlobalCommand.display_order != 0
-            ).order_by(models.GlobalCommand.display_order.asc())
+            stmt = select(models.V2GlobalChatCommand).where(
+                models.V2GlobalChatCommand.is_active == True,
+                models.V2GlobalChatCommand.display_order != 0
+            ).order_by(models.V2GlobalChatCommand.display_order.asc())
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
@@ -150,17 +136,12 @@ class ChatService:
     async def get_channel_commands(self, channel_id: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                stmt = select(models.V2ChannelChatCommand).where(
-                    models.V2ChannelChatCommand.channel_id == v2_channel.id,
-                    models.V2ChannelChatCommand.is_active == True,
-                )
-                result = await self.db.execute(stmt)
-                return result.scalars().all()
+            if not v2_channel:
+                return []
 
-            stmt = select(models.ChatCommand).where(
-                models.ChatCommand.channel_id == channel_id,
-                models.ChatCommand.is_active == True,
+            stmt = select(models.V2ChannelChatCommand).where(
+                models.V2ChannelChatCommand.channel_id == v2_channel.id,
+                models.V2ChannelChatCommand.is_active == True,
             )
             result = await self.db.execute(stmt)
             return result.scalars().all()
@@ -173,8 +154,11 @@ class ChatService:
     async def get_chat_command(self, channel_id: str, command: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            model = models.V2ChannelChatCommand if v2_channel else models.ChatCommand
-            channel_key = v2_channel.id if v2_channel else channel_id
+            if not v2_channel:
+                return None
+
+            model = models.V2ChannelChatCommand
+            channel_key = v2_channel.id
 
             stmt = select(model).where(
                 model.channel_id == channel_key,
@@ -226,8 +210,11 @@ class ChatService:
                 return "reserved", None
 
             v2_channel = await self._get_v2_channel(channel_id)
-            model = models.V2ChannelChatCommand if v2_channel else models.ChatCommand
-            channel_key = v2_channel.id if v2_channel else channel_id
+            if not v2_channel:
+                return None, None
+
+            model = models.V2ChannelChatCommand
+            channel_key = v2_channel.id
 
             count_stmt = select(func.count()).select_from(model).where(model.channel_id == channel_key)
             count = (await self.db.execute(count_stmt)).scalar()
@@ -295,13 +282,13 @@ class ChatService:
     async def get_channel_greetings(self, channel_id: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                stmt = select(models.V2ChannelGreeting).where(
-                    models.V2ChannelGreeting.channel_id == v2_channel.id,
-                    models.V2ChannelGreeting.is_active == True,
-                )
-            else:
-                stmt = select(models.ChatGreeting).where(models.ChatGreeting.channel_id == channel_id)
+            if not v2_channel:
+                return []
+
+            stmt = select(models.V2ChannelGreeting).where(
+                models.V2ChannelGreeting.channel_id == v2_channel.id,
+                models.V2ChannelGreeting.is_active == True,
+            )
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
@@ -312,8 +299,11 @@ class ChatService:
     async def get_greeting(self, channel_id: str, keyword: str):
         try:
             v2_channel = await self._get_v2_channel(channel_id)
-            model = models.V2ChannelGreeting if v2_channel else models.ChatGreeting
-            channel_key = v2_channel.id if v2_channel else channel_id
+            if not v2_channel:
+                return None
+
+            model = models.V2ChannelGreeting
+            channel_key = v2_channel.id
 
             stmt = select(model).where(
                 model.channel_id == channel_key,
@@ -358,8 +348,11 @@ class ChatService:
                 return None, None
 
             v2_channel = await self._get_v2_channel(channel_id)
-            model = models.V2ChannelGreeting if v2_channel else models.ChatGreeting
-            channel_key = v2_channel.id if v2_channel else channel_id
+            if not v2_channel:
+                return None, None
+
+            model = models.V2ChannelGreeting
+            channel_key = v2_channel.id
 
             count_stmt = select(func.count()).select_from(model).where(model.channel_id == channel_key)
             count = (await self.db.execute(count_stmt)).scalar()
@@ -413,7 +406,7 @@ class ChatService:
             print(f"[DB Error] Delete greeting failed: {str(e)}")
             return False
 
-    # --- 출석 체크 (models.Attendance) 관련 메서드 ---
+    # --- 출석 체크 관련 메서드 ---
 
     async def process_attendance(self, channel_id: str, user_id: str, user_name: str):
         try:
@@ -424,76 +417,27 @@ class ChatService:
             current_opened_at = latest_session.opened_at
             v2_channel = await self._get_v2_channel(channel_id)
 
-            if v2_channel:
-                previous_session = (await self.db.execute(
-                    select(models.V2StreamSession).where(
-                        models.V2StreamSession.channel_id == v2_channel.id,
-                        models.V2StreamSession.opened_at < current_opened_at,
-                    ).order_by(models.V2StreamSession.opened_at.desc()).limit(1)
-                )).scalar_one_or_none()
-
-                attendance = (await self.db.execute(
-                    select(models.V2ViewerAttendance).where(
-                        models.V2ViewerAttendance.channel_id == v2_channel.id,
-                        models.V2ViewerAttendance.platform_user_id == user_id,
-                    )
-                )).scalar_one_or_none()
-
-                if not attendance:
-                    attendance = models.V2ViewerAttendance(
-                        channel_id=v2_channel.id,
-                        platform_user_id=user_id,
-                        user_name=user_name,
-                        attendance_count=1,
-                        streak_count=1,
-                        last_attendance_at=current_opened_at,
-                    )
-                    self.db.add(attendance)
-                    await self.db.commit()
-                    return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
-
-                if attendance.last_attendance_at == current_opened_at:
-                    return {
-                        "status": "already_checked",
-                        "streak": attendance.streak_count,
-                        "total": attendance.attendance_count,
-                        "is_new": False,
-                    }
-
-                if previous_session and attendance.last_attendance_at == previous_session.opened_at:
-                    attendance.streak_count += 1
-                else:
-                    attendance.streak_count = 1
-
-                attendance.attendance_count += 1
-                attendance.last_attendance_at = current_opened_at
-                attendance.user_name = user_name
-                await self.db.commit()
-                return {
-                    "status": "checked",
-                    "streak": attendance.streak_count,
-                    "total": attendance.attendance_count,
-                    "is_new": False,
-                }
+            if not v2_channel:
+                return None
 
             previous_session = (await self.db.execute(
-                select(models.StreamSession).where(
-                    models.StreamSession.chzzk_channel_id == channel_id,
-                    models.StreamSession.opened_at < current_opened_at,
-                ).order_by(models.StreamSession.opened_at.desc()).limit(1)
+                select(models.V2StreamSession).where(
+                    models.V2StreamSession.channel_id == v2_channel.id,
+                    models.V2StreamSession.opened_at < current_opened_at,
+                ).order_by(models.V2StreamSession.opened_at.desc()).limit(1)
             )).scalar_one_or_none()
 
             attendance = (await self.db.execute(
-                select(models.Attendance).where(
-                    models.Attendance.channel_id == channel_id,
-                    models.Attendance.user_id == user_id,
+                select(models.V2ViewerAttendance).where(
+                    models.V2ViewerAttendance.channel_id == v2_channel.id,
+                    models.V2ViewerAttendance.platform_user_id == user_id,
                 )
             )).scalar_one_or_none()
 
             if not attendance:
-                attendance = models.Attendance(
-                    channel_id=channel_id,
-                    user_id=user_id,
+                attendance = models.V2ViewerAttendance(
+                    channel_id=v2_channel.id,
+                    platform_user_id=user_id,
                     user_name=user_name,
                     attendance_count=1,
                     streak_count=1,
@@ -531,22 +475,10 @@ class ChatService:
             print(f"[DB Error] Attendance check failed: {str(e)}")
             return None
 
-    async def _mark_stream_closed(self, channel_id: str, raw_status: dict | None = None):
+    async def _mark_stream_closed(self, channel_id: str, platform: str = DEFAULT_PLATFORM, raw_status: dict | None = None):
         now = datetime.now(timezone.utc)
 
-        latest_legacy = (await self.db.execute(
-            select(models.StreamSession)
-            .where(
-                models.StreamSession.chzzk_channel_id == channel_id,
-                models.StreamSession.closed_at.is_(None),
-            )
-            .order_by(models.StreamSession.opened_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-        if latest_legacy:
-            latest_legacy.closed_at = now
-
-        v2_channel = await self._get_v2_channel(channel_id)
+        v2_channel = await self._get_v2_channel(channel_id, platform)
         if not v2_channel:
             return
 
@@ -572,7 +504,7 @@ class ChatService:
         live_state.raw_status = raw_status
 
 
-    async def sync_stream_session(self, channel_id: str):
+    async def sync_stream_session(self, channel_id: str, platform: str = DEFAULT_PLATFORM):
         """Sync the current live stream session through the platform live provider."""
         from app.redis.redis_service import redis_client
 
@@ -582,25 +514,25 @@ class ChatService:
 
             if cached_status:
                 if cached_status == "CLOSE":
-                    await self._mark_stream_closed(channel_id)
+                    await self._mark_stream_closed(channel_id, platform)
                     await self.db.commit()
                     return None
                 content = json.loads(cached_status)
                 open_date_str = content.get("openDate")
                 if not open_date_str:
-                    await self._mark_stream_closed(channel_id, content)
+                    await self._mark_stream_closed(channel_id, platform, content)
                     await self.db.commit()
                     return None
                 kst_tz = timezone(timedelta(hours=9))
                 current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
                 stream_title = content.get("liveTitle")
             else:
-                provider = get_live_provider("chzzk")
+                provider = get_live_provider(platform)
                 live_status = await provider.get_live_status(channel_id)
 
                 if not live_status or live_status.status != "OPEN" or not live_status.opened_at:
                     await redis_client.set(cache_key, "CLOSE", ex=60)
-                    await self._mark_stream_closed(channel_id, live_status.raw if live_status else None)
+                    await self._mark_stream_closed(channel_id, platform, live_status.raw if live_status else None)
                     await self.db.commit()
                     return None
 
@@ -609,53 +541,39 @@ class ChatService:
                 current_opened_at = live_status.opened_at
                 stream_title = live_status.title
 
-            stmt_find_session = select(models.StreamSession).where(
-                models.StreamSession.chzzk_channel_id == channel_id,
-                models.StreamSession.opened_at == current_opened_at
-            )
-            existing_session = (await self.db.execute(stmt_find_session)).scalar_one_or_none()
+            v2_channel = await self._get_v2_channel(channel_id, platform)
+            if not v2_channel:
+                return None
 
-            v2_channel = await self._get_v2_channel(channel_id)
-            if v2_channel:
-                v2_session = (await self.db.execute(
-                    select(models.V2StreamSession).where(
-                        models.V2StreamSession.channel_id == v2_channel.id,
-                        models.V2StreamSession.opened_at == current_opened_at,
-                    )
-                )).scalar_one_or_none()
-                if not v2_session:
-                    v2_session = models.V2StreamSession(
-                        channel_id=v2_channel.id,
-                        opened_at=current_opened_at,
-                        stream_title=stream_title,
-                        category=(content.get("liveCategoryValue") or content.get("liveCategory")) if content else None,
-                        thumbnail_url=content.get("liveImageUrl") if content else None,
-                        raw_live_response=content,
-                    )
-                    self.db.add(v2_session)
-                    await self.db.flush()
-
-                live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
-                if not live_state:
-                    live_state = models.V2ChannelLiveState(channel_id=v2_channel.id)
-                    self.db.add(live_state)
-                live_state.status = "OPEN"
-                live_state.current_stream_session_id = v2_session.id
-                live_state.last_checked_at = datetime.now(timezone.utc)
-                live_state.raw_status = content
-
-            if not existing_session:
-                new_session = models.StreamSession(
-                    chzzk_channel_id=channel_id,
+            v2_session = (await self.db.execute(
+                select(models.V2StreamSession).where(
+                    models.V2StreamSession.channel_id == v2_channel.id,
+                    models.V2StreamSession.opened_at == current_opened_at,
+                )
+            )).scalar_one_or_none()
+            if not v2_session:
+                v2_session = models.V2StreamSession(
+                    channel_id=v2_channel.id,
                     opened_at=current_opened_at,
                     stream_title=stream_title,
+                    category=(content.get("liveCategoryValue") or content.get("liveCategory")) if content else None,
+                    thumbnail_url=content.get("liveImageUrl") if content else None,
+                    raw_live_response=content,
                 )
-                self.db.add(new_session)
-                await self.db.commit()
-                return new_session
+                self.db.add(v2_session)
+                await self.db.flush()
+
+            live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
+            if not live_state:
+                live_state = models.V2ChannelLiveState(channel_id=v2_channel.id)
+                self.db.add(live_state)
+            live_state.status = "OPEN"
+            live_state.current_stream_session_id = v2_session.id
+            live_state.last_checked_at = datetime.now(timezone.utc)
+            live_state.raw_status = content
 
             await self.db.commit()
-            return existing_session
+            return v2_session
         except Exception as e:
             await self.db.rollback()
             print(f"[DB Error] Sync stream session failed: {str(e)}")

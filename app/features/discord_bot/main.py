@@ -3,7 +3,7 @@ import logging
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from app.features.discord_bot.cogs.chzzk_notifications import ChzzkNotification
+from app.features.discord_bot.cogs.live_notifications import LiveNotification
 
 load_dotenv()
 discord_token = os.getenv("DISCORD_TOKEN")
@@ -20,7 +20,7 @@ async def start_discord_bot(token: str):
         # discord.py 내부 통신 로그 켜기
         discord.utils.setup_logging(level=logging.INFO)
 
-        await bot.add_cog(ChzzkNotification(bot))
+        await bot.add_cog(LiveNotification(bot))
         
         print("⏳ [Discord] 서버로 연결 시도 중...")
         await bot.start(token)

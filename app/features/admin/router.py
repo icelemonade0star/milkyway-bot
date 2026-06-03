@@ -7,11 +7,15 @@ from app.core.security import verify_admin_token
 from app.db import models
 from app.redis.redis_service import redis_client, RedisConfigService
 from app.features.chat.service import ChatService
+from app.features.live_state_poller import LiveStatePoller
 from app.features.admin.schemas import (
     ChannelGreetingCacheResponse,
     AllGreetingCacheResponse,
     GreetingRefreshResponse,
     AllGreetingRefreshResponse,
+    LiveStateItem,
+    LiveStateListResponse,
+    LiveStateRefreshResponse,
 )
 
 admin_router = APIRouter(
@@ -21,6 +25,147 @@ admin_router = APIRouter(
 )
 
 redis_service = RedisConfigService()
+
+
+def _serialize_live_state(channel, live_state=None, stream_session=None):
+    return {
+        "channel_id": channel.id,
+        "platform": channel.platform,
+        "platform_channel_id": channel.platform_channel_id,
+        "channel_name": channel.channel_name,
+        "is_active": channel.is_active,
+        "status": live_state.status if live_state else "UNKNOWN",
+        "current_stream_session_id": live_state.current_stream_session_id if live_state else None,
+        "last_checked_at": live_state.last_checked_at if live_state else None,
+        "opened_at": stream_session.opened_at if stream_session else None,
+        "closed_at": stream_session.closed_at if stream_session else None,
+        "stream_title": stream_session.stream_title if stream_session else None,
+        "category": stream_session.category if stream_session else None,
+    }
+
+
+async def _get_live_state_rows(db: AsyncSession, platform: str | None = None, platform_channel_id: str | None = None):
+    stmt = (
+        select(models.V2Channel, models.V2ChannelLiveState, models.V2StreamSession)
+        .outerjoin(
+            models.V2ChannelLiveState,
+            models.V2ChannelLiveState.channel_id == models.V2Channel.id,
+        )
+        .outerjoin(
+            models.V2StreamSession,
+            models.V2StreamSession.id == models.V2ChannelLiveState.current_stream_session_id,
+        )
+        .order_by(models.V2Channel.platform.asc(), models.V2Channel.channel_name.asc())
+    )
+    if platform:
+        stmt = stmt.where(models.V2Channel.platform == platform)
+    if platform_channel_id:
+        stmt = stmt.where(models.V2Channel.platform_channel_id == platform_channel_id)
+
+    return (await db.execute(stmt)).all()
+
+
+async def _get_live_state_item(db: AsyncSession, platform: str, platform_channel_id: str):
+    rows = await _get_live_state_rows(db, platform, platform_channel_id)
+    if not rows:
+        return None
+    channel, live_state, stream_session = rows[0]
+    return _serialize_live_state(channel, live_state, stream_session)
+
+
+@admin_router.get(
+    "/live-state",
+    summary="v2 라이브 상태 목록 조회",
+    description="v2 채널의 현재 라이브 상태와 현재 스트림 세션 정보를 조회합니다.",
+    response_model=LiveStateListResponse,
+)
+async def get_live_states(
+    platform: str | None = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = await _get_live_state_rows(db, platform=platform)
+    channels = [
+        _serialize_live_state(channel, live_state, stream_session)
+        for channel, live_state, stream_session in rows
+    ]
+    return {
+        "total_channels": len(channels),
+        "channels": channels,
+    }
+
+
+@admin_router.get(
+    "/live-state/{platform}/{platform_channel_id}",
+    summary="v2 라이브 상태 조회",
+    description="특정 v2 채널의 현재 라이브 상태와 현재 스트림 세션 정보를 조회합니다.",
+    response_model=LiveStateItem,
+)
+async def get_live_state(
+    platform: str,
+    platform_channel_id: str,
+    db: AsyncSession = Depends(get_async_db),
+):
+    item = await _get_live_state_item(db, platform, platform_channel_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="v2 채널을 찾을 수 없습니다.")
+    return item
+
+
+@admin_router.post(
+    "/live-state/{platform}/{platform_channel_id}/refresh",
+    summary="v2 라이브 상태 단건 수동 갱신",
+    description="특정 v2 채널의 라이브 상태를 플랫폼 API로 즉시 조회해 갱신합니다.",
+    response_model=LiveStateRefreshResponse,
+)
+async def refresh_live_state(
+    platform: str,
+    platform_channel_id: str,
+    db: AsyncSession = Depends(get_async_db),
+):
+    from app.core.database import get_session_factory
+
+    session_factory = get_session_factory()
+    if not session_factory:
+        raise HTTPException(status_code=500, detail="DB 세션 팩토리가 초기화되지 않았습니다.")
+
+    existing = await _get_live_state_item(db, platform, platform_channel_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="v2 채널을 찾을 수 없습니다.")
+
+    refreshed = await LiveStatePoller(session_factory).poll_channel_by_platform_id(platform, platform_channel_id)
+    if not refreshed:
+        raise HTTPException(status_code=502, detail="라이브 상태 갱신에 실패했습니다.")
+
+    db.expire_all()
+    item = await _get_live_state_item(db, platform, platform_channel_id)
+    return {
+        "status": "success",
+        "refreshed_channels": 1,
+        "message": "라이브 상태가 갱신되었습니다.",
+        "channel": item,
+    }
+
+
+@admin_router.post(
+    "/live-state/refresh",
+    summary="v2 라이브 상태 전체 수동 갱신",
+    description="모든 활성 v2 채널의 라이브 상태를 플랫폼 API로 즉시 조회해 갱신합니다.",
+    response_model=LiveStateRefreshResponse,
+)
+async def refresh_all_live_states():
+    from app.core.database import get_session_factory
+
+    session_factory = get_session_factory()
+    if not session_factory:
+        raise HTTPException(status_code=500, detail="DB 세션 팩토리가 초기화되지 않았습니다.")
+
+    refreshed_count = await LiveStatePoller(session_factory).poll_once()
+    return {
+        "status": "success",
+        "refreshed_channels": refreshed_count,
+        "message": f"{refreshed_count}개 v2 채널의 라이브 상태가 갱신되었습니다.",
+        "channel": None,
+    }
 
 
 @admin_router.get(
@@ -132,7 +277,9 @@ async def refresh_channel_greeting_cache(
 async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
 ):
-    result = await db.execute(select(models.AuthToken.channel_id))
+    result = await db.execute(
+        select(models.V2Channel.platform_channel_id).where(models.V2Channel.is_active == True)
+    )
     channel_ids = result.scalars().all()
 
     total_greetings = 0

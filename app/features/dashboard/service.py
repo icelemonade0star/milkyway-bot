@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.features.auth.service import AuthService
 from app.features.chat.service import ChatService
+from app.core.config import DEFAULT_PLATFORM
 from app.redis.redis_service import RedisConfigService
 
 logger = logging.getLogger("DashboardService")
@@ -22,12 +23,15 @@ class DashboardService:
         auth_token = await auth_service.get_auth_token_by_id(channel_id)
         if not auth_token:
             return None
-        v2_channel = await auth_service.get_v2_channel_by_platform_id("chzzk", channel_id)
+        v2_channel = await auth_service.get_v2_channel_by_platform_id(DEFAULT_PLATFORM, channel_id)
 
         config = await self.chat_service.get_channel_config(channel_id)
 
-        attendance_model = models.V2ViewerAttendance if v2_channel else models.Attendance
-        attendance_channel_id = v2_channel.id if v2_channel else channel_id
+        if not v2_channel:
+            return None
+
+        attendance_model = models.V2ViewerAttendance
+        attendance_channel_id = v2_channel.id
 
         attendance_stats = (await self.db.execute(
             select(
@@ -38,17 +42,12 @@ class DashboardService:
         )).one()
         attendance_users, attendance_total = attendance_stats
 
-        if v2_channel:
-            notification = (await self.db.execute(
-                select(models.V2LiveNotification).where(
-                    models.V2LiveNotification.channel_id == v2_channel.id,
-                    models.V2LiveNotification.destination_platform == "discord",
-                ).limit(1)
-            )).scalar_one_or_none()
-        else:
-            notification = (await self.db.execute(
-                select(models.ChzzkNotification).where(models.ChzzkNotification.chzzk_channel_id == channel_id)
-            )).scalar_one_or_none()
+        notification = (await self.db.execute(
+            select(models.V2LiveNotification).where(
+                models.V2LiveNotification.channel_id == v2_channel.id,
+                models.V2LiveNotification.destination_platform == "discord",
+            ).limit(1)
+        )).scalar_one_or_none()
 
         commands = sorted(
             await self.chat_service.get_channel_commands(channel_id),

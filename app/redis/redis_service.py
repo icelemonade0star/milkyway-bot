@@ -114,14 +114,14 @@ class RedisConfigService:
         
         return False
 
-    async def _prefetch_live_status(self, channel_id: str):
+    async def _prefetch_live_status(self, channel_id: str, platform: str = config.DEFAULT_PLATFORM):
         """Cache live status through the platform live provider. No DB writes here."""
         cache_key = f"live_status:{channel_id}"
         try:
             if await redis_client.exists(cache_key):
                 return
 
-            provider = get_live_provider("chzzk")
+            provider = get_live_provider(platform)
             live_status = await provider.get_live_status(channel_id)
 
             if not live_status or live_status.status != "OPEN":
@@ -132,7 +132,12 @@ class RedisConfigService:
         except Exception as e:
             logger.warning("Live status prefetch failed: %s", e)
 
-    async def get_greeting_response(self, channel_id: str, message: str) -> tuple[str | None, bool]:
+    async def get_greeting_response(
+        self,
+        channel_id: str,
+        message: str,
+        platform: str = config.DEFAULT_PLATFORM,
+    ) -> tuple[str | None, bool]:
         """
         메시지에 인사말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
         반환값: (응답 메시지, 인사말 매칭 여부)
@@ -146,7 +151,7 @@ class RedisConfigService:
             # 2. 데이터가 없으면 DB에서 로드 후 캐싱, 방송 상태도 함께 프리워밍
             if not greetings:
                 await self.refresh_greetings_cache(channel_id)
-                await self._prefetch_live_status(channel_id)
+                await self._prefetch_live_status(channel_id, platform)
                 greetings = await redis_client.hgetall(cache_key)
 
             # 3. 키워드 포함 여부 검사
