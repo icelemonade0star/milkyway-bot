@@ -8,15 +8,7 @@ from app.db import models
 from app.redis.redis_service import redis_client, RedisConfigService
 from app.features.chat.service import ChatService
 from app.features.live_state_poller import LiveStatePoller
-from app.features.admin.schemas import (
-    ChannelGreetingCacheResponse,
-    AllGreetingCacheResponse,
-    GreetingRefreshResponse,
-    AllGreetingRefreshResponse,
-    LiveStateItem,
-    LiveStateListResponse,
-    LiveStateRefreshResponse,
-)
+from app.features.admin import schemas
 
 admin_router = APIRouter(
     prefix="/admin",
@@ -77,7 +69,7 @@ async def _get_live_state_item(db: AsyncSession, platform: str, platform_channel
     "/live-state",
     summary="v2 라이브 상태 목록 조회",
     description="v2 채널의 현재 라이브 상태와 현재 스트림 세션 정보를 조회합니다.",
-    response_model=LiveStateListResponse,
+    response_model=schemas.LiveStateListResponse,
 )
 async def get_live_states(
     platform: str | None = None,
@@ -98,7 +90,7 @@ async def get_live_states(
     "/live-state/{platform}/{platform_channel_id}",
     summary="v2 라이브 상태 조회",
     description="특정 v2 채널의 현재 라이브 상태와 현재 스트림 세션 정보를 조회합니다.",
-    response_model=LiveStateItem,
+    response_model=schemas.LiveStateItem,
 )
 async def get_live_state(
     platform: str,
@@ -115,7 +107,7 @@ async def get_live_state(
     "/live-state/{platform}/{platform_channel_id}/refresh",
     summary="v2 라이브 상태 단건 수동 갱신",
     description="특정 v2 채널의 라이브 상태를 플랫폼 API로 즉시 조회해 갱신합니다.",
-    response_model=LiveStateRefreshResponse,
+    response_model=schemas.LiveStateRefreshResponse,
 )
 async def refresh_live_state(
     platform: str,
@@ -150,7 +142,7 @@ async def refresh_live_state(
     "/live-state/refresh",
     summary="v2 라이브 상태 전체 수동 갱신",
     description="모든 활성 v2 채널의 라이브 상태를 플랫폼 API로 즉시 조회해 갱신합니다.",
-    response_model=LiveStateRefreshResponse,
+    response_model=schemas.LiveStateRefreshResponse,
 )
 async def refresh_all_live_states():
     from app.core.database import get_session_factory
@@ -172,7 +164,7 @@ async def refresh_all_live_states():
     "/greeting/redis/{channel_id}",
     summary="채널 Redis 인사말 조회",
     description="특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
-    response_model=ChannelGreetingCacheResponse,
+    response_model=schemas.ChannelGreetingCacheResponse,
 )
 async def get_channel_greeting_cache(channel_id: str):
     cache_key = f"greetings:{channel_id}"
@@ -210,7 +202,7 @@ async def get_channel_greeting_cache(channel_id: str):
     "/greeting/redis",
     summary="전체 채널 Redis 인사말 조회",
     description="Redis에 캐싱된 모든 채널의 인사말 목록을 반환합니다.",
-    response_model=AllGreetingCacheResponse,
+    response_model=schemas.AllGreetingCacheResponse,
 )
 async def get_all_greeting_cache():
     try:
@@ -249,7 +241,7 @@ async def get_all_greeting_cache():
     "/greeting/refresh/{channel_id}",
     summary="채널 인사말 Redis 수동 갱신",
     description="DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
-    response_model=GreetingRefreshResponse,
+    response_model=schemas.GreetingRefreshResponse,
 )
 async def refresh_channel_greeting_cache(
     channel_id: str,
@@ -272,7 +264,7 @@ async def refresh_channel_greeting_cache(
     "/greeting/refresh",
     summary="전체 채널 인사말 Redis 수동 갱신",
     description="DB에 등록된 모든 채널의 인사말을 Redis에 즉시 갱신합니다.",
-    response_model=AllGreetingRefreshResponse,
+    response_model=schemas.AllGreetingRefreshResponse,
 )
 async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
