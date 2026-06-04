@@ -112,8 +112,9 @@ class LiveStatePoller:
             if not live_status:
                 return False
 
+            should_notify_discord = False
             if live_status.status == "OPEN" and live_status.opened_at:
-                await self._mark_open(db, db_channel, live_status)
+                should_notify_discord = await self._mark_open(db, db_channel, live_status)
                 await self._cache_live_status(db_channel.platform_channel_id, live_status.raw or {}, is_open=True)
             elif live_status.status == "CLOSE":
                 await self._mark_closed(db, db_channel, live_status.raw or {})
@@ -122,6 +123,15 @@ class LiveStatePoller:
                 await self._mark_unknown(db, db_channel, live_status.raw)
 
             await db.commit()
+
+            if should_notify_discord:
+                try:
+                    from app.features.discord_bot.cogs.live_notifications import trigger_live_notification_check
+
+                    await trigger_live_notification_check(db_channel.platform, db_channel.platform_channel_id)
+                except Exception as e:
+                    logger.warning("Discord live notification trigger failed: %s", e)
+
             return True
 
     async def _mark_open(self, db, channel: models.V2Channel, live_status):
@@ -153,6 +163,8 @@ class LiveStatePoller:
         await self._close_other_v2_sessions(db, channel.id, existing.id)
 
         live_state = await db.get(models.V2ChannelLiveState, channel.id)
+        previous_status = live_state.status if live_state else None
+        previous_session_id = live_state.current_stream_session_id if live_state else None
         if not live_state:
             live_state = models.V2ChannelLiveState(channel_id=channel.id)
             db.add(live_state)
@@ -160,6 +172,7 @@ class LiveStatePoller:
         live_state.current_stream_session_id = existing.id
         live_state.last_checked_at = datetime.now(timezone.utc)
         live_state.raw_status = live_status.raw or {}
+        return previous_status != "OPEN" or previous_session_id != existing.id
 
     async def _mark_closed(self, db, channel: models.V2Channel, raw_status: dict | None):
         now = datetime.now(timezone.utc)

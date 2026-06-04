@@ -486,28 +486,54 @@ class ChatService:
         live_state.raw_status = raw_status
 
 
-    async def sync_stream_session(self, channel_id: str, platform: str):
+    async def sync_stream_session(
+        self,
+        channel_id: str,
+        platform: str,
+        live_status_content: dict | None = None,
+        notify_discord: bool = True,
+    ):
         """Sync the current live stream session through the platform live provider."""
         from app.redis.redis_service import redis_client
 
         try:
             cache_key = f"live_status:{channel_id}"
-            cached_status = await redis_client.get(cache_key)
+            cached_status = None if live_status_content else await redis_client.get(cache_key)
 
-            if cached_status:
-                if cached_status == "CLOSE":
-                    await self._mark_stream_closed(channel_id, platform)
-                    await self.db.commit()
-                    return None
-                content = json.loads(cached_status)
+            if live_status_content:
+                content = live_status_content
                 open_date_str = content.get("openDate")
                 if not open_date_str:
                     await self._mark_stream_closed(channel_id, platform, content)
                     await self.db.commit()
                     return None
+                await redis_client.set(cache_key, json.dumps(content), ex=300)
                 kst_tz = timezone(timedelta(hours=9))
                 current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
                 stream_title = content.get("liveTitle")
+            elif cached_status:
+                if cached_status == "CLOSE":
+                    provider = get_live_provider(platform)
+                    live_status = await provider.get_live_status(channel_id)
+                    if not live_status or live_status.status != "OPEN" or not live_status.opened_at:
+                        await self._mark_stream_closed(channel_id, platform, live_status.raw if live_status else None)
+                        await self.db.commit()
+                        return None
+
+                    content = live_status.raw or {}
+                    await redis_client.set(cache_key, json.dumps(content), ex=300)
+                    current_opened_at = live_status.opened_at
+                    stream_title = live_status.title
+                else:
+                    content = json.loads(cached_status)
+                    open_date_str = content.get("openDate")
+                    if not open_date_str:
+                        await self._mark_stream_closed(channel_id, platform, content)
+                        await self.db.commit()
+                        return None
+                    kst_tz = timezone(timedelta(hours=9))
+                    current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
+                    stream_title = content.get("liveTitle")
             else:
                 provider = get_live_provider(platform)
                 live_status = await provider.get_live_status(channel_id)
@@ -527,6 +553,10 @@ class ChatService:
             if not v2_channel:
                 return None
 
+            live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
+            previous_status = live_state.status if live_state else None
+            previous_session_id = live_state.current_stream_session_id if live_state else None
+
             v2_session = (await self.db.execute(
                 select(models.V2StreamSession).where(
                     models.V2StreamSession.channel_id == v2_channel.id,
@@ -545,7 +575,6 @@ class ChatService:
                 self.db.add(v2_session)
                 await self.db.flush()
 
-            live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
             if not live_state:
                 live_state = models.V2ChannelLiveState(channel_id=v2_channel.id)
                 self.db.add(live_state)
@@ -555,6 +584,17 @@ class ChatService:
             live_state.raw_status = content
 
             await self.db.commit()
+
+            if notify_discord and (
+                previous_status != "OPEN" or previous_session_id != v2_session.id
+            ):
+                try:
+                    from app.features.discord_bot.cogs.live_notifications import trigger_live_notification_check
+
+                    await trigger_live_notification_check(platform, channel_id)
+                except Exception as e:
+                    print(f"[LiveNotification] trigger from stream sync failed: {e}")
+
             return v2_session
         except Exception as e:
             await self.db.rollback()

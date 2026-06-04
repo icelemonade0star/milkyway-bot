@@ -24,6 +24,11 @@ def invalidate_notification_cache():
         _active_cog._cache_loaded_at = 0.0
 
 
+async def trigger_live_notification_check(platform: str, platform_channel_id: str):
+    if _active_cog is not None:
+        await _active_cog.trigger_live_notification_check(platform, platform_channel_id)
+
+
 @dataclass
 class LiveNotificationData:
     platform: str
@@ -206,7 +211,6 @@ class LiveNotification(commands.Cog):
                         if not await self.send_live_notification(entry, live_data):
                             await self._mark_delivery_failed(entry, "Discord send failed")
                     else:
-                        entry.last_status = "OPEN"
                         print(f"[LiveNotification] already delivered or DB update failed: {entry.platform}:{platform_channel_id}")
 
             elif current_status == "CLOSE" and last_status == "OPEN":
@@ -226,6 +230,25 @@ class LiveNotification(commands.Cog):
             return False
         return await self._update_v2_status_in_db(entry, status, content)
 
+    async def trigger_live_notification_check(self, platform: str, platform_channel_id: str):
+        if time.monotonic() - self._cache_loaded_at > _CACHE_TTL or not self._cache:
+            await self._load_cache()
+
+        targets = [
+            entry
+            for entry in self._cache.values()
+            if entry.platform == platform
+            and entry.platform_channel_id == platform_channel_id
+            and entry.last_status == "CLOSE"
+        ]
+        if not targets:
+            return
+
+        await asyncio.gather(
+            *(self.process_notification(entry) for entry in targets),
+            return_exceptions=True,
+        )
+
     async def _update_v2_status_in_db(self, entry: _CachedNotification, status: str, content: dict | None = None) -> bool:
         factory = get_session_factory()
         if not factory:
@@ -238,7 +261,12 @@ class LiveNotification(commands.Cog):
                 if status == "OPEN":
                     from app.features.chat.service import ChatService
 
-                    await ChatService(db).sync_stream_session(entry.platform_channel_id, entry.platform)
+                    await ChatService(db).sync_stream_session(
+                        entry.platform_channel_id,
+                        entry.platform,
+                        live_status_content=content,
+                        notify_discord=False,
+                    )
                     live_state = await db.get(models.V2ChannelLiveState, entry.v2_channel_id)
                     stream_session_id = live_state.current_stream_session_id if live_state else None
 
