@@ -1,4 +1,4 @@
-import redis.asyncio as redis
+﻿import redis.asyncio as redis
 import app.core.config as config
 import logging
 import re
@@ -201,41 +201,6 @@ class RedisConfigService:
             except Exception as e:
                 logger.warning("Redis greeting cache refresh failed: %s", e)
 
-    async def add_greeting_cache(
-        self,
-        channel_id: str,
-        keyword: str,
-        response: str,
-        platform: str,
-    ):
-        """인사말 하나를 Redis에 추가하거나 갱신합니다."""
-        cache_key = f"greetings:{channel_id}"
-        try:
-            # 캐시가 존재하면 부분 업데이트 (sentinel 제거 + 실제 항목 추가, TTL 유지)
-            if await redis_client.exists(cache_key):
-                async with redis_client.pipeline(transaction=True) as pipe:
-                    pipe.hdel(cache_key, "__empty__")
-                    pipe.hset(cache_key, keyword, response)
-                    await pipe.execute()
-            else:
-                # 캐시가 없으면 전체 로드 (TTL 설정 포함)
-                await self.refresh_greetings_cache(channel_id, platform)
-            return True
-        except Exception as e:
-            logger.warning("Redis greeting cache update failed: %s", e)
-            return False
-
-    async def delete_greeting_cache(self, channel_id: str, keyword: str, platform: str):
-        """인사말 하나를 Redis에서 삭제합니다."""
-        cache_key = f"greetings:{channel_id}"
-        try:
-            if await redis_client.exists(cache_key):
-                await redis_client.hdel(cache_key, keyword)
-            return True
-        except Exception as e:
-            logger.warning("Redis greeting cache delete failed: %s", e)
-            return False
-
     async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
         """
         쿨타임 체크 및 설정.
@@ -257,3 +222,4 @@ class RedisConfigService:
         except Exception as e:
             logger.warning("Redis cooldown check failed: %s", e)
             return False # 에러 시 쿨타임 없이 실행 허용
+

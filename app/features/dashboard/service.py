@@ -102,8 +102,7 @@ class DashboardService:
             platform,
         )
         if status in ("created", "updated") and actual_keyword:
-            if not await self.redis_service.add_greeting_cache(channel_id, actual_keyword, response.strip(), platform):
-                logger.warning("Greeting cache update failed: channel_id=%s keyword=%s", channel_id, actual_keyword)
+            await self.redis_service.refresh_greetings_cache(channel_id, platform)
             return True, None
         return False, status
 
@@ -121,6 +120,5 @@ class DashboardService:
             logger.warning("Dashboard greeting delete failed: %s", e)
             return False
 
-        if not await self.redis_service.delete_greeting_cache(channel_id, actual_keyword, platform):
-            logger.warning("Greeting cache delete failed: channel_id=%s keyword=%s", channel_id, actual_keyword)
+        await self.redis_service.refresh_greetings_cache(channel_id, platform)
         return True

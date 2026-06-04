@@ -322,11 +322,11 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 elif status == "response_too_long":
                     await session.send_chat(f"응답은 구분자(|)로 나눈 각 항목이 {MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.")
                 elif status == "updated":
-                    await redis_service.add_greeting_cache(channel_id, actual_keyword, response, CHAT_PLATFORM)
+                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
                     josa = get_josa(actual_keyword, "이/가")
                     await session.send_chat(f"인사말 '{actual_keyword}'{josa} 수정되었습니다.")
                 elif status == "created":
-                    await redis_service.add_greeting_cache(channel_id, actual_keyword, response, CHAT_PLATFORM)
+                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
                     josa = get_josa(actual_keyword, "이/가")
                     await session.send_chat(f"인사말 '{actual_keyword}'{josa} 등록되었습니다.")
                 else:
@@ -350,7 +350,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
                 actual_keyword = target.keyword
                 if await chat_service.delete_greeting(channel_id, actual_keyword, CHAT_PLATFORM):
-                    await redis_service.delete_greeting_cache(channel_id, actual_keyword, CHAT_PLATFORM) # 정확한 키로 Redis에서 삭제
+                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
                     josa = get_josa(actual_keyword, "이/가")
                     await session.send_chat(f"인사말 '{actual_keyword}'{josa} 삭제되었습니다.")
                 else:
