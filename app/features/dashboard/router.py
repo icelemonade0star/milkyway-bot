@@ -4,21 +4,18 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
-from app.core.config import DASHBOARD_COOKIE_SECURE, DEFAULT_PLATFORM, MAX_CHAT_RESPONSE_CHARS, TEMPLATE_DIR
+from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TEMPLATE_DIR
 from app.core.database import get_async_db
+from app.features.auth.platforms.chzzk import get_chzzk_auth
 from app.features.auth.service import AuthService
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
 from app.features.dashboard.service import DashboardService
-from app.platforms.registry import get_auth_provider
+from app.platforms.constants import PLATFORM_CHZZK
 
 dashboard_router = APIRouter(prefix="/auth/dashboard", tags=["dashboard"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
-
-
-def get_platform_auth(db: AsyncSession = Depends(get_async_db)):
-    auth_service = AuthService(db)
-    return get_auth_provider(DEFAULT_PLATFORM, auth_service)
+DASHBOARD_PLATFORM = PLATFORM_CHZZK
 
 
 def get_dashboard_session(dashboard_session: str = Cookie(None)):
@@ -26,7 +23,7 @@ def get_dashboard_session(dashboard_session: str = Cookie(None)):
 
 
 @dashboard_router.get("/login")
-async def dashboard_login(platform_auth = Depends(get_platform_auth)):
+async def dashboard_login(platform_auth=Depends(get_chzzk_auth)):
     state = security.create_oauth_state_token(security.OAUTH_STATE_PURPOSE_DASHBOARD)
     url, state = platform_auth.get_auth_url(state=state)
 
@@ -60,7 +57,7 @@ async def dashboard(
     except HTTPException:
         return templates.TemplateResponse("dashboard_login.html", {"request": request})
 
-    dashboard_data = await DashboardService(db).get_dashboard_data(session["channel_id"])
+    dashboard_data = await DashboardService(db).get_dashboard_data(DASHBOARD_PLATFORM, session["channel_id"])
     if not dashboard_data:
         raise HTTPException(status_code=403, detail="등록된 채널 정보를 찾을 수 없습니다.")
 
@@ -84,6 +81,7 @@ async def save_command(
     db: AsyncSession = Depends(get_async_db),
 ):
     success, reason = await DashboardService(db).save_command(
+        DASHBOARD_PLATFORM,
         session["channel_id"],
         payload.command,
         payload.response,
@@ -101,7 +99,7 @@ async def delete_command(
     session: dict = Depends(get_dashboard_session),
     db: AsyncSession = Depends(get_async_db),
 ):
-    success = await DashboardService(db).delete_command(session["channel_id"], payload.key)
+    success = await DashboardService(db).delete_command(DASHBOARD_PLATFORM, session["channel_id"], payload.key)
     if not success:
         raise HTTPException(status_code=404, detail="명령어를 찾을 수 없습니다.")
     return {"status": "success"}
@@ -114,6 +112,7 @@ async def save_greeting(
     db: AsyncSession = Depends(get_async_db),
 ):
     success, reason = await DashboardService(db).save_greeting(
+        DASHBOARD_PLATFORM,
         session["channel_id"],
         payload.keyword,
         payload.response,
@@ -129,7 +128,7 @@ async def delete_greeting(
     session: dict = Depends(get_dashboard_session),
     db: AsyncSession = Depends(get_async_db),
 ):
-    success = await DashboardService(db).delete_greeting(session["channel_id"], payload.key)
+    success = await DashboardService(db).delete_greeting(DASHBOARD_PLATFORM, session["channel_id"], payload.key)
     if not success:
         raise HTTPException(status_code=404, detail="인사말을 찾을 수 없습니다.")
     return {"status": "success"}

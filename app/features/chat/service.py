@@ -6,7 +6,7 @@ from fastapi import HTTPException
 import json
 
 from app.db import models
-from app.core.config import DEFAULT_PLATFORM, MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
+from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from app.platforms.registry import get_live_provider
 from datetime import datetime, timedelta, timezone
@@ -15,7 +15,7 @@ class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _get_v2_channel(self, platform_channel_id: str, platform: str = DEFAULT_PLATFORM):
+    async def _get_v2_channel(self, platform_channel_id: str, platform: str):
         stmt = select(models.V2Channel).where(
             models.V2Channel.platform == platform,
             models.V2Channel.platform_channel_id == platform_channel_id,
@@ -29,27 +29,9 @@ class ChatService:
         targets = parts or [response.strip()]
         return all(len(part) <= MAX_CHAT_RESPONSE_CHARS for part in targets)
 
-    async def set_channel_config(self, channel_id: str):
+    async def update_channel_config(self, channel_id: str, command_prefix: str, language: str, is_active: bool, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
-            if not v2_channel:
-                return None
-
-            config = await self.db.get(models.V2ChannelConfig, v2_channel.id)
-            if not config:
-                config = models.V2ChannelConfig(channel_id=v2_channel.id)
-                self.db.add(config)
-                await self.db.commit()
-            return config
-        except Exception as e:
-            await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
-            raise HTTPException(status_code=500, detail="DB save failed.")
-        
-
-    async def update_channel_config(self, channel_id: str, command_prefix: str, language: str, is_active: bool):
-        try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None
 
@@ -68,9 +50,9 @@ class ChatService:
             raise HTTPException(status_code=500, detail="DB update failed.")
 
 
-    async def get_channel_config(self, channel_id: str):
+    async def get_channel_config(self, channel_id: str, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None
             return await self.db.get(models.V2ChannelConfig, v2_channel.id)
@@ -133,9 +115,9 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             return []
             
-    async def get_channel_commands(self, channel_id: str):
+    async def get_channel_commands(self, channel_id: str, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return []
 
@@ -151,9 +133,9 @@ class ChatService:
             return []
             
 
-    async def get_chat_command(self, channel_id: str, command: str):
+    async def get_chat_command(self, channel_id: str, command: str, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None
 
@@ -188,7 +170,7 @@ class ChatService:
             return None
 
 
-    async def add_chat_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
+    async def add_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
         try:
             command = command.strip()
             response = response.strip()
@@ -199,9 +181,9 @@ class ChatService:
             if not self.is_response_within_chat_limit(response):
                 return "response_too_long", None
 
-            existing = await self.get_chat_command(channel_id, command)
+            existing = await self.get_chat_command(channel_id, command, platform)
             if existing:
-                if await self.update_chat_command(channel_id, command, response, cooldown_seconds, is_active):
+                if await self.update_chat_command(channel_id, command, response, platform, cooldown_seconds, is_active):
                     return "updated", existing.command
                 return None, None
 
@@ -209,7 +191,7 @@ class ChatService:
             if global_cmd:
                 return "reserved", None
 
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None, None
 
@@ -237,7 +219,7 @@ class ChatService:
             return None, None
 
 
-    async def update_chat_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
+    async def update_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
         try:
             command = command.strip()
             response = response.strip()
@@ -247,7 +229,7 @@ class ChatService:
             if not self.is_response_within_chat_limit(response):
                 return False
 
-            cmd_obj = await self.get_chat_command(channel_id, command)
+            cmd_obj = await self.get_chat_command(channel_id, command, platform)
             if not cmd_obj:
                 return False
             
@@ -263,9 +245,9 @@ class ChatService:
             print(f"[DB Error] {str(e)}")
             return False
 
-    async def delete_chat_command(self, channel_id: str, command: str):
+    async def delete_chat_command(self, channel_id: str, command: str, platform: str):
         try:
-            cmd_obj = await self.get_chat_command(channel_id, command)
+            cmd_obj = await self.get_chat_command(channel_id, command, platform)
             if not cmd_obj:
                 return False
 
@@ -279,9 +261,9 @@ class ChatService:
 
     # --- 인사말(Greeting) 관련 메서드 ---
 
-    async def get_channel_greetings(self, channel_id: str):
+    async def get_channel_greetings(self, channel_id: str, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return []
 
@@ -296,9 +278,9 @@ class ChatService:
             return []
 
 
-    async def get_greeting(self, channel_id: str, keyword: str):
+    async def get_greeting(self, channel_id: str, keyword: str, platform: str):
         try:
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None
 
@@ -332,7 +314,7 @@ class ChatService:
             return None
 
 
-    async def add_greeting(self, channel_id: str, keyword: str, response: str):
+    async def add_greeting(self, channel_id: str, keyword: str, response: str, platform: str):
         try:
             keyword = keyword.strip()
             response = response.strip()
@@ -341,13 +323,13 @@ class ChatService:
             if not self.is_response_within_chat_limit(response):
                 return "response_too_long", None
 
-            existing = await self.get_greeting(channel_id, keyword)
+            existing = await self.get_greeting(channel_id, keyword, platform)
             if existing:
-                if await self.update_greeting(channel_id, keyword, response):
+                if await self.update_greeting(channel_id, keyword, response, platform):
                     return "updated", existing.keyword
                 return None, None
 
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None, None
 
@@ -369,7 +351,7 @@ class ChatService:
             return None, None
 
 
-    async def update_greeting(self, channel_id: str, keyword: str, response: str):
+    async def update_greeting(self, channel_id: str, keyword: str, response: str, platform: str):
         try:
             keyword = keyword.strip()
             response = response.strip()
@@ -379,7 +361,7 @@ class ChatService:
             if not self.is_response_within_chat_limit(response):
                 return False
 
-            target = await self.get_greeting(channel_id, keyword)
+            target = await self.get_greeting(channel_id, keyword, platform)
             if not target:
                 return False
 
@@ -391,9 +373,9 @@ class ChatService:
             print(f"[DB Error] Update greeting failed: {str(e)}")
             return False
 
-    async def delete_greeting(self, channel_id: str, keyword: str):
+    async def delete_greeting(self, channel_id: str, keyword: str, platform: str):
         try:
-            target = await self.get_greeting(channel_id, keyword)
+            target = await self.get_greeting(channel_id, keyword, platform)
 
             if not target:
                 return False
@@ -408,14 +390,14 @@ class ChatService:
 
     # --- 출석 체크 관련 메서드 ---
 
-    async def process_attendance(self, channel_id: str, user_id: str, user_name: str):
+    async def process_attendance(self, channel_id: str, user_id: str, user_name: str, platform: str):
         try:
-            latest_session = await self.sync_stream_session(channel_id)
+            latest_session = await self.sync_stream_session(channel_id, platform)
             if not latest_session:
                 return {"status": "not_streaming"}
 
             current_opened_at = latest_session.opened_at
-            v2_channel = await self._get_v2_channel(channel_id)
+            v2_channel = await self._get_v2_channel(channel_id, platform)
 
             if not v2_channel:
                 return None
@@ -475,7 +457,7 @@ class ChatService:
             print(f"[DB Error] Attendance check failed: {str(e)}")
             return None
 
-    async def _mark_stream_closed(self, channel_id: str, platform: str = DEFAULT_PLATFORM, raw_status: dict | None = None):
+    async def _mark_stream_closed(self, channel_id: str, platform: str, raw_status: dict | None = None):
         now = datetime.now(timezone.utc)
 
         v2_channel = await self._get_v2_channel(channel_id, platform)
@@ -504,7 +486,7 @@ class ChatService:
         live_state.raw_status = raw_status
 
 
-    async def sync_stream_session(self, channel_id: str, platform: str = DEFAULT_PLATFORM):
+    async def sync_stream_session(self, channel_id: str, platform: str):
         """Sync the current live stream session through the platform live provider."""
         from app.redis.redis_service import redis_client
 

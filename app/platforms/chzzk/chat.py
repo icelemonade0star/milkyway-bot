@@ -7,6 +7,7 @@ import app.features.chat.clients.chat_client as chat_client
 from app.features.auth.service import AuthService
 from app.core.database import get_session_factory
 from app.core.logger import get_logger
+from app.platforms.constants import PLATFORM_CHZZK
 
 logger = get_logger("ChzzkSessions")
 
@@ -15,6 +16,8 @@ logger = get_logger("ChzzkSessions")
 _client = httpx.AsyncClient(base_url=config.OPENAPI_BASE, timeout=10.0)
 
 class ChzzkSessions:
+    platform = PLATFORM_CHZZK
+
     def __init__(self, channel_id: str):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
@@ -39,7 +42,7 @@ class ChzzkSessions:
 
         async with factory() as db:
             auth_service = AuthService(db)
-            auth_data = await auth_service.get_auth_token_by_id(self.channel_id)
+            auth_data = await auth_service.get_auth_token_by_id(self.platform, self.channel_id)
 
             if not auth_data:
                 raise Exception(f"토큰을 찾을 수 없습니다: {self.channel_id}")
@@ -80,7 +83,7 @@ class ChzzkSessions:
             logger.warning(f"🗑️ [{self.channel_id}] 인증 오류({status_code}) 확인. DB에서 인증 정보를 삭제합니다.")
             async with factory() as db:
                 auth_service = AuthService(db)
-                await auth_service.delete_auth_token(self.channel_id)
+                await auth_service.delete_auth_token(self.platform, self.channel_id)
 
         return False
 

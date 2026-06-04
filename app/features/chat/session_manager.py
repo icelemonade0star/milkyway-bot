@@ -1,6 +1,9 @@
 import asyncio
 import logging
 from app.platforms.chzzk.chat import ChzzkSessions
+from app.platforms.constants import PLATFORM_CHZZK
+
+SESSION_PLATFORM = PLATFORM_CHZZK
 
 logger = logging.getLogger("SessionManager")
 
@@ -20,7 +23,7 @@ class SessionManager:
         """
         from app.features.auth.service import AuthService 
         auth_service = AuthService(db_session)
-        channels = await auth_service.get_auth_list()
+        channels = await auth_service.get_auth_list(SESSION_PLATFORM)
 
         # 동시에 너무 많은 세션을 복구하면 API Rate Limit(429)이 발생할 수 있으므로 Semaphore 제한 추가
         semaphore = asyncio.Semaphore(10) # 한 번에 최대 10개씩 연결

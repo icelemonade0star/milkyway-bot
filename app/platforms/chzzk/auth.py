@@ -7,12 +7,13 @@ import httpx
 import app.core.config as config
 from app.features.auth.service import AuthService
 from app.platforms.base import PlatformIdentity, TokenBundle
+from app.platforms.constants import PLATFORM_CHZZK
 
 _http_client = httpx.AsyncClient(timeout=10.0)
 
 
 class ChzzkAuthProvider:
-    platform = "chzzk"
+    platform = PLATFORM_CHZZK
 
     def __init__(self, auth_service: AuthService):
         self.client_id = config.CLIENT_ID
@@ -130,7 +131,7 @@ class ChzzkAuthProvider:
         }
 
     async def refresh_access_token(self, channel_id: str):
-        auth_data = await self.auth_service.get_auth_token_by_id(channel_id)
+        auth_data = await self.auth_service.get_auth_token_by_id(self.platform, channel_id)
         if not auth_data or not auth_data.refresh_token:
             print(f"Token refresh unavailable: {channel_id} has no refresh token.")
             return None, None
@@ -150,7 +151,7 @@ class ChzzkAuthProvider:
 
         if resp.status_code == 200:
             res_json = resp.json()
-            token = await self.auth_service.update_auth_token(channel_id, res_json["content"])
+            token = await self.auth_service.update_auth_token(self.platform, channel_id, res_json["content"])
             return token, None
 
         print(f"Token refresh failed: {resp.status_code} - {resp.text}")

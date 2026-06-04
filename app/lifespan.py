@@ -9,6 +9,9 @@ from app.core.tunnel import ParamikoTunnel
 from app.features.chat.session_manager import session_manager
 from app.features.discord_bot.main import bot, discord_token, start_discord_bot
 from app.features.live_state_poller import LiveStatePoller
+from app.platforms.constants import PLATFORM_CHZZK
+
+STARTUP_CLEANUP_PLATFORM = PLATFORM_CHZZK
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,7 +37,7 @@ async def lifespan(app: FastAPI):
     try:
         async with session_factory() as db_session:
             from app.features.auth.service import AuthService
-            removed = await AuthService(db_session).cleanup_inactive_channels(days=30)
+            removed = await AuthService(db_session).cleanup_inactive_channels(STARTUP_CLEANUP_PLATFORM, days=30)
             if removed:
                 print(f"🗑️ 비활성 채널 {len(removed)}개 정리 완료: {removed}")
     except Exception as e:

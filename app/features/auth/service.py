@@ -7,7 +7,6 @@ from sqlalchemy import select, update, delete, func
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from app.db import models
-from app.core.config import DEFAULT_PLATFORM
 
 from app.core.database import get_async_db
 
@@ -95,8 +94,12 @@ class AuthService:
         기본 플랫폼 인증 정보를 DB에 저장하고 결과를 반환합니다.
         """
         try:
+            platform = getattr(platform_auth, "platform", None)
+            if not platform:
+                raise ValueError("platform_auth.platform is required")
+
             channel = await self.save_platform_auth(
-                platform=getattr(platform_auth, "platform", DEFAULT_PLATFORM),
+                platform=platform,
                 platform_channel_id=platform_auth.channel_id,
                 channel_name=platform_auth.channel_name,
                 access_token=platform_auth.access_token,
@@ -120,7 +123,7 @@ class AuthService:
             updated_at=channel.updated_at,
         )
 
-    async def get_auth_list(self, channel_name: str = None):
+    async def get_auth_list(self, platform: str, channel_name: str = None):
         stmt = (
             select(models.V2Channel, models.V2PlatformCredential)
             .outerjoin(
@@ -128,7 +131,7 @@ class AuthService:
                 (models.V2PlatformCredential.channel_id == models.V2Channel.id)
                 & (models.V2PlatformCredential.platform == models.V2Channel.platform),
             )
-            .where(models.V2Channel.platform == DEFAULT_PLATFORM)
+            .where(models.V2Channel.platform == platform)
         )
         
         if channel_name:
@@ -152,7 +155,7 @@ class AuthService:
             print(f"[DB Error] List fetch failed: {str(e)}")
             return []
         
-    async def get_auth_token_by_id(self, channel_id: str = None):
+    async def get_auth_token_by_id(self, platform: str, channel_id: str = None):
         try:
             stmt = (
                 select(models.V2Channel, models.V2PlatformCredential)
@@ -162,7 +165,7 @@ class AuthService:
                     & (models.V2PlatformCredential.platform == models.V2Channel.platform),
                 )
                 .where(
-                    models.V2Channel.platform == DEFAULT_PLATFORM,
+                    models.V2Channel.platform == platform,
                     models.V2Channel.platform_channel_id == channel_id,
                 )
             )
@@ -186,7 +189,7 @@ class AuthService:
             print(f"[DB Error] List fetch failed: {str(e)}")
             return None
         
-    async def update_auth_token(self, channel_id: str, data: dict):
+    async def update_auth_token(self, platform: str, channel_id: str, data: dict):
         
         new_access_token = data.get("accessToken")
         new_refresh_token = data.get("refreshToken")
@@ -201,6 +204,7 @@ class AuthService:
 
         # 3. DB 업데이트 (여기에 UPDATE 쿼리가 필요합니다)
         await self.update_token(
+            platform=platform,
             channel_id=channel_id,
             access_token=new_access_token,
             refresh_token=new_refresh_token,
@@ -208,14 +212,14 @@ class AuthService:
         )
         return new_access_token
     
-    async def update_token(self, channel_id, access_token, refresh_token, expires_at):
-        v2_channel = await self.get_v2_channel_by_platform_id(DEFAULT_PLATFORM, channel_id)
+    async def update_token(self, platform, channel_id, access_token, refresh_token, expires_at):
+        v2_channel = await self.get_v2_channel_by_platform_id(platform, channel_id)
         if v2_channel:
             stmt_v2 = (
                 update(models.V2PlatformCredential)
                 .where(
                     models.V2PlatformCredential.channel_id == v2_channel.id,
-                    models.V2PlatformCredential.platform == DEFAULT_PLATFORM,
+                    models.V2PlatformCredential.platform == platform,
                 )
                 .values(
                     access_token=access_token,
@@ -227,9 +231,9 @@ class AuthService:
 
         await self.db.commit()
 
-    async def delete_auth_token(self, channel_id: str):
+    async def delete_auth_token(self, platform: str, channel_id: str):
         try:
-            v2_channel = await self.get_v2_channel_by_platform_id(DEFAULT_PLATFORM, channel_id)
+            v2_channel = await self.get_v2_channel_by_platform_id(platform, channel_id)
             if v2_channel:
                 await self.db.delete(v2_channel)
             await self.db.commit()
@@ -239,7 +243,7 @@ class AuthService:
             print(f"[DB Error] Token delete failed: {str(e)}")
             return False
 
-    async def cleanup_inactive_channels(self, days: int = 30) -> list[str]:
+    async def cleanup_inactive_channels(self, platform: str, days: int = 30) -> list[str]:
         """비활성 채널의 인증 정보를 삭제합니다. 반환: 삭제된 channel_id 목록
 
         삭제 대상:
@@ -253,7 +257,7 @@ class AuthService:
             case1 = (
                 select(models.V2Channel.platform_channel_id)
                 .join(models.V2StreamSession, models.V2Channel.id == models.V2StreamSession.channel_id)
-                .where(models.V2Channel.platform == DEFAULT_PLATFORM)
+                .where(models.V2Channel.platform == platform)
                 .group_by(models.V2Channel.id)
                 .having(func.max(models.V2StreamSession.opened_at) < cutoff)
             )
@@ -267,7 +271,7 @@ class AuthService:
             )
             case2 = (
                 select(models.V2Channel.platform_channel_id)
-                .where(models.V2Channel.platform == DEFAULT_PLATFORM)
+                .where(models.V2Channel.platform == platform)
                 .where(models.V2Channel.created_at < cutoff)
                 .where(~stream_exists)
             )
@@ -282,7 +286,7 @@ class AuthService:
 
             await self.db.execute(
                 delete(models.V2Channel).where(
-                    models.V2Channel.platform == DEFAULT_PLATFORM,
+                    models.V2Channel.platform == platform,
                     models.V2Channel.platform_channel_id.in_(inactive_ids),
                 )
             )

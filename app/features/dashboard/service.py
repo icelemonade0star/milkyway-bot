@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.features.auth.service import AuthService
 from app.features.chat.service import ChatService
-from app.core.config import DEFAULT_PLATFORM
 from app.redis.redis_service import RedisConfigService
 
 logger = logging.getLogger("DashboardService")
@@ -18,14 +17,14 @@ class DashboardService:
         self.chat_service = ChatService(db)
         self.redis_service = RedisConfigService()
 
-    async def get_dashboard_data(self, channel_id: str):
+    async def get_dashboard_data(self, platform: str, channel_id: str):
         auth_service = AuthService(self.db)
-        auth_token = await auth_service.get_auth_token_by_id(channel_id)
+        auth_token = await auth_service.get_auth_token_by_id(platform, channel_id)
         if not auth_token:
             return None
-        v2_channel = await auth_service.get_v2_channel_by_platform_id(DEFAULT_PLATFORM, channel_id)
+        v2_channel = await auth_service.get_v2_channel_by_platform_id(platform, channel_id)
 
-        config = await self.chat_service.get_channel_config(channel_id)
+        config = await self.chat_service.get_channel_config(channel_id, platform)
 
         if not v2_channel:
             return None
@@ -50,12 +49,12 @@ class DashboardService:
         )).scalar_one_or_none()
 
         commands = sorted(
-            await self.chat_service.get_channel_commands(channel_id),
+            await self.chat_service.get_channel_commands(channel_id, platform),
             key=lambda command: command.command,
         )
 
         greetings = sorted(
-            await self.chat_service.get_channel_greetings(channel_id),
+            await self.chat_service.get_channel_greetings(channel_id, platform),
             key=lambda greeting: greeting.keyword,
         )
 
@@ -79,11 +78,12 @@ class DashboardService:
             },
         }
 
-    async def save_command(self, channel_id: str, command: str, response: str, cooldown_seconds: int, is_active: bool = True) -> tuple[bool, str | None]:
+    async def save_command(self, platform: str, channel_id: str, command: str, response: str, cooldown_seconds: int, is_active: bool = True) -> tuple[bool, str | None]:
         status, _ = await self.chat_service.add_chat_command(
             channel_id,
             command,
             response,
+            platform,
             cooldown_seconds,
             is_active,
         )
@@ -91,23 +91,24 @@ class DashboardService:
             return True, None
         return False, status
 
-    async def delete_command(self, channel_id: str, command: str) -> bool:
-        return await self.chat_service.delete_chat_command(channel_id, command.strip())
+    async def delete_command(self, platform: str, channel_id: str, command: str) -> bool:
+        return await self.chat_service.delete_chat_command(channel_id, command.strip(), platform)
 
-    async def save_greeting(self, channel_id: str, keyword: str, response: str) -> tuple[bool, str | None]:
+    async def save_greeting(self, platform: str, channel_id: str, keyword: str, response: str) -> tuple[bool, str | None]:
         status, actual_keyword = await self.chat_service.add_greeting(
             channel_id,
             keyword.strip(),
             response.strip(),
+            platform,
         )
         if status in ("created", "updated") and actual_keyword:
-            if not await self.redis_service.add_greeting_cache(channel_id, actual_keyword, response.strip()):
+            if not await self.redis_service.add_greeting_cache(channel_id, actual_keyword, response.strip(), platform):
                 logger.warning("Greeting cache update failed: channel_id=%s keyword=%s", channel_id, actual_keyword)
             return True, None
         return False, status
 
-    async def delete_greeting(self, channel_id: str, keyword: str) -> bool:
-        target = await self.chat_service.get_greeting(channel_id, keyword.strip())
+    async def delete_greeting(self, platform: str, channel_id: str, keyword: str) -> bool:
+        target = await self.chat_service.get_greeting(channel_id, keyword.strip(), platform)
         if not target:
             return False
 
@@ -120,6 +121,6 @@ class DashboardService:
             logger.warning("Dashboard greeting delete failed: %s", e)
             return False
 
-        if not await self.redis_service.delete_greeting_cache(channel_id, actual_keyword):
+        if not await self.redis_service.delete_greeting_cache(channel_id, actual_keyword, platform):
             logger.warning("Greeting cache delete failed: channel_id=%s keyword=%s", channel_id, actual_keyword)
         return True

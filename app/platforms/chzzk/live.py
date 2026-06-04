@@ -7,6 +7,7 @@ import httpx
 
 import app.core.config as config
 from app.platforms.base import LiveStatus
+from app.platforms.constants import PLATFORM_CHZZK
 
 
 _OPENAPI_HEADERS = {
@@ -23,7 +24,7 @@ _PUBLIC_CLIENT = httpx.AsyncClient(timeout=5.0)
 
 
 class ChzzkLiveProvider:
-    platform = "chzzk"
+    platform = PLATFORM_CHZZK
 
     async def close(self):
         return None

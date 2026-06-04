@@ -25,7 +25,7 @@ class RedisConfigService:
     def get_cache_key(channel_id: str):
         return f"config:prefix:{channel_id}"
 
-    async def get_command_prefix(self, channel_id: str) -> str:
+    async def get_command_prefix(self, channel_id: str, platform: str) -> str:
         
         cache_key = self.get_cache_key(channel_id)
         
@@ -44,7 +44,7 @@ class RedisConfigService:
             
         async with session_factory() as db:
             chat_service = ChatService(db)
-            config_data = await chat_service.get_channel_config(channel_id)
+            config_data = await chat_service.get_channel_config(channel_id, platform)
 
             if config_data and hasattr(config_data, 'command_prefix'):
                 db_prefix = config_data.command_prefix
@@ -59,7 +59,7 @@ class RedisConfigService:
         # 4. DB에도 정보가 없다면 기본값 반환
         return "!"
 
-    async def update_command_prefix(self, channel_id: str, new_prefix: str):
+    async def update_command_prefix(self, channel_id: str, new_prefix: str, platform: str):
         # 1. DB 업데이트
         session_factory = get_session_factory()
         if not session_factory:
@@ -69,7 +69,7 @@ class RedisConfigService:
             chat_service = ChatService(db)
             
             # 기존 설정을 조회하여 보존
-            current_config = await chat_service.get_channel_config(channel_id)
+            current_config = await chat_service.get_channel_config(channel_id, platform)
             language = current_config.language if current_config else "ko"
             is_active = current_config.is_active if current_config else True
 
@@ -77,7 +77,8 @@ class RedisConfigService:
                 channel_id=channel_id, 
                 command_prefix=new_prefix, 
                 language=language, 
-                is_active=is_active
+                is_active=is_active,
+                platform=platform,
             )
         
         # 2. Redis 캐시 갱신
@@ -114,7 +115,7 @@ class RedisConfigService:
         
         return False
 
-    async def _prefetch_live_status(self, channel_id: str, platform: str = config.DEFAULT_PLATFORM):
+    async def _prefetch_live_status(self, channel_id: str, platform: str):
         """Cache live status through the platform live provider. No DB writes here."""
         cache_key = f"live_status:{channel_id}"
         try:
@@ -136,7 +137,7 @@ class RedisConfigService:
         self,
         channel_id: str,
         message: str,
-        platform: str = config.DEFAULT_PLATFORM,
+        platform: str,
     ) -> tuple[str | None, bool]:
         """
         메시지에 인사말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
@@ -150,7 +151,7 @@ class RedisConfigService:
 
             # 2. 데이터가 없으면 DB에서 로드 후 캐싱, 방송 상태도 함께 프리워밍
             if not greetings:
-                await self.refresh_greetings_cache(channel_id)
+                await self.refresh_greetings_cache(channel_id, platform)
                 await self._prefetch_live_status(channel_id, platform)
                 greetings = await redis_client.hgetall(cache_key)
 
@@ -170,7 +171,7 @@ class RedisConfigService:
 
         return None, False
 
-    async def refresh_greetings_cache(self, channel_id: str):
+    async def refresh_greetings_cache(self, channel_id: str, platform: str):
         """DB에서 인사말을 불러와 Redis에 캐싱합니다."""
         session_factory = get_session_factory()
         if not session_factory:
@@ -178,7 +179,7 @@ class RedisConfigService:
 
         async with session_factory() as db:
             chat_service = ChatService(db)
-            greetings = await chat_service.get_channel_greetings(channel_id)
+            greetings = await chat_service.get_channel_greetings(channel_id, platform)
             
             cache_key = f"greetings:{channel_id}"
             try:
@@ -200,7 +201,13 @@ class RedisConfigService:
             except Exception as e:
                 logger.warning("Redis greeting cache refresh failed: %s", e)
 
-    async def add_greeting_cache(self, channel_id: str, keyword: str, response: str):
+    async def add_greeting_cache(
+        self,
+        channel_id: str,
+        keyword: str,
+        response: str,
+        platform: str,
+    ):
         """인사말 하나를 Redis에 추가하거나 갱신합니다."""
         cache_key = f"greetings:{channel_id}"
         try:
@@ -212,13 +219,13 @@ class RedisConfigService:
                     await pipe.execute()
             else:
                 # 캐시가 없으면 전체 로드 (TTL 설정 포함)
-                await self.refresh_greetings_cache(channel_id)
+                await self.refresh_greetings_cache(channel_id, platform)
             return True
         except Exception as e:
             logger.warning("Redis greeting cache update failed: %s", e)
             return False
 
-    async def delete_greeting_cache(self, channel_id: str, keyword: str):
+    async def delete_greeting_cache(self, channel_id: str, keyword: str, platform: str):
         """인사말 하나를 Redis에서 삭제합니다."""
         cache_key = f"greetings:{channel_id}"
         try:
