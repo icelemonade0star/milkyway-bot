@@ -520,7 +520,7 @@
     </main>
 
     <script>
-        const MAX_CHAT_RESPONSE_CHARS = {{ limits.max_chat_response_chars }};
+        const MAX_CHAT_RESPONSE_CHARS = Number("{{ limits.max_chat_response_chars }}");
 
         function setStatus(resource, message) {
             const target = document.querySelector(`[data-status="${resource}"]`);
@@ -536,7 +536,56 @@
             }
         }
 
+        function normalizeTrigger(value, label) {
+            const parts = value.trim().split("|").map((part) => part.trim());
+            if (!parts.length || parts.some((part) => !part)) {
+                throw new Error(`${label}을 입력해주세요.`);
+            }
+            if (parts.some((part) => part.length < 2)) {
+                throw new Error(`${label}는 2글자 이상이어야 합니다.`);
+            }
+            if (parts.some((part) => /\s/.test(part))) {
+                throw new Error(`${label}에는 공백을 사용할 수 없습니다.`);
+            }
+            return parts.join("|");
+        }
+
+        function normalizeRequiredText(value, label) {
+            const normalized = value.trim();
+            if (!normalized) {
+                throw new Error(`${label}을 입력해주세요.`);
+            }
+            return normalized;
+        }
+
+        function formatRequestError(data) {
+            if (typeof data.detail === "string") {
+                return data.detail;
+            }
+            if (Array.isArray(data.detail)) {
+                const message = data.detail
+                    .map((item) => item.msg)
+                    .find((message) => typeof message === "string" && message);
+                if (message) {
+                    return message.replace(/^Value error, /, "");
+                }
+            }
+            return data.error || "요청을 처리할 수 없습니다.";
+        }
+
         async function request(resource, method, body) {
+            if (method === "POST") {
+                if (body.command !== undefined) {
+                    body.command = normalizeTrigger(body.command, "명령어");
+                }
+                if (body.keyword !== undefined) {
+                    body.keyword = normalizeTrigger(body.keyword, "키워드");
+                }
+                if (body.response !== undefined) {
+                    body.response = normalizeRequiredText(body.response, "응답");
+                }
+            }
+
             if (method === "POST" && body.response) {
                 assertResponseLength(body.response);
             }
@@ -549,7 +598,7 @@
 
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                throw new Error(data.detail || "요청을 처리할 수 없습니다.");
+                throw new Error(formatRequestError(data));
             }
 
             return response.json();
