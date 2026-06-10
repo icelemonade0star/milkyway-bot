@@ -1,4 +1,5 @@
-﻿import redis.asyncio as redis
+﻿import asyncio
+import redis.asyncio as redis
 import app.core.config as config
 import logging
 import re
@@ -149,10 +150,12 @@ class RedisConfigService:
             # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
             greetings = await redis_client.hgetall(cache_key)
 
-            # 2. 데이터가 없으면 DB에서 로드 후 캐싱, 방송 상태도 함께 프리워밍
+            # 2. 데이터가 없으면 DB 로드와 방송 상태 프리워밍을 병렬 실행
             if not greetings:
-                await self.refresh_greetings_cache(channel_id, platform)
-                await self._prefetch_live_status(channel_id, platform)
+                await asyncio.gather(
+                    self.refresh_greetings_cache(channel_id, platform),
+                    self._prefetch_live_status(channel_id, platform),
+                )
                 greetings = await redis_client.hgetall(cache_key)
 
             # 3. 키워드 포함 여부 검사

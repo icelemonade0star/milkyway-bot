@@ -29,6 +29,9 @@ _EMOTICON_PATTERN = re.compile(r'\{:[a-zA-Z0-9_]+:\}')
 _redis_service = RedisConfigService()
 CHAT_PLATFORM = PLATFORM_CHZZK
 
+# 진행 중인 출석 태스크를 추적 — (channel_id, user_id) 단위 중복 실행 방지
+_attendance_in_flight: set[str] = set()
+
 # 커스텀 명령어보다 우선 처리해야 하는 예약 시스템 명령어 목록
 _ADMIN_SYSTEM_COMMANDS = {
     "명령어등록",
@@ -98,6 +101,21 @@ def parse_command_and_content(args_list):
     
     return final_cmd, content
 
+async def _attendance_task(channel_id: str, user_id: str, user_name: str):
+    task_key = f"{channel_id}:{user_id}"
+    try:
+        session_factory = get_session_factory()
+        if not session_factory:
+            return
+        async with session_factory() as db:
+            chat_service = ChatService(db)
+            await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
+    except Exception as e:
+        logger.warning("출석 처리 실패 [%s/%s]: %s", channel_id, user_id, e)
+    finally:
+        _attendance_in_flight.discard(task_key)
+
+
 async def on_message(channel_id: str, message_text: str, role: str, user_id: str, user_name: str):
     # 순환 참조 방지를 위해 함수 내부에서 import
     from app.features.chat.session_manager import session_manager
@@ -118,16 +136,15 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
             )
             
             if is_greeting:
-                # 인사말 감지 시 쿨타임과 무관하게 출석 체크 수행
-                async with session_factory() as db:
-                    chat_service = ChatService(db)
-                    # 출석 로직 실행
-                    await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
-
                 if greeting_resp:
                     session = session_manager.get_existing_session(channel_id)
                     if session:
                         await session.send_chat(render_user_placeholders(greeting_resp, user_name))
+                # 출석 체크: 이미 처리 중이면 태스크 생성 자체를 건너뜀
+                task_key = f"{channel_id}:{user_id}"
+                if task_key not in _attendance_in_flight:
+                    _attendance_in_flight.add(task_key)
+                    asyncio.create_task(_attendance_task(channel_id, user_id, user_name))
         return
 
     # 3. 명령어 파싱
