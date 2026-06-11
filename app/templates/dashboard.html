@@ -298,11 +298,16 @@
             justify-content: flex-end;
         }
 
-        .empty, .status {
+        .empty, .hint, .status {
             margin: 0;
             color: var(--muted);
             font-size: 14px;
             line-height: 1.6;
+        }
+
+        .highlight-warning {
+            color: var(--danger);
+            font-weight: 700;
         }
 
         .status {
@@ -501,15 +506,21 @@
                         <input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="5" title="쿨타임 초">
                         <button class="primary" type="submit">추가</button>
                     </form>
-                    <p class="empty">출석 명령어는 채널마다 1개만 등록할 수 있습니다.</p>
                     {% endif %}
+                    <p class="hint">출석 명령어는 채널마다 1개만 등록할 수 있으며, 쿨타임은 시청자별로 적용됩니다. 방송 시작 직후 여러 시청자가 사용하면 <span class="highlight-warning">출석 응답이 채팅에 많이 표시</span>될 수 있습니다.</p>
                     <p class="status" data-status="attendance-command"></p>
                 </div>
             </article>
 
             <article class="panel wide">
                 <div class="panel-head">
-                    <h2>인사말</h2>
+                    <div class="panel-title">
+                        <h2>인사말</h2>
+                        <div class="token-help">
+                            <span>구분자: |</span>
+                            <span>치환자: [닉네임], [출석일], [연속출석일]</span>
+                        </div>
+                    </div>
                     <span class="badge">{{ dashboard.greetings|length }}개</span>
                 </div>
                 <div class="panel-body">

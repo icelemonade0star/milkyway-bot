@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.db import models
 from app.features.chat.service import ChatService
+from app.features.chat.handling.placeholders import has_attendance_placeholders, render_placeholders
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.config import ALLOWED_PREFIXES
 from app.features.discord_bot.cogs.discord_service import DiscordService
@@ -47,16 +48,6 @@ _ADMIN_SYSTEM_COMMANDS = {
 # 헬퍼 함수: 이모티콘 체크
 def has_platform_emoticon(text: str) -> bool:
     return bool(_EMOTICON_PATTERN.search(text))
-
-def render_user_placeholders(text: str, user_name: str | None) -> str:
-    return text.replace("[닉네임]", user_name or "시청자")
-
-def render_attendance_placeholders(text: str, user_name: str | None, attendance: dict) -> str:
-    return (
-        render_user_placeholders(text, user_name)
-        .replace("[출석일]", str(attendance.get("total", 0)))
-        .replace("[연속출석일]", str(attendance.get("streak", 0)))
-    )
 
 def get_attendance_response_template(response: str, status: str) -> str | None:
     try:
@@ -131,17 +122,37 @@ def parse_command_and_content(args_list):
     
     return final_cmd, content
 
+async def _process_attendance_in_new_session(channel_id: str, user_id: str, user_name: str):
+    session_factory = get_session_factory()
+    if not session_factory:
+        return None
+    async with session_factory() as db:
+        chat_service = ChatService(db)
+        return await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
+
+
 async def _attendance_task(channel_id: str, user_id: str, user_name: str):
     task_key = f"{channel_id}:{user_id}"
     try:
-        session_factory = get_session_factory()
-        if not session_factory:
-            return
-        async with session_factory() as db:
-            chat_service = ChatService(db)
-            await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
+        await _process_attendance_in_new_session(channel_id, user_id, user_name)
     except Exception as e:
         logger.warning("출석 처리 실패 [%s/%s]: %s", channel_id, user_id, e)
+    finally:
+        _attendance_in_flight.discard(task_key)
+
+
+async def _process_greeting_attendance_with_lock(channel_id: str, user_id: str, user_name: str):
+    """on_message 인사말 경로 전용: 자체 DB 세션을 열고 in-flight 락을 직접 관리합니다."""
+    task_key = f"{channel_id}:{user_id}"
+    if task_key in _attendance_in_flight:
+        return None
+
+    _attendance_in_flight.add(task_key)
+    try:
+        return await _process_attendance_in_new_session(channel_id, user_id, user_name)
+    except Exception as e:
+        logger.warning("출석 처리 실패 [%s/%s]: %s", channel_id, user_id, e)
+        return None
     finally:
         _attendance_in_flight.discard(task_key)
 
@@ -166,13 +177,21 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
             )
             
             if is_greeting:
+                attendance_result = None
+                attendance_attempted = False
                 if greeting_resp:
+                    if has_attendance_placeholders(greeting_resp):
+                        attendance_attempted = True
+                        attendance_result = await _process_greeting_attendance_with_lock(channel_id, user_id, user_name)
+                        if attendance_result is None:
+                            attendance_result = {"total": 0, "streak": 0}
+
                     session = session_manager.get_existing_session(channel_id)
                     if session:
-                        await session.send_chat(render_user_placeholders(greeting_resp, user_name))
+                        await session.send_chat(render_placeholders(greeting_resp, user_name, attendance_result))
                 # 출석 체크: 이미 처리 중이면 태스크 생성 자체를 건너뜀
                 task_key = f"{channel_id}:{user_id}"
-                if task_key not in _attendance_in_flight:
+                if not attendance_attempted and task_key not in _attendance_in_flight:
                     _attendance_in_flight.add(task_key)
                     asyncio.create_task(_attendance_task(channel_id, user_id, user_name))
         return
@@ -213,15 +232,20 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
     )
 
     if custom_cmd and custom_cmd.is_active and not is_admin_system_command:
-        # 쿨타임 체크
-        if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
-            return
-
         if custom_cmd.type == 'global':
+            # 쿨타임 체크
+            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
+                return
+
             # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입 (드문 케이스, 재조회)
             command = custom_cmd.response
             result = await chat_service.get_global_commands(command)
         elif custom_cmd.type == "attendance":
+            # 출석 명령어는 채널 전체가 아니라 시청자별 쿨타임을 적용합니다.
+            cooldown_key = f"{command}:user:{user_id}"
+            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, custom_cmd.cooldown_seconds):
+                return
+
             task_key = f"{channel_id}:{user_id}"
             if task_key in _attendance_in_flight:
                 return
@@ -232,14 +256,18 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 if result_att:
                     template = get_attendance_response_template(custom_cmd.response, result_att["status"])
                     if template:
-                        await session.send_chat(render_attendance_placeholders(template, user_name, result_att))
+                        await session.send_chat(render_placeholders(template, user_name, result_att))
                     elif result_att["status"] == "not_streaming":
                         await session.send_chat(f"@{user_name}님 방송 중에만 출석할 수 있습니다.")
             finally:
                 _attendance_in_flight.discard(task_key)
             return
         else:
-            await session.send_chat(render_user_placeholders(custom_cmd.response, user_name))
+            # 쿨타임 체크
+            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
+                return
+
+            await session.send_chat(render_placeholders(custom_cmd.response, user_name))
             return
 
     if result and result.is_active:
@@ -253,7 +281,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
 
         if result.type == "text":
             # 텍스트 응답 전송
-            await session.send_chat(render_user_placeholders(result.response, user_name))
+            await session.send_chat(render_placeholders(result.response, user_name))
             return
 
         elif result.type == "system":
