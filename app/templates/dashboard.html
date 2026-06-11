@@ -178,7 +178,11 @@
             grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 1.3fr) 96px auto;
         }
 
-        input, textarea {
+        .editor.attendance-editor {
+            grid-template-columns: minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(160px, 1fr) minmax(160px, 1fr) 96px auto;
+        }
+
+        input, textarea, select {
             width: 100%;
             border: 1px solid var(--line);
             border-radius: 6px;
@@ -327,7 +331,8 @@
                 grid-template-columns: 1fr;
             }
 
-            th:nth-child(3), td:nth-child(3) {
+            .compact-table th:nth-child(3),
+            .compact-table td:nth-child(3) {
                 display: none;
             }
         }
@@ -394,12 +399,13 @@
                     <form class="editor command-editor" data-resource="commands">
                         <input name="command" placeholder="명령어">
                         <input name="response" placeholder="응답 (각 항목 {{ limits.max_chat_response_chars }}자 이하)" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">
+                        <input name="type" type="hidden" value="text">
                         <input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="5" title="쿨타임 초">
                         <button class="primary" type="submit">추가</button>
                     </form>
 
                     {% if dashboard.commands %}
-                    <table>
+                    <table class="compact-table">
                         <thead>
                             <tr>
                                 <th style="width: 24%;">명령어</th>
@@ -411,7 +417,7 @@
                         </thead>
                         <tbody>
                             {% for command in dashboard.commands %}
-                            <tr data-resource="commands" data-key="{{ command.command }}">
+                            <tr data-resource="commands" data-command-type="text" data-key="{{ command.command }}">
                                 <td>{{ command.command }}</td>
                                 <td><textarea name="response" title="구분자(|)로 나눈 각 응답 항목은 {{ limits.max_chat_response_chars }}자 이하여야 합니다.">{{ command.response }}</textarea></td>
                                 <td><input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="{{ command.cooldown_seconds }}"></td>
@@ -440,6 +446,69 @@
 
             <article class="panel wide">
                 <div class="panel-head">
+                    <div class="panel-title">
+                        <h2>출석 명령어</h2>
+                        <div class="token-help">
+                            <span>구분자: |</span>
+                            <span>치환자: [닉네임], [출석일], [연속출석일]</span>
+                        </div>
+                    </div>
+                    <span class="badge">{{ "1개" if dashboard.attendance_command else "0개" }}</span>
+                </div>
+                <div class="panel-body">
+                    {% if dashboard.attendance_command %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 16%;">명령어</th>
+                                <th>출석</th>
+                                <th>중복출석</th>
+                                <th>방송 중 아님</th>
+                                <th style="width: 110px;">쿨타임</th>
+                                <th style="width: 80px;">상태</th>
+                                <th style="width: 130px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-resource="commands" data-status-resource="attendance-command" data-command-type="attendance" data-key="{{ dashboard.attendance_command.command }}">
+                                <td>{{ dashboard.attendance_command.command }}</td>
+                                <td><textarea name="checked_response" title="출석 성공 응답입니다.">{{ dashboard.attendance_responses.checked }}</textarea></td>
+                                <td><textarea name="already_checked_response" title="이미 출석한 경우의 응답입니다.">{{ dashboard.attendance_responses.already_checked }}</textarea></td>
+                                <td><textarea name="not_streaming_response" title="방송 중이 아닌 경우의 응답입니다.">{{ dashboard.attendance_responses.not_streaming }}</textarea></td>
+                                <td><input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="{{ dashboard.attendance_command.cooldown_seconds }}"></td>
+                                <td>
+                                    <label class="status-toggle">
+                                        <input name="is_active" type="checkbox" {% if dashboard.attendance_command.is_active %}checked{% endif %}>
+                                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                                    </label>
+                                </td>
+                                <td>
+                                    <div class="actions">
+                                        <button class="primary" type="button" data-action="save">저장</button>
+                                        <button class="danger" type="button" data-action="delete">삭제</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <form class="editor attendance-editor" data-resource="commands" data-status-resource="attendance-command">
+                        <input name="command" placeholder="출석 명령어">
+                        <input name="checked_response" placeholder="[닉네임]님 출석 완료! 총 [출석일]일 / 연속 [연속출석일]일" title="출석 성공 응답입니다.">
+                        <input name="already_checked_response" placeholder="[닉네임]님 이미 오늘 출석했습니다." title="이미 출석한 경우의 응답입니다.">
+                        <input name="not_streaming_response" placeholder="[닉네임]님 방송 중에만 출석할 수 있습니다." title="방송 중이 아닌 경우의 응답입니다.">
+                        <input name="type" type="hidden" value="attendance">
+                        <input name="cooldown_seconds" type="number" min="0" max="86400" step="1" value="5" title="쿨타임 초">
+                        <button class="primary" type="submit">추가</button>
+                    </form>
+                    <p class="empty">출석 명령어는 채널마다 1개만 등록할 수 있습니다.</p>
+                    {% endif %}
+                    <p class="status" data-status="attendance-command"></p>
+                </div>
+            </article>
+
+            <article class="panel wide">
+                <div class="panel-head">
                     <h2>인사말</h2>
                     <span class="badge">{{ dashboard.greetings|length }}개</span>
                 </div>
@@ -451,7 +520,7 @@
                     </form>
 
                     {% if dashboard.greetings %}
-                    <table>
+                    <table class="compact-table">
                         <thead>
                             <tr>
                                 <th style="width: 24%;">키워드</th>
@@ -536,6 +605,41 @@
             }
         }
 
+        function assertSingleResponseLength(response, label) {
+            if (response.trim().length > MAX_CHAT_RESPONSE_CHARS) {
+                throw new Error(`${label}은 ${MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.`);
+            }
+        }
+
+        function buildAttendanceResponse(checkedResponse, alreadyCheckedResponse, notStreamingResponse) {
+            const checked = normalizeRequiredText(checkedResponse, "출석 응답");
+            const alreadyChecked = normalizeRequiredText(alreadyCheckedResponse, "중복출석 응답");
+            const notStreaming = notStreamingResponse.trim();
+
+            assertSingleResponseLength(checked, "출석 응답");
+            assertSingleResponseLength(alreadyChecked, "중복출석 응답");
+            if (notStreaming) {
+                assertSingleResponseLength(notStreaming, "방송 중 아님 응답");
+            }
+
+            const payload = {
+                checked,
+                already_checked: alreadyChecked,
+            };
+            if (notStreaming) {
+                payload.not_streaming = notStreaming;
+            }
+            return JSON.stringify(payload);
+        }
+
+        function collectAttendanceResponse(container) {
+            return buildAttendanceResponse(
+                container.querySelector("[name='checked_response']").value,
+                container.querySelector("[name='already_checked_response']").value,
+                container.querySelector("[name='not_streaming_response']").value,
+            );
+        }
+
         function normalizeTrigger(value, label) {
             const parts = value.trim().split("|").map((part) => part.trim());
             if (!parts.length || parts.some((part) => !part)) {
@@ -584,9 +688,12 @@
                 if (body.response !== undefined) {
                     body.response = normalizeRequiredText(body.response, "응답");
                 }
+                if (body.type !== undefined && !["text", "attendance"].includes(body.type)) {
+                    throw new Error("지원하지 않는 명령어 타입입니다.");
+                }
             }
 
-            if (method === "POST" && body.response) {
+            if (method === "POST" && body.response && body.type !== "attendance") {
                 assertResponseLength(body.response);
             }
 
@@ -608,14 +715,21 @@
             form.addEventListener("submit", async (event) => {
                 event.preventDefault();
                 const resource = form.dataset.resource;
+                const statusResource = form.dataset.statusResource || resource;
                 const data = Object.fromEntries(new FormData(form).entries());
+                if (data.type === "attendance") {
+                    data.response = collectAttendanceResponse(form);
+                    delete data.checked_response;
+                    delete data.already_checked_response;
+                    delete data.not_streaming_response;
+                }
 
                 try {
                     await request(resource, "POST", data);
-                    setStatus(resource, "저장되었습니다. 화면을 새로고침합니다.");
+                    setStatus(statusResource, "저장되었습니다. 화면을 새로고침합니다.");
                     location.reload();
                 } catch (error) {
-                    setStatus(resource, error.message);
+                    setStatus(statusResource, error.message);
                 }
             });
         });
@@ -624,6 +738,7 @@
             button.addEventListener("click", async () => {
                 const row = button.closest("tr");
                 const resource = row.dataset.resource;
+                const statusResource = row.dataset.statusResource || resource;
                 const key = row.dataset.key;
                 const action = button.dataset.action;
 
@@ -632,21 +747,27 @@
                         const field = resource === "commands" ? "command" : "keyword";
                         const body = {
                             [field]: key,
-                            response: row.querySelector("[name='response']").value,
+                            response: "",
                         };
                         if (resource === "commands") {
+                            body.type = row.dataset.commandType || "text";
+                            body.response = body.type === "attendance"
+                                ? collectAttendanceResponse(row)
+                                : row.querySelector("[name='response']").value;
                             body.cooldown_seconds = Number(row.querySelector("[name='cooldown_seconds']").value || 0);
                             body.is_active = row.querySelector("[name='is_active']").checked;
+                        } else {
+                            body.response = row.querySelector("[name='response']").value;
                         }
                         await request(resource, "POST", body);
-                        setStatus(resource, "저장되었습니다.");
+                        setStatus(statusResource, "저장되었습니다.");
                     } else if (confirm("삭제할까요?")) {
                         await request(resource, "DELETE", {key});
                         row.remove();
-                        setStatus(resource, "삭제되었습니다.");
+                        setStatus(statusResource, "삭제되었습니다.");
                     }
                 } catch (error) {
-                    setStatus(resource, error.message);
+                    setStatus(statusResource, error.message);
                 }
             });
         });

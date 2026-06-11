@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 from app.redis.redis_service import RedisConfigService
@@ -29,7 +30,7 @@ _EMOTICON_PATTERN = re.compile(r'\{:[a-zA-Z0-9_]+:\}')
 _redis_service = RedisConfigService()
 CHAT_PLATFORM = PLATFORM_CHZZK
 
-# 진행 중인 출석 태스크를 추적 — (channel_id, user_id) 단위 중복 실행 방지
+# 진행 중인 출석 처리를 추적 — 인사말 자동 출석과 출석 명령어가 같은 키를 공유해 중복 실행을 막습니다.
 _attendance_in_flight: set[str] = set()
 
 # 커스텀 명령어보다 우선 처리해야 하는 예약 시스템 명령어 목록
@@ -49,6 +50,35 @@ def has_platform_emoticon(text: str) -> bool:
 
 def render_user_placeholders(text: str, user_name: str | None) -> str:
     return text.replace("[닉네임]", user_name or "시청자")
+
+def render_attendance_placeholders(text: str, user_name: str | None, attendance: dict) -> str:
+    return (
+        render_user_placeholders(text, user_name)
+        .replace("[출석일]", str(attendance.get("total", 0)))
+        .replace("[연속출석일]", str(attendance.get("streak", 0)))
+    )
+
+def get_attendance_response_template(response: str, status: str) -> str | None:
+    try:
+        payload = json.loads(response)
+    except (TypeError, json.JSONDecodeError):
+        if status in {"checked", "already_checked"}:
+            return response
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    template = payload.get(status)
+    if isinstance(template, str) and template.strip():
+        return template
+
+    if status == "already_checked":
+        checked_template = payload.get("checked")
+        if isinstance(checked_template, str) and checked_template.strip():
+            return checked_template
+
+    return None
 
 # 헬퍼 함수: 한국어 조사 판별
 def get_josa(word: str, josa_pair: str) -> str:
@@ -191,6 +221,23 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입 (드문 케이스, 재조회)
             command = custom_cmd.response
             result = await chat_service.get_global_commands(command)
+        elif custom_cmd.type == "attendance":
+            task_key = f"{channel_id}:{user_id}"
+            if task_key in _attendance_in_flight:
+                return
+
+            _attendance_in_flight.add(task_key)
+            try:
+                result_att = await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
+                if result_att:
+                    template = get_attendance_response_template(custom_cmd.response, result_att["status"])
+                    if template:
+                        await session.send_chat(render_attendance_placeholders(template, user_name, result_att))
+                    elif result_att["status"] == "not_streaming":
+                        await session.send_chat(f"@{user_name}님 방송 중에만 출석할 수 있습니다.")
+            finally:
+                _attendance_in_flight.discard(task_key)
+            return
         else:
             await session.send_chat(render_user_placeholders(custom_cmd.response, user_name))
             return

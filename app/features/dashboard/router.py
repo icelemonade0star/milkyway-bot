@@ -87,6 +87,7 @@ async def save_command(
         payload.response,
         payload.cooldown_seconds,
         payload.is_active,
+        payload.type,
     )
     if not success:
         raise HTTPException(status_code=400, detail=save_error_detail("commands", reason))

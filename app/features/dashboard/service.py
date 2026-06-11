@@ -1,4 +1,5 @@
 import logging
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,31 @@ from app.features.chat.service import ChatService
 from app.redis.redis_service import RedisConfigService
 
 logger = logging.getLogger("DashboardService")
+
+
+def parse_attendance_response(response: str | None) -> dict[str, str]:
+    parsed = {
+        "checked": "",
+        "already_checked": "",
+        "not_streaming": "",
+    }
+    if not response:
+        return parsed
+
+    try:
+        payload = json.loads(response)
+    except (TypeError, json.JSONDecodeError):
+        parsed["checked"] = response
+        return parsed
+
+    if not isinstance(payload, dict):
+        return parsed
+
+    for key in parsed:
+        value = payload.get(key)
+        if isinstance(value, str):
+            parsed[key] = value
+    return parsed
 
 
 class DashboardService:
@@ -48,10 +74,13 @@ class DashboardService:
             ).limit(1)
         )).scalar_one_or_none()
 
-        commands = sorted(
+        all_commands = sorted(
             await self.chat_service.get_channel_commands(channel_id, platform),
             key=lambda command: command.command,
         )
+        commands = [command for command in all_commands if command.type != "attendance"]
+        attendance_commands = [command for command in all_commands if command.type == "attendance"]
+        attendance_command = attendance_commands[0] if attendance_commands else None
 
         greetings = sorted(
             await self.chat_service.get_channel_greetings(channel_id, platform),
@@ -70,6 +99,8 @@ class DashboardService:
             "config": config,
             "notification": notification,
             "commands": commands,
+            "attendance_command": attendance_command,
+            "attendance_responses": parse_attendance_response(attendance_command.response if attendance_command else None),
             "greetings": greetings,
             "attendance_rank": attendance_rank,
             "stats": {
@@ -78,7 +109,7 @@ class DashboardService:
             },
         }
 
-    async def save_command(self, platform: str, channel_id: str, command: str, response: str, cooldown_seconds: int, is_active: bool = True) -> tuple[bool, str | None]:
+    async def save_command(self, platform: str, channel_id: str, command: str, response: str, cooldown_seconds: int, is_active: bool = True, command_type: str = "text") -> tuple[bool, str | None]:
         status, _ = await self.chat_service.add_chat_command(
             channel_id,
             command,
@@ -86,6 +117,7 @@ class DashboardService:
             platform,
             cooldown_seconds,
             is_active,
+            command_type,
         )
         if status in ("created", "updated"):
             return True, None

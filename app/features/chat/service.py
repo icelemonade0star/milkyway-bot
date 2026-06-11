@@ -4,12 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from fastapi import HTTPException
 import json
+import logging
 
 from app.db import models
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from app.platforms.registry import get_live_provider
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger("ChatService")
 
 class ChatService:
     def __init__(self, db: AsyncSession):
@@ -28,6 +31,37 @@ class ChatService:
         parts = [part.strip() for part in response.split('|') if part.strip()]
         targets = parts or [response.strip()]
         return all(len(part) <= MAX_CHAT_RESPONSE_CHARS for part in targets)
+
+    @staticmethod
+    def is_attendance_response_within_chat_limit(response: str) -> bool:
+        try:
+            payload = json.loads(response)
+        except (TypeError, json.JSONDecodeError):
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        required_keys = ("checked", "already_checked")
+        if any(not isinstance(payload.get(key), str) or not payload[key].strip() for key in required_keys):
+            return False
+
+        optional_keys = {"not_streaming"}
+        if any(key not in {*required_keys, *optional_keys} for key in payload):
+            return False
+
+        # not_streaming is optional, but when present it must be a valid chat response.
+        for value in payload.values():
+            if not isinstance(value, str):
+                return False
+            if value.strip() and len(value.strip()) > MAX_CHAT_RESPONSE_CHARS:
+                return False
+        return True
+
+    def is_command_response_within_chat_limit(self, response: str, command_type: str | None = None) -> bool:
+        if command_type == "attendance":
+            return self.is_attendance_response_within_chat_limit(response)
+        return self.is_response_within_chat_limit(response)
 
     async def update_channel_config(self, channel_id: str, command_prefix: str, language: str, is_active: bool, platform: str):
         try:
@@ -170,7 +204,7 @@ class ChatService:
             return None
 
 
-    async def add_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
+    async def add_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None, command_type: str | None = None):
         try:
             command = command.strip()
             response = response.strip()
@@ -178,14 +212,17 @@ class ChatService:
                 return "empty", None
             if len(command) > MAX_COMMAND_NAME_CHARS:
                 return "command_too_long", None
-            if not self.is_response_within_chat_limit(response):
+            if not self.is_command_response_within_chat_limit(response, command_type):
                 return "response_too_long", None
+            if command_type is not None and command_type not in {"text", "attendance"}:
+                return "invalid_type", None
 
             existing = await self.get_chat_command(channel_id, command, platform)
             if existing:
-                if await self.update_chat_command(channel_id, command, response, platform, cooldown_seconds, is_active):
+                update_status = await self.update_chat_command(channel_id, command, response, platform, cooldown_seconds, is_active, command_type)
+                if update_status == "updated":
                     return "updated", existing.command
-                return None, None
+                return update_status, None
 
             global_cmd = await self.get_global_commands(command)
             if global_cmd:
@@ -198,6 +235,15 @@ class ChatService:
             model = models.V2ChannelChatCommand
             channel_key = v2_channel.id
 
+            if command_type == "attendance":
+                attendance_stmt = select(model).where(
+                    model.channel_id == channel_key,
+                    model.type == "attendance",
+                ).limit(1)
+                attendance_cmd = (await self.db.execute(attendance_stmt)).scalar_one_or_none()
+                if attendance_cmd:
+                    return "attendance_limit_exceeded", None
+
             count_stmt = select(func.count()).select_from(model).where(model.channel_id == channel_key)
             count = (await self.db.execute(count_stmt)).scalar()
             if count >= MAX_COMMANDS_PER_CHANNEL:
@@ -207,6 +253,7 @@ class ChatService:
                 channel_id=channel_key,
                 command=command,
                 response=response,
+                type="text" if command_type is None else command_type,
                 cooldown_seconds=5 if cooldown_seconds is None else cooldown_seconds,
                 is_active=True if is_active is None else is_active,
             )
@@ -215,35 +262,49 @@ class ChatService:
             return "created", command
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
-            return None, None
+            logger.error("Add chat command failed: %s", e)
+            return "db_error", None
 
 
-    async def update_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None):
+    async def update_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None, command_type: str | None = None):
         try:
             command = command.strip()
             response = response.strip()
             if not command or not response:
-                return False
+                return "empty"
 
-            if not self.is_response_within_chat_limit(response):
-                return False
+            if not self.is_command_response_within_chat_limit(response, command_type):
+                return "response_too_long"
+            if command_type is not None and command_type not in {"text", "attendance"}:
+                return "invalid_type"
 
             cmd_obj = await self.get_chat_command(channel_id, command, platform)
             if not cmd_obj:
-                return False
+                return "not_found"
+
+            if command_type == "attendance":
+                model = models.V2ChannelChatCommand
+                attendance_stmt = select(model).where(
+                    model.channel_id == cmd_obj.channel_id,
+                    model.type == "attendance",
+                    model.id != cmd_obj.id,
+                ).limit(1)
+                if (await self.db.execute(attendance_stmt)).scalar_one_or_none():
+                    return "attendance_limit_exceeded"
             
             cmd_obj.response = response
+            if command_type is not None:
+                cmd_obj.type = command_type
             if cooldown_seconds is not None:
                 cmd_obj.cooldown_seconds = cooldown_seconds
             if is_active is not None:
                 cmd_obj.is_active = is_active
             await self.db.commit()
-            return True
+            return "updated"
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
-            return False
+            logger.error("Update chat command failed: %s", e)
+            return "db_error"
 
     async def delete_chat_command(self, channel_id: str, command: str, platform: str):
         try:
