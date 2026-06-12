@@ -1,4 +1,5 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
+import logging
 
 from fastapi import Depends
 
@@ -9,6 +10,8 @@ from fastapi import HTTPException
 from app.db import models
 
 from app.core.database import get_async_db
+
+logger = logging.getLogger("AuthService")
 
 
 @dataclass
@@ -110,7 +113,7 @@ class AuthService:
             await self.db.commit()
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] save_default_platform_auth failed: {str(e)}")
+            logger.error("save_default_platform_auth failed: %s", e)
             raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
 
         return PlatformAuthRecord(
@@ -123,7 +126,7 @@ class AuthService:
             updated_at=channel.updated_at,
         )
 
-    async def get_auth_list(self, platform: str, channel_name: str = None):
+    async def get_auth_list(self, platform: str, channel_name: str | None = None):
         stmt = (
             select(models.V2Channel, models.V2PlatformCredential)
             .outerjoin(
@@ -152,10 +155,10 @@ class AuthService:
                 for channel, credential in result.all()
             ]
         except Exception as e:
-            print(f"[DB Error] List fetch failed: {str(e)}")
+            logger.error("Auth list fetch failed: %s", e)
             return []
         
-    async def get_auth_token_by_id(self, platform: str, channel_id: str = None):
+    async def get_auth_token_by_id(self, platform: str, channel_id: str | None = None):
         try:
             stmt = (
                 select(models.V2Channel, models.V2PlatformCredential)
@@ -172,7 +175,7 @@ class AuthService:
             row = (await self.db.execute(stmt)).one_or_none()
         
             if not row:
-                print(f"⚠️ [DB] 해당 ID의 토큰이 없습니다: {channel_id}")
+                logger.warning("Auth token not found: channel_id=%s", channel_id)
                 return None
                 
             channel, credential = row
@@ -186,7 +189,7 @@ class AuthService:
                 updated_at=channel.updated_at,
             )
         except Exception as e:
-            print(f"[DB Error] List fetch failed: {str(e)}")
+            logger.error("Auth token fetch failed: %s", e)
             return None
         
     async def update_auth_token(self, platform: str, channel_id: str, data: dict):
@@ -196,10 +199,10 @@ class AuthService:
         expires_in = data.get("expiresIn", 86400) # 기본값 1일(86400초)
         
         # 만료 시간 계산
-        new_expires_at = datetime.now() + timedelta(seconds=expires_in)
+        new_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
         if not new_access_token:
-            print(f"❌ 업데이트 실패: 응답에 accessToken이 없습니다. (Data: {data})")
+            logger.warning("Token update failed: accessToken missing. data=%s", data)
             return None
 
         # 3. DB 업데이트 (여기에 UPDATE 쿼리가 필요합니다)
@@ -240,7 +243,7 @@ class AuthService:
             return True
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Token delete failed: {str(e)}")
+            logger.error("Token delete failed: %s", e)
             return False
 
     async def cleanup_inactive_channels(self, platform: str, days: int = 30) -> list[str]:
@@ -284,6 +287,13 @@ class AuthService:
             if not inactive_ids:
                 return []
 
+            inactive_channels = (await self.db.execute(
+                select(models.V2Channel).where(
+                    models.V2Channel.platform == platform,
+                    models.V2Channel.platform_channel_id.in_(inactive_ids),
+                )
+            )).scalars().all()
+
             await self.db.execute(
                 delete(models.V2Channel).where(
                     models.V2Channel.platform == platform,
@@ -294,27 +304,31 @@ class AuthService:
 
             # Redis 캐시 정리 (실패해도 DB 삭제는 이미 완료됐으므로 무시)
             try:
-                from app.redis.redis_service import redis_client
+                from app.redis.redis_service import RedisChannelKey, RedisConfigService, redis_client
                 keys_to_delete = []
-                for ch_id in inactive_ids:
+                for channel in inactive_channels:
+                    redis_channel = RedisChannelKey(
+                        channel.platform,
+                        channel.platform_channel_id,
+                        str(channel.id),
+                    )
                     keys_to_delete += [
-                        f"greetings:{ch_id}",
-                        f"config:prefix:{ch_id}",
-                        f"live_status:{ch_id}",
+                        RedisConfigService.get_greetings_key(redis_channel),
+                        RedisConfigService.get_prefix_key(redis_channel),
+                        RedisConfigService.get_live_status_key(redis_channel),
                     ]
                 if keys_to_delete:
                     await redis_client.delete(*keys_to_delete)
             except Exception as e:
-                print(f"[Cleanup] Redis 캐시 정리 실패 (무시): {e}")
+                logger.warning("Cleanup Redis cache failed; ignoring: %s", e)
 
             return list(inactive_ids)
 
         except Exception as e:
             await self.db.rollback()
-            print(f"[Cleanup] 비활성 채널 정리 중 오류 발생: {e}")
+            logger.error("Inactive channel cleanup failed: %s", e)
             return []
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_async_db)):
     return AuthService(db)
-

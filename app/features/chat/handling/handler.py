@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import logging
 import re
@@ -234,7 +234,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
     if custom_cmd and custom_cmd.is_active and not is_admin_system_command:
         if custom_cmd.type == 'global':
             # 쿨타임 체크
-            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
+            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
 
             # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입 (드문 케이스, 재조회)
@@ -243,7 +243,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
         elif custom_cmd.type == "attendance":
             # 출석 명령어는 채널 전체가 아니라 시청자별 쿨타임을 적용합니다.
             cooldown_key = f"{command}:user:{user_id}"
-            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, custom_cmd.cooldown_seconds):
+            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
 
             task_key = f"{channel_id}:{user_id}"
@@ -264,7 +264,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             return
         else:
             # 쿨타임 체크
-            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds):
+            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
 
             await session.send_chat(render_placeholders(custom_cmd.response, user_name))
@@ -276,7 +276,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
             return
 
         # 쿨타임 체크
-        if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds):
+        if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds, CHAT_PLATFORM):
             return
 
         if result.type == "text":
@@ -546,16 +546,27 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                 else:
                     await session.send_chat("활성화된 알림 설정이 없습니다.")
                 return
-
         elif result.type == "attendance":
-            result_att = await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
-            if result_att:
-                if result_att["status"] == "checked":
-                    msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}회 / 총 {result_att['total']}회)"
-                    await session.send_chat(msg)
-                elif result_att["status"] == "already_checked":
-                    msg = f"@{user_name}님 이미 출석했습니다."
-                    await session.send_chat(msg)
-                elif result_att["status"] == "not_streaming":
-                    msg = f"@{user_name}님 방송 중에만 출석할 수 있습니다."
-                    await session.send_chat(msg)
+            cooldown_key = f"{command}:user:{user_id}"
+            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, result.cooldown_seconds, CHAT_PLATFORM):
+                return
+
+            task_key = f"{channel_id}:{user_id}"
+            if task_key in _attendance_in_flight:
+                return
+
+            _attendance_in_flight.add(task_key)
+            try:
+                result_att = await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
+                if result_att:
+                    if result_att["status"] == "checked":
+                        msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일 / 총 {result_att['total']}일)"
+                        await session.send_chat(msg)
+                    elif result_att["status"] == "already_checked":
+                        msg = f"@{user_name}님은 이미 출석했습니다."
+                        await session.send_chat(msg)
+                    elif result_att["status"] == "not_streaming":
+                        msg = f"@{user_name}님 방송 중에만 출석할 수 있습니다."
+                        await session.send_chat(msg)
+            finally:
+                _attendance_in_flight.discard(task_key)

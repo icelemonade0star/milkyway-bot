@@ -8,7 +8,7 @@ from sqlalchemy import select
 import app.core.config as config
 from app.db import models
 from app.platforms.registry import get_live_provider
-from app.redis.redis_service import redis_client
+from app.redis.redis_service import RedisChannelKey, RedisConfigService, redis_client
 
 logger = logging.getLogger("LiveStatePoller")
 
@@ -104,21 +104,21 @@ class LiveStatePoller:
             )
             return False
 
+        if not live_status:
+            return False
+
         async with self.session_factory() as db:
             db_channel = await db.get(models.V2Channel, channel.id)
             if not db_channel or not db_channel.is_active:
                 return False
 
-            if not live_status:
-                return False
-
             should_notify_discord = False
             if live_status.status == "OPEN" and live_status.opened_at:
                 should_notify_discord = await self._mark_open(db, db_channel, live_status)
-                await self._cache_live_status(db_channel.platform_channel_id, live_status.raw or {}, is_open=True)
+                await self._cache_live_status(db_channel, live_status.raw or {}, is_open=True)
             elif live_status.status == "CLOSE":
                 await self._mark_closed(db, db_channel, live_status.raw or {})
-                await self._cache_live_status(db_channel.platform_channel_id, "CLOSE", is_open=False)
+                await self._cache_live_status(db_channel, "CLOSE", is_open=False)
             else:
                 await self._mark_unknown(db, db_channel, live_status.raw)
 
@@ -210,8 +210,13 @@ class LiveStatePoller:
         for session in sessions:
             session.closed_at = now
 
-    async def _cache_live_status(self, platform_channel_id: str, value, *, is_open: bool):
-        cache_key = f"live_status:{platform_channel_id}"
+    async def _cache_live_status(self, channel: models.V2Channel, value, *, is_open: bool):
+        redis_channel = RedisChannelKey(
+            channel.platform,
+            channel.platform_channel_id,
+            str(channel.id),
+        )
+        cache_key = RedisConfigService.get_live_status_key(redis_channel)
         try:
             if is_open:
                 await redis_client.set(cache_key, json.dumps(value), ex=300)

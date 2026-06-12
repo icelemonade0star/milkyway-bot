@@ -11,6 +11,9 @@ class GreetingItem(BaseModel):
 
 class ChannelGreetingCacheResponse(BaseModel):
     channel_id: str
+    platform: str | None = None
+    platform_channel_id: str | None = None
+    channel_uuid: UUID | None = None
     cached: bool
     count: int
     ttl_seconds: int | None = None
@@ -19,6 +22,9 @@ class ChannelGreetingCacheResponse(BaseModel):
 
 class ChannelGreetingSummary(BaseModel):
     channel_id: str
+    platform: str | None = None
+    platform_channel_id: str | None = None
+    channel_uuid: UUID | None = None
     count: int
     ttl_seconds: int | None = None
     greetings: list[GreetingItem]
@@ -32,12 +38,18 @@ class AllGreetingCacheResponse(BaseModel):
 class GreetingRefreshResponse(BaseModel):
     status: str
     channel_id: str
+    platform: str | None = None
+    platform_channel_id: str | None = None
+    channel_uuid: UUID | None = None
     count: int
     message: str
 
 
 class FailedChannel(BaseModel):
     channel_id: str
+    platform: str | None = None
+    platform_channel_id: str | None = None
+    channel_uuid: UUID | None = None
     error: str
 
 
