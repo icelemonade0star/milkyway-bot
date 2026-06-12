@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_async_db
 from app.core.security import verify_admin_token
 from app.db import models
-from app.redis.redis_service import redis_client, RedisConfigService
+from app.redis.redis_service import RedisChannelKey, redis_client, RedisConfigService
 from app.features.chat.service import ChatService
 from app.features.live_state_poller import LiveStatePoller
 from app.platforms.constants import PLATFORM_CHZZK
@@ -65,6 +65,23 @@ async def _get_live_state_item(db: AsyncSession, platform: str, platform_channel
         return None
     channel, live_state, stream_session = rows[0]
     return _serialize_live_state(channel, live_state, stream_session)
+
+
+async def _get_v2_channel_by_platform_id(db: AsyncSession, platform: str, platform_channel_id: str):
+    return (await db.execute(
+        select(models.V2Channel).where(
+            models.V2Channel.platform == platform,
+            models.V2Channel.platform_channel_id == platform_channel_id,
+        )
+    )).scalar_one_or_none()
+
+
+def _redis_channel_key(channel) -> RedisChannelKey:
+    return RedisChannelKey(
+        channel.platform,
+        channel.platform_channel_id,
+        str(channel.id),
+    )
 
 
 @admin_router.get(
@@ -162,26 +179,32 @@ async def refresh_all_live_states():
     }
 
 
-@admin_router.get(
-    "/greeting/redis/{channel_id}",
-    summary="채널 Redis 인사말 조회",
-    description="특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
-    response_model=schemas.ChannelGreetingCacheResponse,
-)
-async def get_channel_greeting_cache(channel_id: str):
-    cache_key = f"greetings:{channel_id}"
+async def _get_channel_greeting_cache_response(db: AsyncSession, platform: str, platform_channel_id: str):
+    channel = await _get_v2_channel_by_platform_id(db, platform, platform_channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="v2 채널을 찾을 수 없습니다.")
+
+    redis_channel = _redis_channel_key(channel)
+    cache_key = RedisConfigService.get_greetings_key(redis_channel)
     try:
         raw = await redis_client.hgetall(cache_key)
         ttl = await redis_client.ttl(cache_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Redis 조회 실패: {e}")
 
+    base = {
+        "channel_id": channel.platform_channel_id,
+        "platform": channel.platform,
+        "platform_channel_id": channel.platform_channel_id,
+        "channel_uuid": channel.id,
+        "ttl_seconds": None if ttl == -2 else ttl,
+    }
+
     if not raw:
         return {
-            "channel_id": channel_id,
+            **base,
             "cached": False,
             "count": 0,
-            "ttl_seconds": None,
             "greetings": [],
         }
 
@@ -192,29 +215,58 @@ async def get_channel_greeting_cache(channel_id: str):
     ]
 
     return {
-        "channel_id": channel_id,
+        **base,
         "cached": True,
         "count": len(greetings),
-        "ttl_seconds": ttl,
         "greetings": greetings,
     }
 
 
 @admin_router.get(
+    "/greeting/redis/{platform}/{platform_channel_id}",
+    summary="플랫폼 채널 Redis 인사말 조회",
+    description="특정 플랫폼 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
+    response_model=schemas.ChannelGreetingCacheResponse,
+)
+async def get_platform_channel_greeting_cache(
+    platform: str,
+    platform_channel_id: str,
+    db: AsyncSession = Depends(get_async_db),
+):
+    return await _get_channel_greeting_cache_response(db, platform, platform_channel_id)
+
+
+@admin_router.get(
+    "/greeting/redis/{channel_id}",
+    summary="채널 Redis 인사말 조회",
+    description="치지직 호환 경로입니다. 특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
+    response_model=schemas.ChannelGreetingCacheResponse,
+)
+async def get_channel_greeting_cache(
+    channel_id: str,
+    db: AsyncSession = Depends(get_async_db),
+):
+    return await _get_channel_greeting_cache_response(db, ADMIN_COMPAT_PLATFORM, channel_id)
+
+
+@admin_router.get(
     "/greeting/redis",
     summary="전체 채널 Redis 인사말 조회",
-    description="Redis에 캐싱된 모든 채널의 인사말 목록을 반환합니다.",
+    description="Redis에 캐싱된 모든 v2 채널의 인사말 목록을 반환합니다.",
     response_model=schemas.AllGreetingCacheResponse,
 )
 async def get_all_greeting_cache():
     try:
-        keys = await redis_client.keys("greetings:*")
+        keys = await redis_client.keys("v2:greetings:*")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Redis 키 조회 실패: {e}")
 
     channels = []
     for key in keys:
-        channel_id = key.removeprefix("greetings:")
+        parts = key.split(":", 4)
+        if len(parts) != 5:
+            continue
+        _, _, platform, platform_channel_id, channel_uuid = parts
         try:
             raw = await redis_client.hgetall(key)
             ttl = await redis_client.ttl(key)
@@ -227,9 +279,12 @@ async def get_all_greeting_cache():
             if k != "__empty__"
         ]
         channels.append({
-            "channel_id": channel_id,
+            "channel_id": platform_channel_id,
+            "platform": platform,
+            "platform_channel_id": platform_channel_id,
+            "channel_uuid": channel_uuid,
             "count": len(greetings),
-            "ttl_seconds": ttl,
+            "ttl_seconds": None if ttl == -2 else ttl,
             "greetings": greetings,
         })
 
@@ -238,28 +293,52 @@ async def get_all_greeting_cache():
         "channels": channels,
     }
 
+async def _refresh_channel_greeting_cache_response(db: AsyncSession, platform: str, platform_channel_id: str):
+    channel = await _get_v2_channel_by_platform_id(db, platform, platform_channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="v2 채널을 찾을 수 없습니다.")
+
+    chat_service = ChatService(db)
+    greetings = await chat_service.get_channel_greetings(platform_channel_id, platform)
+
+    await redis_service.refresh_greetings_cache(platform_channel_id, platform)
+
+    return {
+        "status": "success",
+        "channel_id": channel.platform_channel_id,
+        "platform": channel.platform,
+        "platform_channel_id": channel.platform_channel_id,
+        "channel_uuid": channel.id,
+        "count": len(greetings),
+        "message": f"인사말 {len(greetings)}개가 Redis에 갱신되었습니다.",
+    }
+
+
+@admin_router.post(
+    "/greeting/refresh/{platform}/{platform_channel_id}",
+    summary="플랫폼 채널 인사말 Redis 수동 갱신",
+    description="DB에 등록된 특정 플랫폼 채널의 인사말을 Redis에 즉시 갱신합니다.",
+    response_model=schemas.GreetingRefreshResponse,
+)
+async def refresh_platform_channel_greeting_cache(
+    platform: str,
+    platform_channel_id: str,
+    db: AsyncSession = Depends(get_async_db),
+):
+    return await _refresh_channel_greeting_cache_response(db, platform, platform_channel_id)
+
 
 @admin_router.post(
     "/greeting/refresh/{channel_id}",
     summary="채널 인사말 Redis 수동 갱신",
-    description="DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
+    description="치지직 호환 경로입니다. DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
     response_model=schemas.GreetingRefreshResponse,
 )
 async def refresh_channel_greeting_cache(
     channel_id: str,
     db: AsyncSession = Depends(get_async_db),
 ):
-    chat_service = ChatService(db)
-    greetings = await chat_service.get_channel_greetings(channel_id, ADMIN_COMPAT_PLATFORM)
-
-    await redis_service.refresh_greetings_cache(channel_id, ADMIN_COMPAT_PLATFORM)
-
-    return {
-        "status": "success",
-        "channel_id": channel_id,
-        "count": len(greetings),
-        "message": f"인사말 {len(greetings)}개가 Redis에 갱신되었습니다.",
-    }
+    return await _refresh_channel_greeting_cache_response(db, ADMIN_COMPAT_PLATFORM, channel_id)
 
 
 @admin_router.post(
@@ -272,21 +351,27 @@ async def refresh_all_greeting_cache(
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(
-        select(models.V2Channel.platform, models.V2Channel.platform_channel_id).where(models.V2Channel.is_active == True)
+        select(models.V2Channel).where(models.V2Channel.is_active == True)
     )
-    channels = result.all()
+    channels = result.scalars().all()
 
     total_greetings = 0
     failed_channels = []
 
-    for platform, channel_id in channels:
+    for channel in channels:
         try:
             chat_service = ChatService(db)
-            greetings = await chat_service.get_channel_greetings(channel_id, platform)
-            await redis_service.refresh_greetings_cache(channel_id, platform)
+            greetings = await chat_service.get_channel_greetings(channel.platform_channel_id, channel.platform)
+            await redis_service.refresh_greetings_cache(channel.platform_channel_id, channel.platform)
             total_greetings += len(greetings)
         except Exception as e:
-            failed_channels.append({"channel_id": channel_id, "error": str(e)})
+            failed_channels.append({
+                "channel_id": channel.platform_channel_id,
+                "platform": channel.platform,
+                "platform_channel_id": channel.platform_channel_id,
+                "channel_uuid": channel.id,
+                "error": str(e),
+            })
 
     return {
         "status": "success" if not failed_channels else "partial",
@@ -295,3 +380,4 @@ async def refresh_all_greeting_cache(
         "failed_channels": failed_channels,
         "message": f"{len(channels) - len(failed_channels)}개 채널의 인사말이 Redis에 갱신되었습니다.",
     }
+

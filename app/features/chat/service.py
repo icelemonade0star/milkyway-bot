@@ -80,7 +80,7 @@ class ChatService:
             return config
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             raise HTTPException(status_code=500, detail="DB update failed.")
 
 
@@ -92,7 +92,7 @@ class ChatService:
             return await self.db.get(models.V2ChannelConfig, v2_channel.id)
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             raise HTTPException(status_code=500, detail="DB lookup failed.")
         
 
@@ -126,7 +126,7 @@ class ChatService:
 
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
 
     async def get_global_command(self, command: str):
@@ -146,7 +146,7 @@ class ChatService:
             return result.scalars().all()
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             return []
             
     async def get_channel_commands(self, channel_id: str, platform: str):
@@ -163,7 +163,7 @@ class ChatService:
             return result.scalars().all()
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             return []
             
 
@@ -200,7 +200,7 @@ class ChatService:
             return None
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             return None
 
 
@@ -317,7 +317,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] {str(e)}")
+            logger.error("DB operation failed: %s", e)
             return False
 
     # --- 인사말(Greeting) 관련 메서드 ---
@@ -335,7 +335,7 @@ class ChatService:
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
-            print(f"[DB Error] Greetings fetch failed: {str(e)}")
+            logger.error("Greetings fetch failed: %s", e)
             return []
 
 
@@ -371,7 +371,7 @@ class ChatService:
                     return greet_obj
             return None
         except Exception as e:
-            print(f"[DB Error] Get greeting failed: {str(e)}")
+            logger.error("Get greeting failed: %s", e)
             return None
 
 
@@ -408,7 +408,7 @@ class ChatService:
             return "created", keyword
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Add greeting failed: {str(e)}")
+            logger.error("Add greeting failed: %s", e)
             return None, None
 
 
@@ -431,7 +431,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Update greeting failed: {str(e)}")
+            logger.error("Update greeting failed: %s", e)
             return False
 
     async def delete_greeting(self, channel_id: str, keyword: str, platform: str):
@@ -446,7 +446,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Delete greeting failed: {str(e)}")
+            logger.error("Delete greeting failed: %s", e)
             return False
 
     # --- 출석 체크 관련 메서드 ---
@@ -515,7 +515,7 @@ class ChatService:
             }
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Attendance check failed: {str(e)}")
+            logger.error("Attendance check failed: %s", e)
             return None
 
     async def _mark_stream_closed(self, channel_id: str, platform: str, raw_status: dict | None = None):
@@ -555,10 +555,15 @@ class ChatService:
         notify_discord: bool = True,
     ):
         """Sync the current live stream session through the platform live provider."""
-        from app.redis.redis_service import redis_client
+        from app.redis.redis_service import RedisChannelKey, RedisConfigService, redis_client
 
         try:
-            cache_key = f"live_status:{channel_id}"
+            v2_channel = await self._get_v2_channel(channel_id, platform)
+            if not v2_channel:
+                return None
+
+            redis_channel = RedisChannelKey(platform, channel_id, str(v2_channel.id))
+            cache_key = RedisConfigService.get_live_status_key(redis_channel)
             cached_status = None if live_status_content else await redis_client.get(cache_key)
 
             if live_status_content:
@@ -610,10 +615,6 @@ class ChatService:
                 current_opened_at = live_status.opened_at
                 stream_title = live_status.title
 
-            v2_channel = await self._get_v2_channel(channel_id, platform)
-            if not v2_channel:
-                return None
-
             live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
             previous_status = live_state.status if live_state else None
             previous_session_id = live_state.current_stream_session_id if live_state else None
@@ -654,15 +655,16 @@ class ChatService:
 
                     await trigger_live_notification_check(platform, channel_id)
                 except Exception as e:
-                    print(f"[LiveNotification] trigger from stream sync failed: {e}")
+                    logger.warning("Live notification trigger from stream sync failed: %s", e)
 
             return v2_session
         except Exception as e:
             await self.db.rollback()
-            print(f"[DB Error] Sync stream session failed: {str(e)}")
+            logger.error("Sync stream session failed: %s", e)
             return None
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
 
    
+

@@ -4,10 +4,13 @@ import app.core.config as config
 import logging
 import re
 import json
+from dataclasses import dataclass
 
 from app.core.database import get_session_factory
+from app.db import models
 from app.features.chat.service import ChatService
 from app.platforms.registry import get_live_provider
+from sqlalchemy import select
 
 logger = logging.getLogger("RedisConfigService")
 
@@ -18,21 +21,80 @@ redis_client = redis.Redis(
     max_connections=10,  # 1GB 서버 환경: 기본 50개에서 축소
 )
 
+@dataclass(frozen=True)
+class RedisChannelKey:
+    platform: str
+    platform_channel_id: str
+    channel_uuid: str
+
+
 class RedisConfigService:
+    _channel_key_cache: dict[tuple[str, str], RedisChannelKey] = {}
+
     def __init__(self):
         pass
 
     @staticmethod
-    def get_cache_key(channel_id: str):
-        return f"config:prefix:{channel_id}"
+    def _channel_key(channel: RedisChannelKey) -> str:
+        return f"{channel.platform}:{channel.platform_channel_id}:{channel.channel_uuid}"
+
+    @classmethod
+    def get_prefix_key(cls, channel: RedisChannelKey) -> str:
+        return f"v2:config:prefix:{cls._channel_key(channel)}"
+
+    @classmethod
+    def get_greetings_key(cls, channel: RedisChannelKey) -> str:
+        return f"v2:greetings:{cls._channel_key(channel)}"
+
+    @classmethod
+    def get_live_status_key(cls, channel: RedisChannelKey) -> str:
+        return f"v2:live_status:{cls._channel_key(channel)}"
+
+    @staticmethod
+    def get_cooldown_key(platform: str, platform_channel_id: str, command: str) -> str:
+        return f"v2:cooldown:{platform}:{platform_channel_id}:{command}"
+
+    async def get_channel_key(
+        self,
+        platform_channel_id: str,
+        platform: str,
+        channel_uuid: str | None = None,
+    ) -> RedisChannelKey | None:
+        if channel_uuid:
+            channel_key = RedisChannelKey(platform, platform_channel_id, str(channel_uuid))
+            self._channel_key_cache[(platform, platform_channel_id)] = channel_key
+            return channel_key
+
+        cached = self._channel_key_cache.get((platform, platform_channel_id))
+        if cached:
+            return cached
+
+        session_factory = get_session_factory()
+        if not session_factory:
+            return None
+
+        async with session_factory() as db:
+            channel = (await db.execute(
+                select(models.V2Channel).where(
+                    models.V2Channel.platform == platform,
+                    models.V2Channel.platform_channel_id == platform_channel_id,
+                )
+            )).scalar_one_or_none()
+
+        if not channel:
+            return None
+        channel_key = RedisChannelKey(platform, platform_channel_id, str(channel.id))
+        self._channel_key_cache[(platform, platform_channel_id)] = channel_key
+        return channel_key
 
     async def get_command_prefix(self, channel_id: str, platform: str) -> str:
         
-        cache_key = self.get_cache_key(channel_id)
+        channel_key = await self.get_channel_key(channel_id, platform)
+        cache_key = self.get_prefix_key(channel_key) if channel_key else None
         
         # 1. Redis에서 조회
         try:
-            prefix = await redis_client.get(cache_key)
+            prefix = await redis_client.get(cache_key) if cache_key else None
             if prefix:
                 return prefix
         except Exception as e:
@@ -52,7 +114,8 @@ class RedisConfigService:
 
                 # 3. 조회한 데이터를 Redis에 적재
                 try:
-                    await redis_client.set(cache_key, db_prefix, ex=86400)
+                    if cache_key:
+                        await redis_client.set(cache_key, db_prefix, ex=86400)
                 except Exception as e:
                     logger.warning("Redis prefix save failed: %s", e)
                 return db_prefix
@@ -83,9 +146,11 @@ class RedisConfigService:
             )
         
         # 2. Redis 캐시 갱신
-        cache_key = self.get_cache_key(channel_id)
+        channel_key = await self.get_channel_key(channel_id, platform)
+        cache_key = self.get_prefix_key(channel_key) if channel_key else None
         try:
-            await redis_client.set(cache_key, new_prefix, ex=86400)
+            if cache_key:
+                await redis_client.set(cache_key, new_prefix, ex=86400)
         except Exception as e:
             logger.warning("Redis prefix refresh failed: %s", e)
 
@@ -118,7 +183,10 @@ class RedisConfigService:
 
     async def _prefetch_live_status(self, channel_id: str, platform: str):
         """Cache live status through the platform live provider. No DB writes here."""
-        cache_key = f"live_status:{channel_id}"
+        channel_key = await self.get_channel_key(channel_id, platform)
+        if not channel_key:
+            return
+        cache_key = self.get_live_status_key(channel_key)
         try:
             if await redis_client.exists(cache_key):
                 return
@@ -144,7 +212,10 @@ class RedisConfigService:
         메시지에 인사말 키워드가 포함되어 있는지 확인하고 응답과 매칭 여부를 함께 반환합니다.
         반환값: (응답 메시지, 인사말 매칭 여부)
         """
-        cache_key = f"greetings:{channel_id}"
+        channel_key = await self.get_channel_key(channel_id, platform)
+        if not channel_key:
+            return None, False
+        cache_key = self.get_greetings_key(channel_key)
 
         try:
             # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
@@ -165,7 +236,7 @@ class RedisConfigService:
                         continue
                     if self._should_respond(message, keyword):
                         # 쿨타임 체크 (10초)
-                        if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10):
+                        if await self.check_and_set_cooldown(channel_id, f"greeting:{keyword}", 10, platform):
                             return None, True
                         return response, True
 
@@ -176,6 +247,10 @@ class RedisConfigService:
 
     async def refresh_greetings_cache(self, channel_id: str, platform: str):
         """DB에서 인사말을 불러와 Redis에 캐싱합니다."""
+        channel_key = await self.get_channel_key(channel_id, platform)
+        if not channel_key:
+            return
+
         session_factory = get_session_factory()
         if not session_factory:
             return
@@ -184,7 +259,7 @@ class RedisConfigService:
             chat_service = ChatService(db)
             greetings = await chat_service.get_channel_greetings(channel_id, platform)
             
-            cache_key = f"greetings:{channel_id}"
+            cache_key = self.get_greetings_key(channel_key)
             try:
                 if greetings:
                     mapping = {g.keyword: g.response for g in greetings}
@@ -204,7 +279,7 @@ class RedisConfigService:
             except Exception as e:
                 logger.warning("Redis greeting cache refresh failed: %s", e)
 
-    async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int) -> bool:
+    async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int, platform: str) -> bool:
         """
         쿨타임 체크 및 설정.
         쿨타임 중이면 True 반환, 아니면 쿨타임 설정 후 False 반환.
@@ -212,7 +287,7 @@ class RedisConfigService:
         if cooldown_seconds <= 0:
             return False
             
-        cache_key = f"cooldown:{channel_id}:{command}"
+        cache_key = self.get_cooldown_key(platform, channel_id, command)
         
         try:
             # SET key value EX seconds NX
@@ -225,4 +300,3 @@ class RedisConfigService:
         except Exception as e:
             logger.warning("Redis cooldown check failed: %s", e)
             return False # 에러 시 쿨타임 없이 실행 허용
-
