@@ -30,7 +30,11 @@ async def robots_txt():
             "Allow: /guide",
             "Disallow: /admin",
             "Disallow: /api",
-            "Disallow: /auth",
+            "Disallow: /auth/",
+            "Disallow: /auth/callback",
+            "Disallow: /auth/chzzk/callback",
+            "Disallow: /auth/dashboard",
+            "Disallow: /auth/dashboard/login",
             f"Sitemap: {PUBLIC_SITE_URL}/sitemap.xml",
             "",
         ]
