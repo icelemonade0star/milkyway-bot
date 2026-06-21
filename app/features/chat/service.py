@@ -546,6 +546,53 @@ class ChatService:
         live_state.last_checked_at = now
         live_state.raw_status = raw_status
 
+    @staticmethod
+    def _parse_live_datetime(value: str | datetime | None) -> datetime | None:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            try:
+                kst_tz = timezone(timedelta(hours=9))
+                return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
+            except ValueError:
+                return None
+
+    @classmethod
+    def _normalize_live_payload(cls, payload: dict | None) -> dict | None:
+        if not isinstance(payload, dict):
+            return None
+
+        raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else payload
+        opened_at = cls._parse_live_datetime(payload.get("opened_at") or raw.get("openDate"))
+        closed_at = cls._parse_live_datetime(payload.get("closed_at") or raw.get("closeDate"))
+        normalized_status = payload.get("status")
+        legacy_raw_status = raw.get("status")
+        return {
+            "status": normalized_status or legacy_raw_status or "UNKNOWN",
+            "opened_at": opened_at,
+            "closed_at": closed_at,
+            "title": payload.get("title") or raw.get("liveTitle"),
+            "category": payload.get("category") or raw.get("liveCategoryValue") or raw.get("liveCategory"),
+            "thumbnail_url": payload.get("thumbnail_url") or raw.get("liveImageUrl"),
+            "raw": raw,
+        }
+
+    @staticmethod
+    def _live_payload_from_status(live_status) -> dict:
+        return {
+            "status": live_status.status,
+            "opened_at": live_status.opened_at,
+            "closed_at": live_status.closed_at,
+            "title": live_status.title,
+            "category": live_status.category,
+            "thumbnail_url": live_status.thumbnail_url,
+            "raw": live_status.raw or {},
+        }
+
 
     async def sync_stream_session(
         self,
@@ -567,16 +614,31 @@ class ChatService:
             cached_status = None if live_status_content else await redis_client.get(cache_key)
 
             if live_status_content:
-                content = live_status_content
-                open_date_str = content.get("openDate")
-                if not open_date_str:
-                    await self._mark_stream_closed(channel_id, platform, content)
+                payload = self._normalize_live_payload(live_status_content)
+                if not payload or payload["status"] != "OPEN" or not payload["opened_at"]:
+                    await self._mark_stream_closed(channel_id, platform, payload["raw"] if payload else live_status_content)
                     await self.db.commit()
                     return None
-                await redis_client.set(cache_key, json.dumps(content), ex=300)
-                kst_tz = timezone(timedelta(hours=9))
-                current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
-                stream_title = content.get("liveTitle")
+                await redis_client.set(
+                    cache_key,
+                    json.dumps(RedisConfigService.serialize_live_payload(
+                        status=payload["status"],
+                        platform=platform,
+                        platform_channel_id=channel_id,
+                        opened_at=payload["opened_at"],
+                        closed_at=payload["closed_at"],
+                        title=payload["title"],
+                        category=payload["category"],
+                        thumbnail_url=payload["thumbnail_url"],
+                        raw=payload["raw"],
+                    )),
+                    ex=300,
+                )
+                content = payload["raw"]
+                current_opened_at = payload["opened_at"]
+                stream_title = payload["title"]
+                stream_category = payload["category"]
+                thumbnail_url = payload["thumbnail_url"]
             elif cached_status:
                 if cached_status == "CLOSE":
                     provider = get_live_provider(platform)
@@ -586,20 +648,24 @@ class ChatService:
                         await self.db.commit()
                         return None
 
-                    content = live_status.raw or {}
-                    await redis_client.set(cache_key, json.dumps(content), ex=300)
-                    current_opened_at = live_status.opened_at
-                    stream_title = live_status.title
+                    await redis_client.set(cache_key, json.dumps(RedisConfigService.serialize_live_status(live_status)), ex=300)
+                    payload = self._live_payload_from_status(live_status)
+                    content = payload["raw"]
+                    current_opened_at = payload["opened_at"]
+                    stream_title = payload["title"]
+                    stream_category = payload["category"]
+                    thumbnail_url = payload["thumbnail_url"]
                 else:
-                    content = json.loads(cached_status)
-                    open_date_str = content.get("openDate")
-                    if not open_date_str:
-                        await self._mark_stream_closed(channel_id, platform, content)
+                    payload = self._normalize_live_payload(json.loads(cached_status))
+                    if not payload or payload["status"] != "OPEN" or not payload["opened_at"]:
+                        await self._mark_stream_closed(channel_id, platform, payload["raw"] if payload else None)
                         await self.db.commit()
                         return None
-                    kst_tz = timezone(timedelta(hours=9))
-                    current_opened_at = datetime.strptime(open_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=kst_tz)
-                    stream_title = content.get("liveTitle")
+                    content = payload["raw"]
+                    current_opened_at = payload["opened_at"]
+                    stream_title = payload["title"]
+                    stream_category = payload["category"]
+                    thumbnail_url = payload["thumbnail_url"]
             else:
                 provider = get_live_provider(platform)
                 live_status = await provider.get_live_status(channel_id)
@@ -610,10 +676,13 @@ class ChatService:
                     await self.db.commit()
                     return None
 
-                content = live_status.raw or {}
-                await redis_client.set(cache_key, json.dumps(content), ex=300)
-                current_opened_at = live_status.opened_at
-                stream_title = live_status.title
+                await redis_client.set(cache_key, json.dumps(RedisConfigService.serialize_live_status(live_status)), ex=300)
+                payload = self._live_payload_from_status(live_status)
+                content = payload["raw"]
+                current_opened_at = payload["opened_at"]
+                stream_title = payload["title"]
+                stream_category = payload["category"]
+                thumbnail_url = payload["thumbnail_url"]
 
             live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
             previous_status = live_state.status if live_state else None
@@ -630,8 +699,8 @@ class ChatService:
                     channel_id=v2_channel.id,
                     opened_at=current_opened_at,
                     stream_title=stream_title,
-                    category=(content.get("liveCategoryValue") or content.get("liveCategory")) if content else None,
-                    thumbnail_url=content.get("liveImageUrl") if content else None,
+                    category=stream_category,
+                    thumbnail_url=thumbnail_url,
                     raw_live_response=content,
                 )
                 self.db.add(v2_session)
@@ -667,4 +736,3 @@ async def get_chat_service(db: AsyncSession = Depends(get_async_db)):
     return ChatService(db)
 
    
-

@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import httpx
@@ -74,7 +74,7 @@ class ChzzkAuthProvider:
 
         self.access_token = content["accessToken"]
         self.refresh_token = content["refreshToken"]
-        self.expires_at = datetime.now() + timedelta(seconds=expires_in)
+        self.expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         self.raw_token_response = res_json
 
         return TokenBundle(

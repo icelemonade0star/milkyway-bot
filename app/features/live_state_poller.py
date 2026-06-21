@@ -115,7 +115,7 @@ class LiveStatePoller:
             should_notify_discord = False
             if live_status.status == "OPEN" and live_status.opened_at:
                 should_notify_discord = await self._mark_open(db, db_channel, live_status)
-                await self._cache_live_status(db_channel, live_status.raw or {}, is_open=True)
+                await self._cache_live_status(db_channel, live_status, is_open=True)
             elif live_status.status == "CLOSE":
                 await self._mark_closed(db, db_channel, live_status.raw or {})
                 await self._cache_live_status(db_channel, "CLOSE", is_open=False)
@@ -219,7 +219,7 @@ class LiveStatePoller:
         cache_key = RedisConfigService.get_live_status_key(redis_channel)
         try:
             if is_open:
-                await redis_client.set(cache_key, json.dumps(value), ex=300)
+                await redis_client.set(cache_key, json.dumps(RedisConfigService.serialize_live_status(value)), ex=300)
             else:
                 await redis_client.set(cache_key, value, ex=60)
         except Exception as e:

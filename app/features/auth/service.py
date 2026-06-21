@@ -14,6 +14,15 @@ from app.core.database import get_async_db
 logger = logging.getLogger("AuthService")
 
 
+def _invalidate_redis_channel_key(platform: str, platform_channel_id: str):
+    try:
+        from app.redis.redis_service import RedisConfigService
+
+        RedisConfigService.invalidate_channel_key(platform, platform_channel_id)
+    except Exception as e:
+        logger.warning("Redis channel key invalidation failed: %s", e)
+
+
 @dataclass
 class PlatformAuthRecord:
     channel_id: str
@@ -115,6 +124,8 @@ class AuthService:
             await self.db.rollback()
             logger.error("save_default_platform_auth failed: %s", e)
             raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
+
+        _invalidate_redis_channel_key(platform, platform_auth.channel_id)
 
         return PlatformAuthRecord(
             channel_id=channel.platform_channel_id,
@@ -240,11 +251,13 @@ class AuthService:
             if v2_channel:
                 await self.db.delete(v2_channel)
             await self.db.commit()
-            return True
         except Exception as e:
             await self.db.rollback()
             logger.error("Token delete failed: %s", e)
             return False
+
+        _invalidate_redis_channel_key(platform, channel_id)
+        return True
 
     async def cleanup_inactive_channels(self, platform: str, days: int = 30) -> list[str]:
         """비활성 채널의 인증 정보를 삭제합니다. 반환: 삭제된 channel_id 목록
@@ -302,9 +315,13 @@ class AuthService:
             )
             await self.db.commit()
 
+            for channel_id in inactive_ids:
+                _invalidate_redis_channel_key(platform, channel_id)
+
             # Redis 캐시 정리 (실패해도 DB 삭제는 이미 완료됐으므로 무시)
             try:
                 from app.redis.redis_service import RedisChannelKey, RedisConfigService, redis_client
+
                 keys_to_delete = []
                 for channel in inactive_channels:
                     redis_channel = RedisChannelKey(

@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.database import get_session_factory
 from app.db import models
 from app.platforms.registry import get_live_provider
+from app.redis.redis_service import RedisConfigService
 
 _CACHE_TTL = 300.0
 _OPEN_POLL_INTERVAL = 300.0
@@ -206,7 +207,11 @@ class LiveNotification(commands.Cog):
                         open_date=content.get("openDate"),
                     )
 
-                    if await self._update_status_in_db(entry, "OPEN", content=content):
+                    if await self._update_status_in_db(
+                        entry,
+                        "OPEN",
+                        content=RedisConfigService.serialize_live_status(live_status),
+                    ):
                         entry.last_status = "OPEN"
                         if not await self.send_live_notification(entry, live_data):
                             await self._mark_delivery_failed(entry, "Discord send failed")
@@ -217,7 +222,11 @@ class LiveNotification(commands.Cog):
                 entry._consecutive_close_count += 1
                 if entry._consecutive_close_count >= 2:
                     print(f"[LiveNotification] live closed: {entry.platform}:{platform_channel_id}")
-                    if await self._update_status_in_db(entry, "CLOSE"):
+                    if await self._update_status_in_db(
+                        entry,
+                        "CLOSE",
+                        content=RedisConfigService.serialize_live_status(live_status),
+                    ):
                         entry.last_status = "CLOSE"
                         entry._consecutive_close_count = 0
                 else:
@@ -321,7 +330,7 @@ class LiveNotification(commands.Cog):
                     live_state.status = "CLOSE"
                     live_state.current_stream_session_id = None
                     live_state.last_checked_at = now
-                    live_state.raw_status = content
+                    live_state.raw_status = content.get("raw") if isinstance(content, dict) else content
 
                 await db.commit()
                 return True

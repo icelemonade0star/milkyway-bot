@@ -54,6 +54,49 @@ class RedisConfigService:
     def get_cooldown_key(platform: str, platform_channel_id: str, command: str) -> str:
         return f"v2:cooldown:{platform}:{platform_channel_id}:{command}"
 
+    @classmethod
+    def invalidate_channel_key(cls, platform: str, platform_channel_id: str):
+        cls._channel_key_cache.pop((platform, platform_channel_id), None)
+
+    @staticmethod
+    def serialize_live_status(live_status) -> dict:
+        return RedisConfigService.serialize_live_payload(
+            status=live_status.status,
+            platform=live_status.platform,
+            platform_channel_id=live_status.platform_channel_id,
+            opened_at=live_status.opened_at,
+            closed_at=live_status.closed_at,
+            title=live_status.title,
+            category=live_status.category,
+            thumbnail_url=live_status.thumbnail_url,
+            raw=live_status.raw or {},
+        )
+
+    @staticmethod
+    def serialize_live_payload(
+        *,
+        status: str,
+        platform: str,
+        platform_channel_id: str,
+        opened_at=None,
+        closed_at=None,
+        title: str | None = None,
+        category: str | None = None,
+        thumbnail_url: str | None = None,
+        raw: dict | None = None,
+    ) -> dict:
+        return {
+            "status": status,
+            "platform": platform,
+            "platform_channel_id": platform_channel_id,
+            "opened_at": opened_at.isoformat() if opened_at else None,
+            "closed_at": closed_at.isoformat() if closed_at else None,
+            "title": title,
+            "category": category,
+            "thumbnail_url": thumbnail_url,
+            "raw": raw or {},
+        }
+
     async def get_channel_key(
         self,
         platform_channel_id: str,
@@ -198,7 +241,7 @@ class RedisConfigService:
                 await redis_client.set(cache_key, "CLOSE", ex=60)
                 return
 
-            await redis_client.set(cache_key, json.dumps(live_status.raw or {}), ex=300)
+            await redis_client.set(cache_key, json.dumps(self.serialize_live_status(live_status)), ex=300)
         except Exception as e:
             logger.warning("Live status prefetch failed: %s", e)
 
