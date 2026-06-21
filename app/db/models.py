@@ -316,11 +316,11 @@ class V2LiveNotificationDelivery(Base):
     notification_id = Column(BigInteger, ForeignKey("v2_live_notifications.id", ondelete="CASCADE"), nullable=False)
     stream_session_id = Column(UUID(as_uuid=True), ForeignKey("v2_stream_sessions.id", ondelete="CASCADE"), nullable=False)
     delivered_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    delivery_status = Column(String(20), nullable=False, default="success", server_default=text("'success'"))
+    delivery_status = Column(String(20), nullable=False, default="pending", server_default=text("'pending'"))
     error_message = Column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("notification_id", "stream_session_id", name="unique_v2_live_notification_delivery"),
-        CheckConstraint("delivery_status IN ('success', 'failed')", name="chk_v2_live_notification_deliveries_status"),
+        CheckConstraint("delivery_status IN ('pending', 'success', 'failed')", name="chk_v2_live_notification_deliveries_status"),
         Index("idx_v2_live_notification_deliveries_stream_session_id", "stream_session_id"),
     )

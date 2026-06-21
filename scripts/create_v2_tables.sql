@@ -217,13 +217,13 @@ CREATE TABLE IF NOT EXISTS v2_live_notification_deliveries (
     notification_id BIGINT NOT NULL REFERENCES v2_live_notifications(id) ON DELETE CASCADE,
     stream_session_id UUID NOT NULL REFERENCES v2_stream_sessions(id) ON DELETE CASCADE,
     delivered_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    delivery_status VARCHAR(20) NOT NULL DEFAULT 'success',
+    delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
     error_message TEXT,
 
     CONSTRAINT unique_v2_live_notification_delivery
         UNIQUE (notification_id, stream_session_id),
     CONSTRAINT chk_v2_live_notification_deliveries_status
-        CHECK (delivery_status IN ('success', 'failed'))
+        CHECK (delivery_status IN ('pending', 'success', 'failed'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_v2_live_notification_deliveries_stream_session_id

@@ -1,7 +1,7 @@
 ﻿import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import discord
@@ -16,6 +16,7 @@ from app.redis.redis_service import RedisConfigService
 
 _CACHE_TTL = 300.0
 _OPEN_POLL_INTERVAL = 300.0
+_PENDING_RETRY_INTERVAL = 300.0
 
 _active_cog: Optional["LiveNotification"] = None
 
@@ -100,6 +101,7 @@ class LiveNotification(commands.Cog):
                         and_(
                             models.V2LiveNotificationDelivery.notification_id == models.V2LiveNotification.id,
                             models.V2LiveNotificationDelivery.stream_session_id == models.V2ChannelLiveState.current_stream_session_id,
+                            models.V2LiveNotificationDelivery.delivery_status == "success",
                         ),
                     )
                     .where(
@@ -212,9 +214,13 @@ class LiveNotification(commands.Cog):
                         "OPEN",
                         content=RedisConfigService.serialize_live_status(live_status),
                     ):
-                        entry.last_status = "OPEN"
-                        if not await self.send_live_notification(entry, live_data):
+                        if await self.send_live_notification(entry, live_data):
+                            entry.last_status = "OPEN"
+                            if not await self._mark_delivery_success(entry):
+                                print(f"[LiveNotification] delivery success mark failed: {entry.platform}:{platform_channel_id}")
+                        else:
                             await self._mark_delivery_failed(entry, "Discord send failed")
+                            entry.last_status = "CLOSE"
                     else:
                         print(f"[LiveNotification] already delivered or DB update failed: {entry.platform}:{platform_channel_id}")
 
@@ -270,6 +276,8 @@ class LiveNotification(commands.Cog):
                 if status == "OPEN":
                     from app.features.chat.service import ChatService
 
+                    stale_pending_before = now - timedelta(seconds=_PENDING_RETRY_INTERVAL)
+
                     await ChatService(db).sync_stream_session(
                         entry.platform_channel_id,
                         entry.platform,
@@ -302,10 +310,19 @@ class LiveNotification(commands.Cog):
                             notification_id=entry.notification_id,
                             stream_session_id=stream_session_id,
                             delivered_at=now,
-                            delivery_status="success",
+                            delivery_status="pending",
                         )
-                        .on_conflict_do_nothing(
+                        .on_conflict_do_update(
                             constraint="unique_v2_live_notification_delivery",
+                            set_={
+                                "delivered_at": now,
+                                "delivery_status": "pending",
+                                "error_message": None,
+                            },
+                            where=and_(
+                                models.V2LiveNotificationDelivery.delivery_status.in_(["failed", "pending"]),
+                                models.V2LiveNotificationDelivery.delivered_at < stale_pending_before,
+                            ),
                         )
                         .returning(deliveries_table.c.id)
                     )
@@ -338,13 +355,24 @@ class LiveNotification(commands.Cog):
             print(f"[LiveNotification] v2 DB update failed: {e}")
             return False
 
-    async def _mark_delivery_failed(self, entry: _CachedNotification, error_message: str):
+    async def _mark_delivery_success(self, entry: _CachedNotification) -> bool:
+        return await self._mark_delivery_status(entry, "success")
+
+    async def _mark_delivery_failed(self, entry: _CachedNotification, error_message: str) -> bool:
+        return await self._mark_delivery_status(entry, "failed", error_message)
+
+    async def _mark_delivery_status(
+        self,
+        entry: _CachedNotification,
+        delivery_status: str,
+        error_message: str | None = None,
+    ) -> bool:
         if not entry.is_v2 or not entry.current_stream_session_id:
-            return
+            return False
 
         factory = get_session_factory()
         if not factory:
-            return
+            return False
 
         try:
             async with factory() as db:
@@ -352,14 +380,19 @@ class LiveNotification(commands.Cog):
                     select(models.V2LiveNotificationDelivery).where(
                         models.V2LiveNotificationDelivery.notification_id == entry.notification_id,
                         models.V2LiveNotificationDelivery.stream_session_id == entry.current_stream_session_id,
+                        models.V2LiveNotificationDelivery.delivery_status == "pending",
                     )
                 )).scalar_one_or_none()
                 if delivery:
-                    delivery.delivery_status = "failed"
+                    delivery.delivery_status = delivery_status
                     delivery.error_message = error_message
+                    delivery.delivered_at = datetime.now(timezone.utc)
                     await db.commit()
+                    return True
+                return False
         except Exception as e:
-            print(f"[LiveNotification] delivery failure mark failed: {e}")
+            print(f"[LiveNotification] delivery status mark failed: {e}")
+            return False
 
     async def send_live_notification(self, entry: _CachedNotification, live_data: LiveNotificationData) -> bool:
         target_channel = self.bot.get_channel(int(entry.discord_channel_id))
