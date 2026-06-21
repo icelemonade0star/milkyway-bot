@@ -1,22 +1,6 @@
-:root {
-    color-scheme: light;
-    --bg: #f6f7f9;
-    --surface: #ffffff;
-    --text: #20242a;
-    --muted: #66707c;
-    --line: #dfe4ea;
-    --accent: #16784f;
-    --accent-dark: #0f5f3e;
-}
-
-* {
-    box-sizing: border-box;
-}
-
 body {
     margin: 0;
     min-height: 100vh;
-    font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     background: var(--bg);
     color: var(--text);
     display: grid;
@@ -30,7 +14,7 @@ main {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 28px;
-    box-shadow: 0 10px 30px rgba(25, 32, 41, 0.08);
+    box-shadow: var(--shadow-soft);
 }
 
 h1 {
@@ -55,7 +39,7 @@ a {
     min-height: 44px;
     border-radius: 6px;
     background: var(--accent);
-    color: white;
+    color: var(--surface);
     text-decoration: none;
     font-weight: 700;
     font-size: 15px;

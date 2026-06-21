@@ -1,83 +1,98 @@
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background-color: #1c1c1e;
-    color: #f2f2f7;
+    color-scheme: dark;
+    font-family: var(--font-system);
+    background-color: var(--guide-bg);
+    color: var(--guide-text);
     line-height: 1.6;
     padding: 20px;
 }
+
 .container {
     max-width: 800px;
     margin: auto;
-    background: #2c2c2e;
+    background: var(--guide-surface);
     padding: 20px 40px;
     border-radius: 16px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    box-shadow: var(--guide-shadow);
 }
+
 h1, h2, h3 {
-    color: #00c73c;
-    border-bottom: 2px solid #00c73c;
+    color: var(--guide-accent);
+    border-bottom: 2px solid var(--guide-accent);
     padding-bottom: 10px;
 }
+
 h1 { font-size: 2.5em; text-align: center; border: none; }
 h2 { font-size: 2em; margin-top: 40px; }
-h3 { font-size: 1.5em; margin-top: 30px; border-bottom: 1px solid #444; }
+h3 { font-size: 1.5em; margin-top: 30px; border-bottom: 1px solid var(--guide-line); }
+
 code {
-    background-color: #3a3a3c;
+    background-color: var(--guide-code-bg);
     padding: 0.2em 0.4em;
     margin: 0;
     font-size: 85%;
     border-radius: 6px;
-    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+    font-family: var(--font-mono);
 }
+
 .placeholder-token {
-    color: #ffd60a;
+    color: var(--guide-warning);
     font-weight: 700;
 }
+
 .command {
-    background: #3a3a3c;
-    border-left: 5px solid #00c73c;
+    background: var(--guide-code-bg);
+    border-left: 5px solid var(--guide-accent);
     padding: 15px;
     margin: 20px 0;
     border-radius: 8px;
 }
+
 .command .usage {
     font-weight: bold;
-    color: #f2f2f7;
+    color: var(--guide-text);
 }
+
 .command .desc {
     margin-top: 5px;
-    color: #c7c7cc;
+    color: var(--guide-muted);
 }
+
 .admin-only {
-    color: #ff453a;
+    color: var(--guide-danger);
     font-weight: bold;
     font-size: 0.9em;
     margin-left: 10px;
 }
+
 .note {
-    background-color: rgba(0, 199, 60, 0.1);
-    border-left: 4px solid #00c73c;
+    background-color: var(--guide-accent-bg);
+    border-left: 4px solid var(--guide-accent);
     padding: 10px 15px;
     margin: 15px 0;
     border-radius: 4px;
 }
+
 .note a {
-    color: #f2f2f7; /* 밝은 텍스트 색상으로 가시성 확보 */
-    text-decoration: none; /* 밑줄 제거 */
+    color: var(--guide-text);
+    text-decoration: none;
 }
+
 .note a:visited {
-    color: #c7c7cc; /* 방문한 링크는 약간 어둡게 처리 */
+    color: var(--guide-muted);
 }
+
 .note a:hover {
-    color: #00c73c; /* 마우스 오버 시 테마 색상으로 강조 */
-    text-decoration: underline; /* 마우스 오버 시 밑줄 표시 */
+    color: var(--guide-accent);
+    text-decoration: underline;
 }
+
 .auth-link {
     display: block;
     padding: 15px;
     margin-bottom: 20px;
-    background-color: #00c73c;
-    color: #1c1c1e;
+    background-color: var(--guide-accent);
+    color: var(--guide-bg);
     text-align: center;
     font-size: 1.2em;
     font-weight: bold;
@@ -85,49 +100,56 @@ code {
     border-radius: 8px;
     transition: background-color 0.3s;
 }
+
 .auth-link:hover {
-    background-color: #00a330;
+    background-color: var(--guide-accent-dark);
 }
+
 .dashboard-link {
     display: block;
     padding: 13px 15px;
     margin-bottom: 20px;
     background-color: transparent;
-    color: #00c73c;
+    color: var(--guide-accent);
     text-align: center;
     font-size: 1.05em;
     font-weight: bold;
     text-decoration: none;
-    border: 1.5px solid #00c73c;
+    border: 1.5px solid var(--guide-accent);
     border-radius: 8px;
     transition: background-color 0.3s, color 0.3s;
 }
+
 .dashboard-link:hover {
-    background-color: rgba(0, 199, 60, 0.12);
-    color: #31e86d;
+    background-color: var(--guide-accent-bg-strong);
+    color: var(--guide-accent-bright);
 }
+
 .recommend {
-    background-color: rgba(0, 199, 60, 0.12);
-    border: 1.5px solid #00c73c;
+    background-color: var(--guide-accent-bg-strong);
+    border: 1.5px solid var(--guide-accent);
     border-radius: 10px;
     padding: 18px 22px;
     margin: 24px 0;
 }
+
 .recommend .recommend-title {
-    color: #00c73c;
+    color: var(--guide-accent);
     font-size: 1.1em;
     font-weight: bold;
     margin-bottom: 10px;
 }
+
 .recommend ol {
     margin: 8px 0 0 0;
     padding-left: 20px;
-    color: #c7c7cc;
+    color: var(--guide-muted);
 }
+
 .recommend ol li {
     margin-bottom: 6px;
 }
-.recommend ol li strong {
-    color: #f2f2f7;
-}
 
+.recommend ol li strong {
+    color: var(--guide-text);
+}

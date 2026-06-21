@@ -1,20 +1,5 @@
-:root {
-    color-scheme: light;
-    --bg: #f6f7f9;
-    --surface: #ffffff;
-    --text: #20242a;
-    --muted: #66707c;
-    --line: #dfe4ea;
-    --accent: #16784f;
-    --accent-dark: #0f5f3e;
-    --danger: #b42318;
-}
-
-* { box-sizing: border-box; }
-
 body {
     margin: 0;
-    font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     background: var(--bg);
     color: var(--text);
 }
@@ -61,7 +46,7 @@ a, button {
     border-radius: 6px;
     padding: 9px 12px;
     color: var(--text);
-    background: #fff;
+    background: var(--control-bg);
     text-decoration: none;
     font: inherit;
     font-weight: 700;
@@ -72,7 +57,7 @@ a, button {
 button.primary {
     border-color: var(--accent);
     background: var(--accent);
-    color: #fff;
+    color: var(--surface);
 }
 
 button.primary:hover { background: var(--accent-dark); }
@@ -85,7 +70,7 @@ button.danger { color: var(--danger); }
     padding: 3px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: #f7f9fb;
+    background: var(--subtle-bg);
 }
 
 .mode-tabs button {
@@ -99,7 +84,7 @@ button.danger { color: var(--danger); }
 }
 
 .mode-tabs button[aria-pressed="true"] {
-    color: #fff;
+    color: var(--surface);
     background: var(--accent);
 }
 
@@ -148,7 +133,7 @@ textarea, input {
     padding: 10px;
     font: inherit;
     color: var(--text);
-    background: #fff;
+    background: var(--control-bg);
 }
 
 textarea {
@@ -189,7 +174,7 @@ textarea {
 
 .preview-shell {
     height: 640px;
-    background: linear-gradient(135deg, #29313f, #465163);
+    background: var(--preview-bg);
     border: 1px solid var(--line);
 }
 

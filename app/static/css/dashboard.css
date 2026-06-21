@@ -1,24 +1,5 @@
-:root {
-    color-scheme: light;
-    --bg: #f6f7f9;
-    --surface: #ffffff;
-    --text: #20242a;
-    --muted: #66707c;
-    --line: #dfe4ea;
-    --accent: #16784f;
-    --accent-dark: #0f5f3e;
-    --danger: #b42318;
-    --off-bg: #f1f3f5;
-    --ok-bg: #e9f7ef;
-}
-
-* {
-    box-sizing: border-box;
-}
-
 body {
     margin: 0;
-    font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     background: var(--bg);
     color: var(--text);
 }
@@ -67,7 +48,7 @@ h1 {
     padding: 9px 12px;
     font-size: 13px;
     white-space: nowrap;
-    background: #fff;
+    background: var(--control-bg);
 }
 
 main {
@@ -190,7 +171,7 @@ input, textarea, select {
     padding: 9px 10px;
     font: inherit;
     color: var(--text);
-    background: #fff;
+    background: var(--control-bg);
 }
 
 textarea {
@@ -224,8 +205,8 @@ textarea {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    background: var(--surface);
+    box-shadow: var(--shadow-switch);
     transition: transform 0.15s ease;
 }
 
@@ -248,7 +229,7 @@ button {
     padding: 8px 10px;
     font: inherit;
     font-weight: 700;
-    background: #fff;
+    background: var(--control-bg);
     color: var(--text);
     cursor: pointer;
     white-space: nowrap;
@@ -257,7 +238,7 @@ button {
 button.primary {
     border-color: var(--accent);
     background: var(--accent);
-    color: #fff;
+    color: var(--surface);
 }
 
 button.primary:hover {
@@ -286,7 +267,7 @@ th, td {
 th {
     color: var(--muted);
     font-weight: 700;
-    background: #fbfcfd;
+    background: var(--table-head-bg);
 }
 
 tr:last-child td {
