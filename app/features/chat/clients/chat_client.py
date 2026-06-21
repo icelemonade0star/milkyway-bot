@@ -5,13 +5,15 @@ import asyncio
 import app.core.config as config
 from .base import BaseChatClient
 from app.features.chat.handling import handler
+from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster
 from app.core.logger import get_channel_logger
 
 class ChzzkChatClient(BaseChatClient):
 
-    def __init__(self, channel_name, session_key_future: asyncio.Future = None):
+    def __init__(self, channel_name, platform_channel_id: str, session_key_future: asyncio.Future = None):
         # 각 인스턴스마다 고유한 식별자와 소켓 클라이언트를 가짐
         self.channel_name = channel_name  
+        self.platform_channel_id = platform_channel_id
         self.socketio = socketio.AsyncClient(
             request_timeout=10,
             reconnection=True,      # 자동 재연결 활성화
@@ -52,7 +54,7 @@ class ChzzkChatClient(BaseChatClient):
         @self.socketio.on('CHAT')
         async def on_chat(data):
             raw_data = json.loads(data)
-            channel_id = raw_data.get('channelId')
+            channel_id = raw_data.get('channelId') or self.platform_channel_id
             nickname = raw_data.get('profile', {}).get('nickname')
             user_id = raw_data.get('senderChannelId')
             
@@ -67,6 +69,12 @@ class ChzzkChatClient(BaseChatClient):
 
             # 핸들러로 메시지 전달
             await handler.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
+            await chat_overlay_broadcaster.publish(self.platform_channel_id, {
+                "nickname": nickname,
+                "message": message,
+                "role": role,
+                "user_id": user_id,
+            })
 
     def get_session_key(self):
         return self.session_key

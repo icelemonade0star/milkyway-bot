@@ -64,6 +64,24 @@ BEFORE UPDATE ON v2_channel_configs
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
+CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
+    channel_id UUID PRIMARY KEY REFERENCES v2_channels(id) ON DELETE CASCADE,
+    public_token VARCHAR(100) NOT NULL UNIQUE,
+    custom_css TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_v2_chat_overlay_settings_public_token
+ON v2_chat_overlay_settings(public_token);
+
+DROP TRIGGER IF EXISTS trg_v2_chat_overlay_settings_updated_at ON v2_chat_overlay_settings;
+CREATE TRIGGER trg_v2_chat_overlay_settings_updated_at
+BEFORE UPDATE ON v2_chat_overlay_settings
+FOR EACH ROW
+EXECUTE FUNCTION v2_set_updated_at();
+
 CREATE TABLE IF NOT EXISTS v2_global_chat_commands (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     command VARCHAR(100) NOT NULL,

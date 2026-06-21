@@ -53,6 +53,21 @@ class V2ChannelConfig(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
+class V2ChatOverlaySetting(Base):
+    __tablename__ = "v2_chat_overlay_settings"
+
+    channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), primary_key=True)
+    public_token = Column(String(100), nullable=False, unique=True)
+    custom_css = Column(Text, nullable=False, default="", server_default=text("''"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("TRUE"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_v2_chat_overlay_settings_public_token", "public_token"),
+    )
+
+
 class V2GlobalChatCommand(Base):
     __tablename__ = "v2_global_chat_commands"
 

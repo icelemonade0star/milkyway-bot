@@ -1,0 +1,74 @@
+:root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --text: #20242a;
+    --muted: #66707c;
+    --line: #dfe4ea;
+    --accent: #16784f;
+    --accent-dark: #0f5f3e;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+main {
+    width: min(440px, 100%);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 28px;
+    box-shadow: 0 10px 30px rgba(25, 32, 41, 0.08);
+}
+
+h1 {
+    margin: 0 0 10px;
+    font-size: 24px;
+    line-height: 1.25;
+    letter-spacing: 0;
+}
+
+p {
+    margin: 0 0 22px;
+    color: var(--muted);
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+a {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 15px;
+}
+
+a:hover {
+    background: var(--accent-dark);
+}
+
+.note {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+}
+

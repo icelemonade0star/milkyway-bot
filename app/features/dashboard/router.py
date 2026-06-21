@@ -8,6 +8,8 @@ from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TE
 from app.core.database import get_async_db
 from app.features.auth.platforms.chzzk import get_chzzk_auth
 from app.features.auth.service import AuthService
+from app.features.chat_overlay.schemas import OverlaySaveRequest
+from app.features.chat_overlay.service import ChatOverlayService
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
 from app.features.dashboard.service import DashboardService
@@ -72,6 +74,62 @@ async def dashboard(
             },
         },
     )
+
+
+@dashboard_router.get("/overlay", response_class=HTMLResponse)
+async def dashboard_overlay(
+    request: Request,
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    channel, setting = await ChatOverlayService(db).get_or_create_setting(DASHBOARD_PLATFORM, session["channel_id"])
+    if not channel or not setting:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+
+    return templates.TemplateResponse(
+        "dashboard_overlay.html",
+        {
+            "request": request,
+            "session": session,
+            "channel": channel,
+            "setting": setting,
+            "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+        },
+    )
+
+
+@dashboard_router.post("/overlay")
+async def save_dashboard_overlay(
+    payload: OverlaySaveRequest,
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    channel, setting = await ChatOverlayService(db).update_setting(
+        DASHBOARD_PLATFORM,
+        session["channel_id"],
+        payload.custom_css,
+        payload.is_active,
+    )
+    if not channel or not setting:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+    return {
+        "status": "success",
+        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+    }
+
+
+@dashboard_router.post("/overlay/token")
+async def rotate_dashboard_overlay_token(
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    channel, setting = await ChatOverlayService(db).rotate_token(DASHBOARD_PLATFORM, session["channel_id"])
+    if not channel or not setting:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+    return {
+        "status": "success",
+        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+    }
 
 
 @dashboard_router.post("/commands")

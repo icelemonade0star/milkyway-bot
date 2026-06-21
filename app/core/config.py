@@ -8,6 +8,7 @@ load_dotenv()
 # 디렉터리 설정
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "app" / "templates"
+STATIC_DIR = BASE_DIR / "app" / "static"
 
 OPENAPI_BASE = "https://openapi.chzzk.naver.com"
 

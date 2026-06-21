@@ -128,7 +128,7 @@ class ChzzkSessions:
         session_key_future = asyncio.Future()
         
         # 클라이언트에 Future 전달
-        self.socket_client = chat_client.ChzzkChatClient(self.channel_name, session_key_future)
+        self.socket_client = chat_client.ChzzkChatClient(self.channel_name, self.channel_id, session_key_future)
 
         # 소켓 연결
         await self.socket_client.connect(self.socket_url)
