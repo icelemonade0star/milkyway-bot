@@ -124,6 +124,12 @@ h2 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.filter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
 label {
     display: grid;
     gap: 6px;
@@ -173,6 +179,32 @@ textarea {
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.5;
+}
+
+.filter-grid textarea {
+    min-height: 96px;
+}
+
+.role-filter {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.role-filter legend {
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.role-filter .check-control {
+    min-height: 28px;
 }
 
 .advanced-css {
@@ -301,6 +333,7 @@ iframe {
 @media (max-width: 720px) {
     .control-grid,
     .control-grid.colors,
+    .filter-grid,
     .preset-save,
     .link-row {
         grid-template-columns: 1fr;

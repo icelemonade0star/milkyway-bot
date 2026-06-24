@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ channel.channel_name }} Chat Overlay</title>
     <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chat-overlay {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chat-message {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
+
+        .chat-text {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
         {{ setting.custom_css|safe }}
     </style>
 </head>

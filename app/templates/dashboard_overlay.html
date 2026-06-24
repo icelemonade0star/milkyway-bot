@@ -26,10 +26,6 @@
         <section class="panel editor-panel">
             <div class="panel-head">
                 <h2>스타일 옵션</h2>
-                <label class="toggle">
-                    <input id="isActive" name="is_active" type="checkbox" {% if setting.is_active %}checked{% endif %}>
-                    오버레이 사용
-                </label>
             </div>
             <form class="panel-body" id="overlayForm">
                 <div class="control-grid">
@@ -100,12 +96,8 @@
                         <input name="shadow_strength" type="number" min="0" max="100" step="5">
                     </label>
                     <label>
-                        <span>최대 메시지 수</span>
-                        <input name="max_messages" type="number" min="1" max="80" step="1">
-                    </label>
-                    <label>
                         <span>유지 시간(초)</span>
-                        <input name="message_ttl_seconds" type="number" min="3" max="120" step="1">
+                        <input name="message_ttl_seconds" type="number" min="3" step="1">
                     </label>
                 </div>
 
@@ -128,6 +120,24 @@
                     </label>
                 </div>
 
+                <div class="filter-grid">
+                    <label>
+                        <span>숨길 닉네임</span>
+                        <textarea name="blocked_nicknames" spellcheck="false" placeholder="닉네임을 한 줄에 하나씩 입력"></textarea>
+                    </label>
+                    <fieldset class="role-filter">
+                        <legend>숨길 역할</legend>
+                        <label class="check-control">
+                            <input type="checkbox" name="blocked_roles" value="streamer">
+                            <span>스트리머</span>
+                        </label>
+                        <label class="check-control">
+                            <input type="checkbox" name="blocked_roles" value="manager">
+                            <span>관리자</span>
+                        </label>
+                    </fieldset>
+                </div>
+
                 <details class="advanced-css">
                     <summary>고급 CSS 직접 편집</summary>
                     <textarea id="customCss" name="custom_css" spellcheck="false">{{ setting.custom_css }}</textarea>
@@ -135,6 +145,7 @@
 
                 <div class="actions">
                     <button class="primary" type="submit">저장</button>
+                    <button type="button" id="resetOptions">옵션 초기화</button>
                     <button type="button" id="refreshPreview">미리보기 새로고침</button>
                     <button class="danger" type="button" id="rotateToken">링크 재발급</button>
                 </div>

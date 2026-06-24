@@ -23,8 +23,36 @@ class OverlayStyleOptions(BaseModel):
     animation: Literal["slide", "fade", "pop", "none"] = "slide"
     show_name: bool = True
     bubble_style: Literal["solid", "minimal", "badge"] = "solid"
-    max_messages: int = Field(default=20, ge=1, le=80)
-    message_ttl_seconds: int = Field(default=16, ge=3, le=120)
+    message_ttl_seconds: int = Field(default=16, ge=3, le=3600)
+    blocked_nicknames: list[str] = Field(default_factory=list, max_length=200)
+    blocked_roles: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("blocked_nicknames")
+    @classmethod
+    def normalize_filter_values(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            item = value.strip()
+            if not item or item in seen:
+                continue
+            if len(item) > 255:
+                raise ValueError("필터 항목은 255자 이하여야 합니다.")
+            normalized.append(item)
+            seen.add(item)
+        return normalized
+
+    @field_validator("blocked_roles")
+    @classmethod
+    def normalize_roles(cls, values: list[str]) -> list[str]:
+        allowed_roles = {"streamer", "manager"}
+        normalized: list[str] = []
+        for value in values:
+            item = value.strip().casefold()
+            if not item or item not in allowed_roles or item in normalized:
+                continue
+            normalized.append(item)
+        return normalized
 
 
 class OverlaySaveRequest(BaseModel):

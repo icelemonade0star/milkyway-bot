@@ -1,6 +1,5 @@
 const form = document.getElementById("overlayForm");
 const cssInput = document.getElementById("customCss");
-const activeInput = document.getElementById("isActive");
 const statusEl = document.getElementById("status");
 const preview = document.getElementById("preview");
 const overlayUrl = document.getElementById("overlayUrl");
@@ -48,12 +47,32 @@ function setControlValues(options) {
     Object.entries({...defaults, ...options}).forEach(([key, value]) => {
         const input = form.elements[key];
         if (!input) return;
-        if (input.type === "checkbox") {
+        if (input instanceof RadioNodeList) {
+            Array.from(input).forEach((item) => {
+                if (item.type === "checkbox") {
+                    item.checked = Array.isArray(value) && value.includes(item.value);
+                }
+            });
+        } else if (input.type === "checkbox") {
             input.checked = Boolean(value);
+        } else if (Array.isArray(value)) {
+            input.value = value.join("\n");
         } else {
             input.value = value;
         }
     });
+}
+
+function readLineList(value) {
+    const seen = new Set();
+    return value
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter((item) => {
+            if (!item || seen.has(item)) return false;
+            seen.add(item);
+            return true;
+        });
 }
 
 function getStyleOptions() {
@@ -74,7 +93,10 @@ function getStyleOptions() {
         animation: form.elements.animation.value,
         show_name: form.elements.show_name.checked,
         bubble_style: form.elements.bubble_style.value,
-        max_messages: Number(form.elements.max_messages.value),
+        blocked_nicknames: readLineList(form.elements.blocked_nicknames.value),
+        blocked_roles: Array.from(form.elements.blocked_roles)
+            .filter((input) => input.checked)
+            .map((input) => input.value),
         message_ttl_seconds: Number(form.elements.message_ttl_seconds.value),
     };
 }
@@ -85,7 +107,7 @@ async function save() {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             custom_css: styleMode === "custom" ? cssInput.value : "",
-            is_active: activeInput.checked,
+            is_active: true,
             style_mode: styleMode,
             style_options: getStyleOptions(),
         }),
@@ -95,6 +117,18 @@ async function save() {
         throw new Error(data.detail || "저장하지 못했습니다.");
     }
     return response.json();
+}
+
+async function resetOptions() {
+    if (!confirm("모든 스타일 옵션을 기본값으로 초기화할까요?")) {
+        return;
+    }
+    setControlValues(defaults);
+    setStyleMode("options");
+    cssInput.value = "";
+    await save();
+    setStatus("기본 옵션으로 초기화되었습니다.");
+    refreshPreview();
 }
 
 function renderPresets() {
@@ -210,6 +244,10 @@ advancedCss.addEventListener("toggle", () => {
 });
 
 document.getElementById("refreshPreview").addEventListener("click", refreshPreview);
+
+document.getElementById("resetOptions").addEventListener("click", () => {
+    resetOptions().catch((error) => setStatus(error.message));
+});
 
 modeButtons.forEach((button) => {
     button.addEventListener("click", () => setPreviewMode(button.dataset.previewMode));

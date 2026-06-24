@@ -1,8 +1,10 @@
 const overlay = document.getElementById("chatOverlay");
 const config = JSON.parse(document.getElementById("chatOverlayConfig").textContent);
 const overlayStyle = getComputedStyle(overlay);
-const maxMessages = Number(overlayStyle.getPropertyValue("--overlay-max-messages")) || 20;
-const messageTtlMs = Number(overlayStyle.getPropertyValue("--overlay-message-ttl-ms")) || 16000;
+const HARD_MAX_MESSAGES = 300;
+const MAX_MESSAGE_TTL_MS = 3600000;
+const configuredMessageTtlMs = Number(overlayStyle.getPropertyValue("--overlay-message-ttl-ms")) || 16000;
+const messageTtlMs = Math.min(configuredMessageTtlMs, MAX_MESSAGE_TTL_MS);
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/${config.token}`);
 
@@ -21,7 +23,7 @@ function addMessage(payload) {
     item.append(name, text);
     overlay.appendChild(item);
 
-    while (overlay.children.length > maxMessages) {
+    while (overlay.children.length > HARD_MAX_MESSAGES) {
         overlay.firstElementChild.remove();
     }
 

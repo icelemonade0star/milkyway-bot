@@ -1,15 +1,20 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import TEMPLATE_DIR
 from app.core.database import get_async_db
 from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster
+from app.features.chat_overlay.schemas import OverlayStyleOptions
 from app.features.chat_overlay.service import ChatOverlayService
 
 overlay_router = APIRouter(prefix="/overlay", tags=["chat-overlay"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+logger = logging.getLogger("ChatOverlayRouter")
 
 
 @overlay_router.get("/chat/{token}", response_class=HTMLResponse)
@@ -38,12 +43,19 @@ async def chat_overlay_ws(websocket: WebSocket, token: str):
             await websocket.close(code=1008)
             return
         channel, setting = row
-        if not setting.is_active:
-            await websocket.close(code=1008)
-            return
+        try:
+            options = OverlayStyleOptions.model_validate(setting.style_options or {})
+        except ValidationError as exc:
+            logger.warning("Invalid overlay options for token=%s: %s", token, exc)
+            options = OverlayStyleOptions()
         platform_channel_id = channel.platform_channel_id
 
-    await chat_overlay_broadcaster.connect(platform_channel_id, websocket)
+    await chat_overlay_broadcaster.connect(
+        platform_channel_id,
+        websocket,
+        blocked_nicknames=options.blocked_nicknames,
+        blocked_roles=options.blocked_roles,
+    )
     try:
         while True:
             await websocket.receive_text()

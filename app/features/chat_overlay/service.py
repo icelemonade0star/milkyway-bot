@@ -66,11 +66,19 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
     font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }}
 
+*, *::before, *::after {{
+    box-sizing: border-box;
+}}
+
+html, body {{
+    width: 100%;
+    height: 100%;
+}}
+
 .chat-overlay {{
-    --overlay-max-messages: {options.max_messages};
     --overlay-message-ttl-ms: {options.message_ttl_seconds * 1000};
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     padding: {options.padding}px;
     display: flex;
     flex-direction: column;
@@ -81,7 +89,7 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
 
 .chat-message {{
     width: fit-content;
-    max-width: min({options.max_width}px, calc(100vw - {options.padding * 2}px));
+    max-width: min({options.max_width}px, 100%);
     padding: {options.message_padding_y}px {options.message_padding_x}px;
     border-radius: {options.radius}px;
     border: {border};
@@ -92,6 +100,7 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
     text-shadow: {text_shadow};
     box-shadow: {box_shadow};
     animation: {animation};
+    overflow-wrap: anywhere;
 }}
 
 .chat-name {{
@@ -102,7 +111,9 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
 }}
 
 .chat-text {{
+    min-width: 0;
     overflow-wrap: anywhere;
+    word-break: break-word;
 }}
 
 @keyframes message-in-slide {{
