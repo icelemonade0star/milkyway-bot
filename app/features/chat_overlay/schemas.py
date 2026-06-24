@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -19,6 +20,11 @@ class OverlayStyleOptions(BaseModel):
     background_opacity: int = Field(default=78, ge=0, le=100)
     text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
     name_color: str = Field(default="#7ee2a8", pattern=HEX_COLOR_PATTERN)
+    name_color_mode: Literal["fixed", "random"] = "fixed"
+    name_color_palette: list[str] = Field(
+        default_factory=lambda: ["#7ee2a8", "#7ac7ff", "#ffd166", "#ff8fab", "#c4a7ff"],
+        max_length=20,
+    )
     shadow_strength: int = Field(default=45, ge=0, le=100)
     animation: Literal["slide", "fade", "pop", "none"] = "slide"
     show_name: bool = True
@@ -41,6 +47,21 @@ class OverlayStyleOptions(BaseModel):
             normalized.append(item)
             seen.add(item)
         return normalized
+
+    @field_validator("name_color_palette")
+    @classmethod
+    def normalize_name_color_palette(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            color = value.strip()
+            if not color or color in seen:
+                continue
+            if not re.fullmatch(HEX_COLOR_PATTERN, color):
+                raise ValueError("닉네임 색상 목록은 #RRGGBB 형식이어야 합니다.")
+            normalized.append(color)
+            seen.add(color)
+        return normalized or ["#7ee2a8"]
 
     @field_validator("blocked_roles")
     @classmethod

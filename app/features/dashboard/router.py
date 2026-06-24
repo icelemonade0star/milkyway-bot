@@ -130,6 +130,9 @@ async def save_dashboard_overlay(
     return {
         "status": "success",
         "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+        "style_mode": setting.style_mode,
+        "style_options": setting.style_options,
+        "custom_css": setting.custom_css,
     }
 
 

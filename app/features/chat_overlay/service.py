@@ -59,13 +59,15 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
     elif options.bubble_style == "badge":
         border = f"1px solid {_rgba(options.name_color, 45)}"
 
-    return f"""body {{
+    return f"""/* 오버레이 캔버스: OBS 브라우저 소스의 기본 영역입니다. */
+body {{
     margin: 0;
     overflow: hidden;
     background: transparent;
     font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }}
 
+/* padding이 OBS 화면 밖으로 밀리지 않도록 전체 박스 계산을 고정합니다. */
 *, *::before, *::after {{
     box-sizing: border-box;
 }}
@@ -75,8 +77,15 @@ html, body {{
     height: 100%;
 }}
 
+/*
+전체 오버레이 영역입니다.
+- 채팅 묶음의 위치, 화면 여백, 메시지 간격을 조절합니다.
+- --overlay-message-ttl-ms는 JS가 메시지 유지 시간을 읽는 값입니다.
+*/
 .chat-overlay {{
     --overlay-message-ttl-ms: {options.message_ttl_seconds * 1000};
+    --overlay-name-color-mode: {options.name_color_mode};
+    --overlay-name-color-palette: {",".join(options.name_color_palette)};
     width: 100%;
     height: 100%;
     padding: {options.padding}px;
@@ -87,6 +96,46 @@ html, body {{
     gap: {options.gap}px;
 }}
 
+/*
+채팅창 프레임/배경 스킨 영역입니다.
+- 전체 채팅창 이미지, 테두리, 장식 배경을 넣을 때 사용합니다.
+- 예: background: url("frame.png") center / contain no-repeat;
+*/
+.chat-frame {{
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: inherit;
+    align-items: inherit;
+    gap: inherit;
+}}
+
+/*
+메시지 목록 영역입니다.
+- 프레임 이미지 안쪽 여백, 메시지가 보이는 범위, 클리핑을 조절합니다.
+- 예: padding: 48px 36px 32px;
+*/
+.chat-list {{
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: inherit;
+    align-items: inherit;
+    gap: inherit;
+    overflow: hidden;
+}}
+
+/*
+개별 채팅 말풍선입니다.
+- 말풍선 이미지나 메시지 배경을 넣을 때 사용합니다.
+- 예: background: url("bubble.png") center / 100% 100% no-repeat;
+*/
 .chat-message {{
     width: fit-content;
     max-width: min({options.max_width}px, 100%);
@@ -103,6 +152,7 @@ html, body {{
     overflow-wrap: anywhere;
 }}
 
+/* 말풍선 안의 닉네임 텍스트입니다. */
 .chat-name {{
     display: {name_display};
     margin-right: 8px;
@@ -110,6 +160,7 @@ html, body {{
     font-weight: 700;
 }}
 
+/* 말풍선 안의 채팅 본문입니다. */
 .chat-text {{
     min-width: 0;
     overflow-wrap: anywhere;

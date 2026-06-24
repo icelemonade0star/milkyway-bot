@@ -7,12 +7,13 @@ const modeButtons = document.querySelectorAll("[data-preview-mode]");
 const presetForm = document.getElementById("presetForm");
 const presetName = document.getElementById("presetName");
 const presetList = document.getElementById("presetList");
-const advancedCss = document.querySelector(".advanced-css");
+const advancedCss = document.querySelector('[data-section="css"]');
 const defaults = JSON.parse(document.getElementById("overlayStyleDefaults").textContent);
 const currentOptions = JSON.parse(document.getElementById("overlayStyleCurrent").textContent);
 let styleMode = JSON.parse(document.getElementById("overlayStyleMode").textContent) || "options";
 let presets = JSON.parse(document.getElementById("overlayPresetData").textContent);
 let previewMode = "sample";
+let syncingStyleMode = false;
 
 function setStatus(message) {
     statusEl.textContent = message;
@@ -38,9 +39,36 @@ function setPreviewMode(mode) {
     refreshPreview();
 }
 
+function setSectionOpen(section, isOpen) {
+    section.classList.toggle("is-collapsed", !isOpen);
+    const button = section.querySelector(".section-toggle");
+    if (button) {
+        button.setAttribute("aria-expanded", String(isOpen));
+    }
+}
+
 function setStyleMode(mode) {
     styleMode = mode === "custom" ? "custom" : "options";
-    advancedCss.open = styleMode === "custom";
+    syncingStyleMode = true;
+    setSectionOpen(advancedCss, styleMode === "custom");
+    syncingStyleMode = false;
+}
+
+function formatRangeValue(name, value) {
+    if (["font_size", "max_width"].includes(name)) return `${value}px`;
+    if (name === "background_opacity") return `${value}%`;
+    return value;
+}
+
+function updateRangeOutput(input) {
+    const output = document.querySelector(`output[data-for="${input.name}"]`);
+    if (output) {
+        output.textContent = formatRangeValue(input.name, input.value);
+    }
+}
+
+function updateAllRangeOutputs() {
+    form.querySelectorAll('input[type="range"]').forEach(updateRangeOutput);
 }
 
 function setControlValues(options) {
@@ -57,10 +85,13 @@ function setControlValues(options) {
             input.checked = Boolean(value);
         } else if (Array.isArray(value)) {
             input.value = value.join("\n");
+        } else if (key === "background_opacity") {
+            input.value = 100 - Number(value);
         } else {
             input.value = value;
         }
     });
+    updateAllRangeOutputs();
 }
 
 function readLineList(value) {
@@ -86,9 +117,11 @@ function getStyleOptions() {
         message_padding_x: Number(form.elements.message_padding_x.value),
         radius: Number(form.elements.radius.value),
         background_color: form.elements.background_color.value,
-        background_opacity: Number(form.elements.background_opacity.value),
+        background_opacity: 100 - Number(form.elements.background_opacity.value),
         text_color: form.elements.text_color.value,
         name_color: form.elements.name_color.value,
+        name_color_mode: form.elements.name_color_mode.value,
+        name_color_palette: readLineList(form.elements.name_color_palette.value),
         shadow_strength: Number(form.elements.shadow_strength.value),
         animation: form.elements.animation.value,
         show_name: form.elements.show_name.checked,
@@ -116,7 +149,17 @@ async function save() {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || "저장하지 못했습니다.");
     }
-    return response.json();
+    const data = await response.json();
+    if (data.style_options) {
+        setControlValues(data.style_options);
+    }
+    if (data.style_mode) {
+        setStyleMode(data.style_mode);
+    }
+    if (data.custom_css !== undefined) {
+        cssInput.value = data.custom_css;
+    }
+    return data;
 }
 
 async function resetOptions() {
@@ -239,10 +282,6 @@ presetForm.addEventListener("submit", (event) => {
     savePreset(event).catch((error) => setStatus(error.message));
 });
 
-advancedCss.addEventListener("toggle", () => {
-    styleMode = advancedCss.open ? "custom" : "options";
-});
-
 document.getElementById("refreshPreview").addEventListener("click", refreshPreview);
 
 document.getElementById("resetOptions").addEventListener("click", () => {
@@ -251,6 +290,21 @@ document.getElementById("resetOptions").addEventListener("click", () => {
 
 modeButtons.forEach((button) => {
     button.addEventListener("click", () => setPreviewMode(button.dataset.previewMode));
+});
+
+document.querySelectorAll(".section-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+        const section = button.closest(".settings-section");
+        const willOpen = section.classList.contains("is-collapsed");
+        setSectionOpen(section, willOpen);
+        if (section === advancedCss && !syncingStyleMode) {
+            styleMode = willOpen ? "custom" : "options";
+        }
+    });
+});
+
+form.querySelectorAll('input[type="range"]').forEach((input) => {
+    input.addEventListener("input", () => updateRangeOutput(input));
 });
 
 document.getElementById("copyUrl").addEventListener("click", async () => {

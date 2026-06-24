@@ -1,12 +1,25 @@
 const overlay = document.getElementById("chatOverlay");
 const config = JSON.parse(document.getElementById("chatOverlayConfig").textContent);
-const overlayStyle = getComputedStyle(overlay);
+const overlayRoot = document.querySelector(".chat-overlay");
+const overlayStyle = getComputedStyle(overlayRoot);
 const HARD_MAX_MESSAGES = 300;
 const MAX_MESSAGE_TTL_MS = 3600000;
 const configuredMessageTtlMs = Number(overlayStyle.getPropertyValue("--overlay-message-ttl-ms")) || 16000;
 const messageTtlMs = Math.min(configuredMessageTtlMs, MAX_MESSAGE_TTL_MS);
+const nameColorMode = overlayStyle.getPropertyValue("--overlay-name-color-mode").trim();
+const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-palette")
+    .split(",")
+    .map((color) => color.trim())
+    .filter(Boolean);
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/${config.token}`);
+
+function randomNameColor() {
+    if (nameColorMode !== "random" || !nameColorPalette.length) {
+        return "";
+    }
+    return nameColorPalette[Math.floor(Math.random() * nameColorPalette.length)];
+}
 
 function addMessage(payload) {
     const item = document.createElement("div");
@@ -15,6 +28,10 @@ function addMessage(payload) {
     const name = document.createElement("span");
     name.className = "chat-name";
     name.textContent = payload.nickname || "익명";
+    const nameColor = randomNameColor();
+    if (nameColor) {
+        name.style.color = nameColor;
+    }
 
     const text = document.createElement("span");
     text.className = "chat-text";

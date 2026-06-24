@@ -17,6 +17,14 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 logger = logging.getLogger("ChatOverlayRouter")
 
 
+def safe_overlay_options(raw_options: dict | None) -> OverlayStyleOptions:
+    try:
+        return OverlayStyleOptions.model_validate(raw_options or {})
+    except ValidationError as exc:
+        logger.warning("Invalid overlay options, using defaults: %s", exc)
+        return OverlayStyleOptions()
+
+
 @overlay_router.get("/chat/{token}", response_class=HTMLResponse)
 async def chat_overlay(token: str, request: Request, db: AsyncSession = Depends(get_async_db)):
     row = await ChatOverlayService(db).get_setting_by_token(token)
@@ -24,12 +32,16 @@ async def chat_overlay(token: str, request: Request, db: AsyncSession = Depends(
         raise HTTPException(status_code=404, detail="Overlay not found.")
 
     channel, setting = row
+    options = safe_overlay_options(setting.style_options)
     return templates.TemplateResponse(
         "chat_overlay.html",
         {
             "request": request,
             "channel": channel,
             "setting": setting,
+            "overlay_message_ttl_ms": options.message_ttl_seconds * 1000,
+            "overlay_name_color_mode": options.name_color_mode,
+            "overlay_name_color_palette": ",".join(options.name_color_palette),
         },
     )
 
@@ -43,11 +55,7 @@ async def chat_overlay_ws(websocket: WebSocket, token: str):
             await websocket.close(code=1008)
             return
         channel, setting = row
-        try:
-            options = OverlayStyleOptions.model_validate(setting.style_options or {})
-        except ValidationError as exc:
-            logger.warning("Invalid overlay options for token=%s: %s", token, exc)
-            options = OverlayStyleOptions()
+        options = safe_overlay_options(setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
     await chat_overlay_broadcaster.connect(
