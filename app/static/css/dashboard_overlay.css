@@ -202,6 +202,15 @@ label {
     font-weight: 700;
 }
 
+.palette-control {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
 select,
 textarea,
 input {
@@ -261,13 +270,55 @@ textarea {
     gap: 12px;
 }
 
-.filter-grid textarea,
-.palette-control textarea {
+.filter-grid textarea {
     min-height: 82px;
 }
 
-.palette-control {
-    grid-column: 1 / -1;
+.palette-editor {
+    min-height: 34px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--surface);
+}
+
+.palette-chip {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    cursor: pointer;
+}
+
+.palette-chip:hover {
+    border-color: var(--danger);
+}
+
+.palette-chip:hover::after {
+    content: "×";
+    color: var(--surface);
+    font-size: 16px;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.palette-add-row {
+    display: grid;
+    grid-template-columns: 42px auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.palette-add-row input[type="color"] {
+    min-height: 34px;
 }
 
 .role-filter {
@@ -398,6 +449,13 @@ iframe {
     border-bottom: 1px solid var(--line);
 }
 
+.sample-chat-form {
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: minmax(110px, 0.3fr) minmax(180px, 1fr) auto;
+    gap: 8px;
+}
+
 .link-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -442,6 +500,7 @@ iframe {
     .control-grid,
     .control-grid.colors,
     .preset-save,
+    .sample-chat-form,
     .link-row {
         grid-template-columns: 1fr;
     }

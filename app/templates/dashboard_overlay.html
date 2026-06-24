@@ -153,10 +153,15 @@
                                             <option value="random">랜덤 팔레트</option>
                                         </select>
                                     </label>
-                                    <label class="palette-control">
+                                    <div class="palette-control">
                                         <span>닉네임 랜덤 색상 목록</span>
-                                        <textarea name="name_color_palette" spellcheck="false" placeholder="#7ee2a8&#10;#7ac7ff&#10;#ffd166"></textarea>
-                                    </label>
+                                        <input name="name_color_palette" type="hidden">
+                                        <div class="palette-editor" id="nameColorPalette"></div>
+                                        <div class="palette-add-row">
+                                            <input id="paletteColorInput" type="color" value="#7ee2a8" aria-label="추가할 닉네임 색상">
+                                            <button type="button" id="addPaletteColor">색상 추가</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -220,7 +225,7 @@
                 </div>
 
                 <div class="bottom-bar">
-                    <button class="primary" type="submit" form="overlayForm">저장</button>
+                    <button class="primary" type="submit" form="overlayForm">적용</button>
                     <button type="button" id="resetOptions">초기화</button>
                     <button type="button" id="refreshPreview">미리보기 새로고침</button>
                     <p class="status" id="status"></p>
@@ -239,6 +244,11 @@
                     <iframe id="preview" src="{{ overlay_url }}?preview=1"></iframe>
                 </div>
                 <div class="link-panel">
+                    <form class="sample-chat-form" id="sampleChatForm">
+                        <input id="sampleNickname" maxlength="40" placeholder="닉네임" value="Tester">
+                        <input id="sampleMessage" maxlength="300" placeholder="샘플 채팅 입력">
+                        <button type="submit">보내기</button>
+                    </form>
                     <div class="link-row">
                         <input id="overlayUrl" value="{{ overlay_url }}" readonly>
                         <button type="button" id="copyUrl">복사</button>

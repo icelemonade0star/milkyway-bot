@@ -7,6 +7,11 @@ const modeButtons = document.querySelectorAll("[data-preview-mode]");
 const presetForm = document.getElementById("presetForm");
 const presetName = document.getElementById("presetName");
 const presetList = document.getElementById("presetList");
+const paletteEditor = document.getElementById("nameColorPalette");
+const paletteColorInput = document.getElementById("paletteColorInput");
+const sampleChatForm = document.getElementById("sampleChatForm");
+const sampleNickname = document.getElementById("sampleNickname");
+const sampleMessage = document.getElementById("sampleMessage");
 const advancedCss = document.querySelector('[data-section="css"]');
 const defaults = JSON.parse(document.getElementById("overlayStyleDefaults").textContent);
 const currentOptions = JSON.parse(document.getElementById("overlayStyleCurrent").textContent);
@@ -71,6 +76,40 @@ function updateAllRangeOutputs() {
     form.querySelectorAll('input[type="range"]').forEach(updateRangeOutput);
 }
 
+function setPaletteColors(colors) {
+    const input = form.elements.name_color_palette;
+    input.value = colors.join("\n");
+    renderPalette();
+}
+
+function getPaletteColors() {
+    return readLineList(form.elements.name_color_palette.value);
+}
+
+function renderPalette() {
+    paletteEditor.innerHTML = "";
+    const colors = getPaletteColors();
+    if (!colors.length) {
+        const empty = document.createElement("span");
+        empty.className = "empty";
+        empty.textContent = "적용 시 기본 색상이 자동으로 적용됩니다.";
+        paletteEditor.append(empty);
+        return;
+    }
+
+    colors.forEach((color) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "palette-chip";
+        chip.style.backgroundColor = color;
+        chip.title = `${color} 삭제`;
+        chip.addEventListener("click", () => {
+            setPaletteColors(getPaletteColors().filter((currentColor) => currentColor !== color));
+        });
+        paletteEditor.append(chip);
+    });
+}
+
 function setControlValues(options) {
     Object.entries({...defaults, ...options}).forEach(([key, value]) => {
         const input = form.elements[key];
@@ -92,6 +131,7 @@ function setControlValues(options) {
         }
     });
     updateAllRangeOutputs();
+    renderPalette();
 }
 
 function readLineList(value) {
@@ -121,7 +161,7 @@ function getStyleOptions() {
         text_color: form.elements.text_color.value,
         name_color: form.elements.name_color.value,
         name_color_mode: form.elements.name_color_mode.value,
-        name_color_palette: readLineList(form.elements.name_color_palette.value),
+        name_color_palette: getPaletteColors(),
         shadow_strength: Number(form.elements.shadow_strength.value),
         animation: form.elements.animation.value,
         show_name: form.elements.show_name.checked,
@@ -172,6 +212,17 @@ async function resetOptions() {
     await save();
     setStatus("기본 옵션으로 초기화되었습니다.");
     refreshPreview();
+}
+
+function sendSampleChat(nickname, message) {
+    if (previewMode !== "sample") {
+        setStatus("샘플 모드에서만 테스트 채팅을 보낼 수 있습니다.");
+        return;
+    }
+    preview.contentWindow?.postMessage({
+        type: "milkyway-overlay-sample-chat",
+        payload: {nickname, message},
+    }, window.location.origin);
 }
 
 function renderPresets() {
@@ -271,7 +322,7 @@ form.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
         await save();
-        setStatus("저장되었습니다.");
+        setStatus("적용되었습니다.");
         refreshPreview();
     } catch (error) {
         setStatus(error.message);
@@ -286,6 +337,34 @@ document.getElementById("refreshPreview").addEventListener("click", refreshPrevi
 
 document.getElementById("resetOptions").addEventListener("click", () => {
     resetOptions().catch((error) => setStatus(error.message));
+});
+
+document.getElementById("addPaletteColor").addEventListener("click", () => {
+    const color = paletteColorInput.value;
+    const colors = getPaletteColors();
+    if (!colors.includes(color)) {
+        if (colors.length >= 20) {
+            setStatus("색상은 최대 20개까지 추가할 수 있습니다.");
+            return;
+        }
+        setPaletteColors([...colors, color]);
+    }
+});
+
+sampleChatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (previewMode !== "sample") {
+        setStatus("샘플 모드에서만 테스트 채팅을 보낼 수 있습니다.");
+        return;
+    }
+    const nickname = sampleNickname.value.trim() || "익명";
+    const message = sampleMessage.value.trim();
+    if (!message) {
+        setStatus("샘플 채팅 내용을 입력해 주세요.");
+        return;
+    }
+    sendSampleChat(nickname, message);
+    sampleMessage.value = "";
 });
 
 modeButtons.forEach((button) => {

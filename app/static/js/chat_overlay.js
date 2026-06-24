@@ -11,6 +11,7 @@ const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-pal
     .split(",")
     .map((color) => color.trim())
     .filter(Boolean);
+const isPreview = new URLSearchParams(location.search).has("preview");
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/${config.token}`);
 
@@ -55,9 +56,22 @@ socket.addEventListener("message", (event) => {
     }
 });
 
-if (new URLSearchParams(location.search).has("preview")) {
+window.addEventListener("message", (event) => {
+    if (!isPreview || event.origin !== window.location.origin) {
+        return;
+    }
+    if (event.data?.type === "milkyway-overlay-sample-chat") {
+        const payload = event.data.payload;
+        if (!payload || !String(payload.message || "").trim()) {
+            return;
+        }
+        addMessage(payload);
+    }
+});
+
+if (isPreview) {
     [
-        {nickname: "Milkyway", message: "CSS를 저장하면 이 미리보기에 바로 반영됩니다."},
+        {nickname: "Milkyway", message: "설정을 적용하면 이 미리보기에 바로 반영됩니다."},
         {nickname: "Viewer", message: "닉네임 색상, 말풍선, 글자 크기를 자유롭게 바꿔보세요."},
         {nickname: "Streamer", message: "OBS 링크에는 실제 채팅만 표시됩니다."},
     ].forEach((sample, index) => {
