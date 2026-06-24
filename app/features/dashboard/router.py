@@ -8,8 +8,8 @@ from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TE
 from app.core.database import get_async_db
 from app.features.auth.platforms.chzzk import get_chzzk_auth
 from app.features.auth.service import AuthService
-from app.features.chat_overlay.schemas import OverlaySaveRequest
-from app.features.chat_overlay.service import ChatOverlayService
+from app.features.chat_overlay.schemas import OverlayPresetSaveRequest, OverlaySaveRequest
+from app.features.chat_overlay.service import ChatOverlayService, DEFAULT_STYLE_OPTIONS, PresetDeleteResult
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
 from app.features.dashboard.service import DashboardService
@@ -82,7 +82,7 @@ async def dashboard_overlay(
     session: dict = Depends(get_dashboard_session),
     db: AsyncSession = Depends(get_async_db),
 ):
-    channel, setting = await ChatOverlayService(db).get_or_create_setting(DASHBOARD_PLATFORM, session["channel_id"])
+    channel, setting, presets = await ChatOverlayService(db).get_dashboard_overlay_data(DASHBOARD_PLATFORM, session["channel_id"])
     if not channel or not setting:
         raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
 
@@ -93,6 +93,19 @@ async def dashboard_overlay(
             "session": session,
             "channel": channel,
             "setting": setting,
+            "style_mode": setting.style_mode if setting.style_mode is not None else "options",
+            "base_style_options": DEFAULT_STYLE_OPTIONS.model_dump(),
+            "style_options": setting.style_options if setting.style_options is not None else DEFAULT_STYLE_OPTIONS.model_dump(),
+            "presets": [
+                {
+                    "id": preset.id,
+                    "name": preset.name,
+                    "style_mode": preset.style_mode,
+                    "style_options": preset.style_options,
+                    "custom_css": preset.custom_css,
+                }
+                for preset in presets
+            ],
             "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
         },
     )
@@ -109,6 +122,8 @@ async def save_dashboard_overlay(
         session["channel_id"],
         payload.custom_css,
         payload.is_active,
+        payload.style_mode,
+        payload.style_options,
     )
     if not channel or not setting:
         raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
@@ -116,6 +131,76 @@ async def save_dashboard_overlay(
         "status": "success",
         "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
     }
+
+
+@dashboard_router.post("/overlay/presets")
+async def save_dashboard_overlay_preset(
+    payload: OverlayPresetSaveRequest,
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    preset = await ChatOverlayService(db).save_preset(
+        DASHBOARD_PLATFORM,
+        session["channel_id"],
+        payload.name,
+        payload.style_options,
+        payload.custom_css,
+        payload.style_mode,
+    )
+    if not preset:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+    return {
+        "status": "success",
+        "preset": {
+            "id": preset.id,
+            "name": preset.name,
+            "style_mode": preset.style_mode,
+            "style_options": preset.style_options,
+            "custom_css": preset.custom_css,
+        },
+    }
+
+
+@dashboard_router.post("/overlay/presets/{preset_id}/apply")
+async def apply_dashboard_overlay_preset(
+    preset_id: int,
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    channel, setting, preset = await ChatOverlayService(db).apply_preset(
+        DASHBOARD_PLATFORM,
+        session["channel_id"],
+        preset_id,
+    )
+    if not channel or not setting:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+    if not preset:
+        raise HTTPException(status_code=404, detail="프리셋을 찾을 수 없습니다.")
+    return {
+        "status": "success",
+        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+        "preset": {
+            "id": preset.id,
+            "name": preset.name,
+            "style_mode": preset.style_mode,
+            "style_options": preset.style_options,
+            "custom_css": preset.custom_css,
+        },
+    }
+
+
+@dashboard_router.delete("/overlay/presets/{preset_id}")
+async def delete_dashboard_overlay_preset(
+    preset_id: int,
+    session: dict = Depends(get_dashboard_session),
+    db: AsyncSession = Depends(get_async_db),
+):
+    result = await ChatOverlayService(db).delete_preset(DASHBOARD_PLATFORM, session["channel_id"], preset_id)
+    if result == PresetDeleteResult.CHANNEL_NOT_FOUND:
+        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
+    if result == PresetDeleteResult.PRESET_NOT_FOUND:
+        raise HTTPException(status_code=404, detail="프리셋을 찾을 수 없습니다.")
+    return {"status": "success"}
 
 
 @dashboard_router.post("/overlay/token")

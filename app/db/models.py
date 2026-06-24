@@ -58,13 +58,35 @@ class V2ChatOverlaySetting(Base):
 
     channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), primary_key=True)
     public_token = Column(String(100), nullable=False, unique=True)
+    style_mode = Column(String(20), nullable=False, default="options", server_default=text("'options'"))
+    style_options = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     custom_css = Column(Text, nullable=False, default="", server_default=text("''"))
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("TRUE"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_chat_overlay_settings_style_mode"),
         Index("idx_v2_chat_overlay_settings_public_token", "public_token"),
+    )
+
+
+class V2ChatOverlayPreset(Base):
+    __tablename__ = "v2_chat_overlay_presets"
+
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(80), nullable=False)
+    style_mode = Column(String(20), nullable=False, default="options", server_default=text("'options'"))
+    style_options = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    custom_css = Column(Text, nullable=False, default="", server_default=text("''"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_chat_overlay_presets_style_mode"),
+        UniqueConstraint("channel_id", "name", name="unique_v2_chat_overlay_presets_channel_name"),
+        Index("idx_v2_chat_overlay_presets_channel_id", "channel_id"),
     )
 
 

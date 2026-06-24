@@ -23,16 +23,116 @@
     </header>
 
     <main>
-        <section class="panel">
+        <section class="panel editor-panel">
             <div class="panel-head">
-                <h2>스타일 편집</h2>
-            </div>
-            <form class="panel-body" id="overlayForm">
+                <h2>스타일 옵션</h2>
                 <label class="toggle">
                     <input id="isActive" name="is_active" type="checkbox" {% if setting.is_active %}checked{% endif %}>
                     오버레이 사용
                 </label>
-                <textarea id="customCss" name="custom_css" spellcheck="false">{{ setting.custom_css }}</textarea>
+            </div>
+            <form class="panel-body" id="overlayForm">
+                <div class="control-grid">
+                    <label>
+                        <span>위치</span>
+                        <select name="position">
+                            <option value="bottom-left">왼쪽 아래</option>
+                            <option value="bottom-right">오른쪽 아래</option>
+                            <option value="top-left">왼쪽 위</option>
+                            <option value="top-right">오른쪽 위</option>
+                            <option value="center">가운데</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>말풍선 스타일</span>
+                        <select name="bubble_style">
+                            <option value="solid">기본</option>
+                            <option value="minimal">미니멀</option>
+                            <option value="badge">배지형</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>등장 효과</span>
+                        <select name="animation">
+                            <option value="slide">아래에서</option>
+                            <option value="fade">페이드</option>
+                            <option value="pop">팝</option>
+                            <option value="none">없음</option>
+                        </select>
+                    </label>
+                    <label class="check-control">
+                        <input name="show_name" type="checkbox">
+                        <span>닉네임 표시</span>
+                    </label>
+                </div>
+
+                <div class="control-grid">
+                    <label>
+                        <span>글자 크기</span>
+                        <input name="font_size" type="number" min="12" max="48" step="1">
+                    </label>
+                    <label>
+                        <span>최대 너비</span>
+                        <input name="max_width" type="number" min="260" max="1400" step="10">
+                    </label>
+                    <label>
+                        <span>화면 여백</span>
+                        <input name="padding" type="number" min="0" max="80" step="1">
+                    </label>
+                    <label>
+                        <span>메시지 간격</span>
+                        <input name="gap" type="number" min="0" max="32" step="1">
+                    </label>
+                    <label>
+                        <span>안쪽 세로 여백</span>
+                        <input name="message_padding_y" type="number" min="0" max="28" step="1">
+                    </label>
+                    <label>
+                        <span>안쪽 가로 여백</span>
+                        <input name="message_padding_x" type="number" min="4" max="40" step="1">
+                    </label>
+                    <label>
+                        <span>둥근 정도</span>
+                        <input name="radius" type="number" min="0" max="40" step="1">
+                    </label>
+                    <label>
+                        <span>그림자</span>
+                        <input name="shadow_strength" type="number" min="0" max="100" step="5">
+                    </label>
+                    <label>
+                        <span>최대 메시지 수</span>
+                        <input name="max_messages" type="number" min="1" max="80" step="1">
+                    </label>
+                    <label>
+                        <span>유지 시간(초)</span>
+                        <input name="message_ttl_seconds" type="number" min="3" max="120" step="1">
+                    </label>
+                </div>
+
+                <div class="control-grid colors">
+                    <label>
+                        <span>배경색</span>
+                        <input name="background_color" type="color">
+                    </label>
+                    <label>
+                        <span>배경 투명도</span>
+                        <input name="background_opacity" type="range" min="0" max="100" step="1">
+                    </label>
+                    <label>
+                        <span>글자색</span>
+                        <input name="text_color" type="color">
+                    </label>
+                    <label>
+                        <span>닉네임 색상</span>
+                        <input name="name_color" type="color">
+                    </label>
+                </div>
+
+                <details class="advanced-css">
+                    <summary>고급 CSS 직접 편집</summary>
+                    <textarea id="customCss" name="custom_css" spellcheck="false">{{ setting.custom_css }}</textarea>
+                </details>
+
                 <div class="actions">
                     <button class="primary" type="submit">저장</button>
                     <button type="button" id="refreshPreview">미리보기 새로고침</button>
@@ -43,6 +143,20 @@
         </section>
 
         <section class="panel">
+            <div class="panel-head">
+                <h2>프리셋</h2>
+            </div>
+            <div class="panel-body">
+                <form class="preset-save" id="presetForm">
+                    <input id="presetName" name="preset_name" maxlength="80" placeholder="프리셋 이름">
+                    <button class="primary" type="submit">현재 스타일 저장</button>
+                </form>
+                <div class="preset-list" id="presetList"></div>
+                <p class="hint">프리셋을 적용해도 OBS 링크는 바뀌지 않습니다. 현재 오버레이 스타일만 교체됩니다.</p>
+            </div>
+        </section>
+
+        <section class="panel preview-panel">
             <div class="panel-head">
                 <h2>미리보기와 링크</h2>
                 <div class="mode-tabs" aria-label="preview mode">
@@ -63,97 +177,10 @@
         </section>
     </main>
 
-    <script>
-        const form = document.getElementById("overlayForm");
-        const cssInput = document.getElementById("customCss");
-        const activeInput = document.getElementById("isActive");
-        const statusEl = document.getElementById("status");
-        const preview = document.getElementById("preview");
-        const overlayUrl = document.getElementById("overlayUrl");
-        const modeButtons = document.querySelectorAll("[data-preview-mode]");
-        let previewMode = "sample";
-
-        function setStatus(message) {
-            statusEl.textContent = message;
-        }
-
-        function previewSource() {
-            const separator = overlayUrl.value.includes("?") ? "&" : "?";
-            if (previewMode === "sample") {
-                return `${overlayUrl.value}${separator}preview=1&t=${Date.now()}`;
-            }
-            return `${overlayUrl.value}${separator}t=${Date.now()}`;
-        }
-
-        function refreshPreview() {
-            preview.src = previewSource();
-        }
-
-        function setPreviewMode(mode) {
-            previewMode = mode;
-            modeButtons.forEach((button) => {
-                button.setAttribute("aria-pressed", String(button.dataset.previewMode === mode));
-            });
-            refreshPreview();
-        }
-
-        async function save() {
-            const response = await fetch("/auth/dashboard/overlay", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                    custom_css: cssInput.value,
-                    is_active: activeInput.checked,
-                }),
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.detail || "저장하지 못했습니다.");
-            }
-            return response.json();
-        }
-
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            try {
-                await save();
-                setStatus("저장되었습니다.");
-                refreshPreview();
-            } catch (error) {
-                setStatus(error.message);
-            }
-        });
-
-        document.getElementById("refreshPreview").addEventListener("click", refreshPreview);
-
-        modeButtons.forEach((button) => {
-            button.addEventListener("click", () => setPreviewMode(button.dataset.previewMode));
-        });
-
-        document.getElementById("copyUrl").addEventListener("click", async () => {
-            await navigator.clipboard.writeText(overlayUrl.value);
-            setStatus("링크를 복사했습니다.");
-        });
-
-        document.getElementById("rotateToken").addEventListener("click", async () => {
-            if (!confirm("기존 OBS 링크가 더 이상 동작하지 않습니다. 재발급할까요?")) {
-                return;
-            }
-            try {
-                const response = await fetch("/auth/dashboard/overlay/token", {method: "POST"});
-                if (!response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    throw new Error(data.detail || "링크를 재발급하지 못했습니다.");
-                }
-                const data = await response.json();
-                overlayUrl.value = data.overlay_url;
-                setStatus("새 링크가 발급되었습니다.");
-                refreshPreview();
-            } catch (error) {
-                setStatus(error.message);
-            }
-        });
-    </script>
+    <script id="overlayStyleMode" type="application/json">{{ style_mode|tojson }}</script>
+    <script id="overlayStyleDefaults" type="application/json">{{ base_style_options|tojson }}</script>
+    <script id="overlayStyleCurrent" type="application/json">{{ style_options|tojson }}</script>
+    <script id="overlayPresetData" type="application/json">{{ presets|tojson }}</script>
+    <script src="/static/js/dashboard_overlay.js"></script>
 </body>
 </html>
-

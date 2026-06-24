@@ -13,8 +13,9 @@
 
     <script>
         const overlay = document.getElementById("chatOverlay");
-        const maxMessages = 20;
-        const messageTtlMs = 16000;
+        const overlayStyle = getComputedStyle(overlay);
+        const maxMessages = Number(overlayStyle.getPropertyValue("--overlay-max-messages")) || 20;
+        const messageTtlMs = Number(overlayStyle.getPropertyValue("--overlay-message-ttl-ms")) || 16000;
         const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
         const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/{{ setting.public_token }}`);
 

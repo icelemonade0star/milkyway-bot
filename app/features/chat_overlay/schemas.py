@@ -1,9 +1,37 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
+
+
+HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
+
+
+class OverlayStyleOptions(BaseModel):
+    position: Literal["bottom-left", "bottom-right", "top-left", "top-right", "center"] = "bottom-left"
+    font_size: int = Field(default=20, ge=12, le=48)
+    max_width: int = Field(default=760, ge=260, le=1400)
+    gap: int = Field(default=8, ge=0, le=32)
+    padding: int = Field(default=20, ge=0, le=80)
+    message_padding_y: int = Field(default=8, ge=0, le=28)
+    message_padding_x: int = Field(default=12, ge=4, le=40)
+    radius: int = Field(default=8, ge=0, le=40)
+    background_color: str = Field(default="#16181d", pattern=HEX_COLOR_PATTERN)
+    background_opacity: int = Field(default=78, ge=0, le=100)
+    text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
+    name_color: str = Field(default="#7ee2a8", pattern=HEX_COLOR_PATTERN)
+    shadow_strength: int = Field(default=45, ge=0, le=100)
+    animation: Literal["slide", "fade", "pop", "none"] = "slide"
+    show_name: bool = True
+    bubble_style: Literal["solid", "minimal", "badge"] = "solid"
+    max_messages: int = Field(default=20, ge=1, le=80)
+    message_ttl_seconds: int = Field(default=16, ge=3, le=120)
 
 
 class OverlaySaveRequest(BaseModel):
     custom_css: str = Field(default="", max_length=12000)
     is_active: bool = True
+    style_mode: Literal["options", "custom"] = "options"
+    style_options: OverlayStyleOptions | None = None
 
     @field_validator("custom_css")
     @classmethod
@@ -14,3 +42,23 @@ class OverlaySaveRequest(BaseModel):
         if "@import" in lowered or "javascript:" in lowered:
             raise ValueError("외부 CSS import나 스크립트 URL은 사용할 수 없습니다.")
         return value
+
+
+class OverlayPresetSaveRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    custom_css: str = Field(default="", max_length=12000)
+    style_mode: Literal["options", "custom"] = "options"
+    style_options: OverlayStyleOptions
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("프리셋 이름을 입력해 주세요.")
+        return value
+
+    @field_validator("custom_css")
+    @classmethod
+    def validate_custom_css(cls, value: str) -> str:
+        return OverlaySaveRequest.validate_custom_css(value)
