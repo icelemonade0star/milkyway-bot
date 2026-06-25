@@ -221,8 +221,19 @@ function sendSampleChat(nickname, message) {
     }
     preview.contentWindow?.postMessage({
         type: "milkyway-overlay-sample-chat",
-        payload: {nickname, message},
+        payload: {nickname, message, name_color: getSampleNameColor()},
     }, window.location.origin);
+}
+
+function getSampleNameColor() {
+    if (form.elements.name_color_mode.value !== "random") {
+        return form.elements.name_color.value;
+    }
+    const colors = getPaletteColors();
+    if (!colors.length) {
+        return form.elements.name_color.value;
+    }
+    return colors[Math.floor(Math.random() * colors.length)];
 }
 
 function renderPresets() {

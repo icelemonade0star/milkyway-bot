@@ -14,12 +14,20 @@ const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-pal
 const isPreview = new URLSearchParams(location.search).has("preview");
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/${config.token}`);
+const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
 
 function randomNameColor() {
     if (nameColorMode !== "random" || !nameColorPalette.length) {
         return "";
     }
     return nameColorPalette[Math.floor(Math.random() * nameColorPalette.length)];
+}
+
+function resolveNameColor(payload) {
+    if (isPreview && hexColorPattern.test(payload.name_color || "")) {
+        return payload.name_color;
+    }
+    return randomNameColor();
 }
 
 function addMessage(payload) {
@@ -29,7 +37,7 @@ function addMessage(payload) {
     const name = document.createElement("span");
     name.className = "chat-name";
     name.textContent = payload.nickname || "익명";
-    const nameColor = randomNameColor();
+    const nameColor = resolveNameColor(payload);
     if (nameColor) {
         name.style.color = nameColor;
     }
