@@ -47,5 +47,8 @@ jobs:
         # 문법 오류(SyntaxError)나 정의되지 않은 변수 등 치명적인 오류만 검사하여 빌드 중단
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
+    - name: Check UTF-8 text files
+      run: python scripts/check_utf8.py
+
     - name: Run tests
       run: pytest tests/
