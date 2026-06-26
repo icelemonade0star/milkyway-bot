@@ -67,10 +67,15 @@ EXECUTE FUNCTION v2_set_updated_at();
 CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
     channel_id UUID PRIMARY KEY REFERENCES v2_channels(id) ON DELETE CASCADE,
     public_token VARCHAR(100) NOT NULL UNIQUE,
+    style_mode VARCHAR(20) NOT NULL DEFAULT 'options',
+    style_options JSONB NOT NULL DEFAULT '{}'::jsonb,
     custom_css TEXT NOT NULL DEFAULT '',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT check_v2_chat_overlay_settings_style_mode
+        CHECK (style_mode IN ('options', 'custom'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_v2_chat_overlay_settings_public_token
@@ -79,6 +84,31 @@ ON v2_chat_overlay_settings(public_token);
 DROP TRIGGER IF EXISTS trg_v2_chat_overlay_settings_updated_at ON v2_chat_overlay_settings;
 CREATE TRIGGER trg_v2_chat_overlay_settings_updated_at
 BEFORE UPDATE ON v2_chat_overlay_settings
+FOR EACH ROW
+EXECUTE FUNCTION v2_set_updated_at();
+
+CREATE TABLE IF NOT EXISTS v2_chat_overlay_presets (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
+    name VARCHAR(80) NOT NULL,
+    style_mode VARCHAR(20) NOT NULL DEFAULT 'options',
+    style_options JSONB NOT NULL DEFAULT '{}'::jsonb,
+    custom_css TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT check_v2_chat_overlay_presets_style_mode
+        CHECK (style_mode IN ('options', 'custom')),
+    CONSTRAINT unique_v2_chat_overlay_presets_channel_name
+        UNIQUE (channel_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v2_chat_overlay_presets_channel_id
+ON v2_chat_overlay_presets(channel_id);
+
+DROP TRIGGER IF EXISTS trg_v2_chat_overlay_presets_updated_at ON v2_chat_overlay_presets;
+CREATE TRIGGER trg_v2_chat_overlay_presets_updated_at
+BEFORE UPDATE ON v2_chat_overlay_presets
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 

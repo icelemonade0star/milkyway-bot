@@ -36,7 +36,7 @@
                         <dt>디스코드 알림</dt>
                         <dd>{{ "활성" if dashboard.notification and dashboard.notification.is_active else "미설정" }}</dd>
                         <dt>디스코드 채널</dt>
-                        <dd>{{ dashboard.notification.discord_channel_id if dashboard.notification and dashboard.notification.is_active else "-" }}</dd>
+                        <dd>{{ dashboard.notification.destination_channel_id if dashboard.notification and dashboard.notification.is_active else "-" }}</dd>
                     </dl>
                 </div>
             </article>
@@ -252,7 +252,7 @@
                             {% for item in dashboard.attendance_rank %}
                             <tr>
                                 <td>{{ loop.index }}</td>
-                                <td>{{ item.user_name or item.user_id }}</td>
+                                <td>{{ item.user_name or item.platform_user_id }}</td>
                                 <td>{{ item.streak_count }}</td>
                                 <td>{{ item.attendance_count }}</td>
                                 <td>{{ item.last_attendance_at.strftime("%Y-%m-%d %H:%M") if item.last_attendance_at else "-" }}</td>

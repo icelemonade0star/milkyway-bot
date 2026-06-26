@@ -160,11 +160,6 @@ class V2ViewerAttendance(Base):
         UniqueConstraint("channel_id", "platform_user_id", name="unique_v2_viewer_attendance_channel_user"),
     )
 
-    @property
-    def user_id(self):
-        return self.platform_user_id
-
-
 class V2StreamSession(Base):
     __tablename__ = "v2_stream_sessions"
 
@@ -223,15 +218,6 @@ class V2LiveNotification(Base):
             name="unique_v2_live_notifications_destination",
         ),
     )
-
-    @property
-    def discord_channel_id(self):
-        return self.destination_channel_id
-
-    @discord_channel_id.setter
-    def discord_channel_id(self, value):
-        self.destination_channel_id = value
-
 
 class V2LiveNotificationDelivery(Base):
     __tablename__ = "v2_live_notification_deliveries"
