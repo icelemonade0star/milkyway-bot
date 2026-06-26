@@ -126,7 +126,7 @@ class LiveStatePoller:
 
             if should_notify_discord:
                 try:
-                    from app.features.discord_bot.cogs.live_notifications import trigger_live_notification_check
+                    from app.features.discord_bot.cogs.chzzk_notifications import trigger_live_notification_check
 
                     await trigger_live_notification_check(db_channel.platform, db_channel.platform_channel_id)
                 except Exception as e:

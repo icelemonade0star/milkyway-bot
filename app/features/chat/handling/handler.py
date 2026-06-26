@@ -13,7 +13,7 @@ from app.features.chat.handling.placeholders import has_attendance_placeholders,
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.config import ALLOWED_PREFIXES
 from app.features.discord_bot.cogs.discord_service import DiscordService
-from app.features.discord_bot.cogs.live_notifications import invalidate_notification_cache
+from app.features.discord_bot.cogs.chzzk_notifications import invalidate_notification_cache
 from app.platforms.constants import PLATFORM_CHZZK
 
 # 로거 설정

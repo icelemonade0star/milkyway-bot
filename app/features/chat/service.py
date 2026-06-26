@@ -570,9 +570,9 @@ class ChatService:
         opened_at = cls._parse_live_datetime(payload.get("opened_at") or raw.get("openDate"))
         closed_at = cls._parse_live_datetime(payload.get("closed_at") or raw.get("closeDate"))
         normalized_status = payload.get("status")
-        legacy_raw_status = raw.get("status")
+        raw_status = raw.get("status")
         return {
-            "status": normalized_status or legacy_raw_status or "UNKNOWN",
+            "status": normalized_status or raw_status or "UNKNOWN",
             "opened_at": opened_at,
             "closed_at": closed_at,
             "title": payload.get("title") or raw.get("liveTitle"),
@@ -720,7 +720,7 @@ class ChatService:
                 previous_status != "OPEN" or previous_session_id != v2_session.id
             ):
                 try:
-                    from app.features.discord_bot.cogs.live_notifications import trigger_live_notification_check
+                    from app.features.discord_bot.cogs.chzzk_notifications import trigger_live_notification_check
 
                     await trigger_live_notification_check(platform, channel_id)
                 except Exception as e:

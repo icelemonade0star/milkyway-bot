@@ -3,7 +3,7 @@ import logging
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from app.features.discord_bot.cogs.live_notifications import LiveNotification
+from app.features.discord_bot.cogs.chzzk_notifications import LiveNotification
 
 load_dotenv()
 discord_token = os.getenv("DISCORD_TOKEN")

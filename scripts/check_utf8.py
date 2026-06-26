@@ -48,6 +48,8 @@ def is_text_file(path: Path) -> bool:
 def main() -> int:
     failures: list[str] = []
     for path in tracked_files():
+        if not path.exists():
+            continue
         if not is_text_file(path):
             continue
         try:

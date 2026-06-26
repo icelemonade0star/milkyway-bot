@@ -8,7 +8,6 @@ from app.db import models
 from app.redis.redis_service import RedisChannelKey, redis_client, RedisConfigService
 from app.features.chat.service import ChatService
 from app.features.live_state_poller import LiveStatePoller
-from app.platforms.constants import PLATFORM_CHZZK
 from app.features.admin import schemas
 
 admin_router = APIRouter(
@@ -18,7 +17,6 @@ admin_router = APIRouter(
 )
 
 redis_service = RedisConfigService()
-ADMIN_COMPAT_PLATFORM = PLATFORM_CHZZK
 
 
 def _serialize_live_state(channel, live_state=None, stream_session=None):
@@ -237,19 +235,6 @@ async def get_platform_channel_greeting_cache(
 
 
 @admin_router.get(
-    "/greeting/redis/{channel_id}",
-    summary="채널 Redis 인사말 조회",
-    description="치지직 호환 경로입니다. 특정 채널에 캐싱된 Redis 인사말 목록을 반환합니다.",
-    response_model=schemas.ChannelGreetingCacheResponse,
-)
-async def get_channel_greeting_cache(
-    channel_id: str,
-    db: AsyncSession = Depends(get_async_db),
-):
-    return await _get_channel_greeting_cache_response(db, ADMIN_COMPAT_PLATFORM, channel_id)
-
-
-@admin_router.get(
     "/greeting/redis",
     summary="전체 채널 Redis 인사말 조회",
     description="Redis에 캐싱된 모든 v2 채널의 인사말 목록을 반환합니다.",
@@ -329,19 +314,6 @@ async def refresh_platform_channel_greeting_cache(
 
 
 @admin_router.post(
-    "/greeting/refresh/{channel_id}",
-    summary="채널 인사말 Redis 수동 갱신",
-    description="치지직 호환 경로입니다. DB에 등록된 특정 채널의 인사말을 Redis에 즉시 갱신합니다.",
-    response_model=schemas.GreetingRefreshResponse,
-)
-async def refresh_channel_greeting_cache(
-    channel_id: str,
-    db: AsyncSession = Depends(get_async_db),
-):
-    return await _refresh_channel_greeting_cache_response(db, ADMIN_COMPAT_PLATFORM, channel_id)
-
-
-@admin_router.post(
     "/greeting/refresh",
     summary="전체 채널 인사말 Redis 수동 갱신",
     description="DB에 등록된 모든 채널의 인사말을 Redis에 즉시 갱신합니다.",
@@ -380,4 +352,3 @@ async def refresh_all_greeting_cache(
         "failed_channels": failed_channels,
         "message": f"{len(channels) - len(failed_channels)}개 채널의 인사말이 Redis에 갱신되었습니다.",
     }
-
