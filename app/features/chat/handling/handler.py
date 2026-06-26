@@ -563,7 +563,7 @@ async def on_command(db: AsyncSession, session, channel_id: str, command: str, a
                         msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일 / 총 {result_att['total']}일)"
                         await session.send_chat(msg)
                     elif result_att["status"] == "already_checked":
-                        msg = f"@{user_name}님은 이미 출석했습니다."
+                        msg = f"@{user_name}님은 이미 출석했습니다. (연속 {result_att['streak']}일 / 총 {result_att['total']}일)"
                         await session.send_chat(msg)
                     elif result_att["status"] == "not_streaming":
                         msg = f"@{user_name}님 방송 중에만 출석할 수 있습니다."
