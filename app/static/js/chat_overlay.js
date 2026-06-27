@@ -13,7 +13,7 @@ const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-pal
     .filter(Boolean);
 const isPreview = new URLSearchParams(location.search).has("preview");
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-const socket = new WebSocket(`${wsProtocol}//${location.host}/overlay/ws/${config.token}`);
+const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
 const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
 
 function randomNameColor() {

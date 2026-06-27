@@ -69,7 +69,7 @@
     </main>
 
     <script id="chatOverlayConfig" type="application/json">
-        {"token": {{ setting.public_token|tojson }}}
+        {"websocket_path": {{ overlay_websocket_path|tojson }}}
     </script>
     <script src="/static/js/chat_overlay.js"></script>
 </body>

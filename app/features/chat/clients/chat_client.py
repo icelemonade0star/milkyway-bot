@@ -5,7 +5,6 @@ import asyncio
 import app.core.config as config
 from .base import BaseChatClient
 from app.features.chat.handling import handler
-from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster
 from app.core.logger import get_channel_logger
 
 class ChzzkChatClient(BaseChatClient):
@@ -69,12 +68,6 @@ class ChzzkChatClient(BaseChatClient):
 
             # 핸들러로 메시지 전달
             await handler.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
-            await chat_overlay_broadcaster.publish(self.platform_channel_id, {
-                "nickname": nickname,
-                "message": message,
-                "role": role,
-                "user_id": user_id,
-            })
 
     def get_session_key(self):
         return self.session_key

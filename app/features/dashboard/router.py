@@ -106,7 +106,7 @@ async def dashboard_overlay(
                 }
                 for preset in presets
             ],
-            "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+            "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         },
     )
 
@@ -129,7 +129,7 @@ async def save_dashboard_overlay(
         raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
     return {
         "status": "success",
-        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+        "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         "style_mode": setting.style_mode,
         "style_options": setting.style_options,
         "custom_css": setting.custom_css,
@@ -181,7 +181,7 @@ async def apply_dashboard_overlay_preset(
         raise HTTPException(status_code=404, detail="프리셋을 찾을 수 없습니다.")
     return {
         "status": "success",
-        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
+        "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         "preset": {
             "id": preset.id,
             "name": preset.name,
@@ -204,20 +204,6 @@ async def delete_dashboard_overlay_preset(
     if result == PresetDeleteResult.PRESET_NOT_FOUND:
         raise HTTPException(status_code=404, detail="프리셋을 찾을 수 없습니다.")
     return {"status": "success"}
-
-
-@dashboard_router.post("/overlay/token")
-async def rotate_dashboard_overlay_token(
-    session: dict = Depends(get_dashboard_session),
-    db: AsyncSession = Depends(get_async_db),
-):
-    channel, setting = await ChatOverlayService(db).rotate_token(DASHBOARD_PLATFORM, session["channel_id"])
-    if not channel or not setting:
-        raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
-    return {
-        "status": "success",
-        "overlay_url": ChatOverlayService.overlay_url(setting.public_token),
-    }
 
 
 @dashboard_router.post("/commands")

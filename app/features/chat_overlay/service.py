@@ -265,6 +265,12 @@ class ChatOverlayService:
         )
         return result.one_or_none()
 
+    async def get_setting_by_channel(self, platform: str, platform_channel_id: str):
+        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
+        if not channel or not setting:
+            return None
+        return channel, setting
+
     async def update_setting(
         self,
         platform: str,
@@ -385,16 +391,6 @@ class ChatOverlayService:
         await self.db.commit()
         return PresetDeleteResult.DELETED if result.rowcount else PresetDeleteResult.PRESET_NOT_FOUND
 
-    async def rotate_token(self, platform: str, platform_channel_id: str):
-        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
-        if not channel or not setting:
-            return None, None
-
-        setting.public_token = secrets.token_urlsafe(32)
-        await self.db.commit()
-        await self.db.refresh(setting)
-        return channel, setting
-
     @staticmethod
-    def overlay_url(token: str) -> str:
-        return f"{PUBLIC_SITE_URL}/overlay/chat/{token}"
+    def overlay_url(platform: str, platform_channel_id: str) -> str:
+        return f"{PUBLIC_SITE_URL}/overlay/chat/{platform}/{platform_channel_id}"

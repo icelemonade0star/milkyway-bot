@@ -106,8 +106,7 @@ main {
 .workspace-head,
 .preview-head,
 .bottom-bar,
-.link-panel,
-.danger-zone {
+.link-panel {
     padding: 12px 14px;
     background: var(--surface);
 }
@@ -463,19 +462,6 @@ iframe {
     margin-bottom: 8px;
 }
 
-.danger-zone {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-top: 1px solid rgba(180, 35, 24, 0.25);
-}
-
-.danger-zone strong {
-    color: var(--danger);
-    font-size: 13px;
-}
-
 @media (max-width: 1040px) {
     .overlay-workspace {
         grid-template-columns: 1fr;
@@ -505,8 +491,7 @@ iframe {
         grid-template-columns: 1fr;
     }
 
-    .preview-head,
-    .danger-zone {
+    .preview-head {
         align-items: flex-start;
         flex-direction: column;
     }

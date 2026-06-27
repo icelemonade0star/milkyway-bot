@@ -402,25 +402,6 @@ document.getElementById("copyUrl").addEventListener("click", async () => {
     setStatus("링크를 복사했습니다.");
 });
 
-document.getElementById("rotateToken").addEventListener("click", async () => {
-    if (!confirm("기존 OBS 링크가 더 이상 동작하지 않습니다. 재발급할까요?")) {
-        return;
-    }
-    try {
-        const response = await fetch("/auth/dashboard/overlay/token", {method: "POST"});
-        if (!response.ok) {
-            const data = await response.json().catch(() => ({}));
-            throw new Error(data.detail || "링크를 재발급하지 못했습니다.");
-        }
-        const data = await response.json();
-        overlayUrl.value = data.overlay_url;
-        setStatus("새 링크가 발급되었습니다.");
-        refreshPreview();
-    } catch (error) {
-        setStatus(error.message);
-    }
-});
-
 setControlValues(currentOptions);
 setStyleMode(styleMode);
 renderPresets();
