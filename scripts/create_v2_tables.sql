@@ -66,7 +66,6 @@ EXECUTE FUNCTION v2_set_updated_at();
 
 CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
     channel_id UUID PRIMARY KEY REFERENCES v2_channels(id) ON DELETE CASCADE,
-    public_token VARCHAR(100) NOT NULL UNIQUE,
     style_mode VARCHAR(20) NOT NULL DEFAULT 'options',
     style_options JSONB NOT NULL DEFAULT '{}'::jsonb,
     custom_css TEXT NOT NULL DEFAULT '',
@@ -77,9 +76,6 @@ CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
     CONSTRAINT check_v2_chat_overlay_settings_style_mode
         CHECK (style_mode IN ('options', 'custom'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_v2_chat_overlay_settings_public_token
-ON v2_chat_overlay_settings(public_token);
 
 DROP TRIGGER IF EXISTS trg_v2_chat_overlay_settings_updated_at ON v2_chat_overlay_settings;
 CREATE TRIGGER trg_v2_chat_overlay_settings_updated_at

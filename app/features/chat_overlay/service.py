@@ -1,4 +1,3 @@
-import secrets
 from enum import Enum
 
 from sqlalchemy import delete, select
@@ -228,7 +227,6 @@ class ChatOverlayService:
         if not setting:
             setting = models.V2ChatOverlaySetting(
                 channel_id=channel.id,
-                public_token=secrets.token_urlsafe(32),
                 style_mode="options",
                 style_options=DEFAULT_STYLE_OPTIONS.model_dump(),
                 custom_css=DEFAULT_OVERLAY_CSS,
@@ -253,17 +251,6 @@ class ChatOverlayService:
 
         presets = await self.list_presets(channel.id)
         return channel, setting, presets
-
-    async def get_setting_by_token(self, token: str):
-        result = await self.db.execute(
-            select(models.V2Channel, models.V2ChatOverlaySetting)
-            .join(
-                models.V2ChatOverlaySetting,
-                models.V2ChatOverlaySetting.channel_id == models.V2Channel.id,
-            )
-            .where(models.V2ChatOverlaySetting.public_token == token)
-        )
-        return result.one_or_none()
 
     async def get_setting_by_channel(self, platform: str, platform_channel_id: str):
         channel, setting = await self.get_or_create_setting(platform, platform_channel_id)

@@ -57,40 +57,11 @@ async def chat_overlay_by_channel(
     )
 
 
-@overlay_router.get("/chat/{token}", response_class=HTMLResponse)
-async def chat_overlay_by_token(token: str, request: Request, db: AsyncSession = Depends(get_async_db)):
-    row = await ChatOverlayService(db).get_setting_by_token(token)
-    if not row:
-        raise HTTPException(status_code=404, detail="Overlay not found.")
-
-    channel, setting = row
-    options = safe_overlay_options(setting.style_options)
-    return templates.TemplateResponse(
-        "chat_overlay.html",
-        overlay_template_context(request, channel, setting, options, f"/overlay/ws/{token}"),
-    )
-
-
 @overlay_router.websocket("/ws/chzzk/{platform_channel_id}")
 async def chat_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id: str):
     session_factory = websocket.app.state.SessionLocal
     async with session_factory() as db:
         row = await ChatOverlayService(db).get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
-        if not row:
-            await websocket.close(code=1008)
-            return
-        channel, setting = row
-        options = safe_overlay_options(setting.style_options)
-        platform_channel_id = channel.platform_channel_id
-
-    await connect_overlay_websocket(websocket, platform_channel_id, options)
-
-
-@overlay_router.websocket("/ws/{token}")
-async def chat_overlay_ws_by_token(websocket: WebSocket, token: str):
-    session_factory = websocket.app.state.SessionLocal
-    async with session_factory() as db:
-        row = await ChatOverlayService(db).get_setting_by_token(token)
         if not row:
             await websocket.close(code=1008)
             return

@@ -57,7 +57,6 @@ class V2ChatOverlaySetting(Base):
     __tablename__ = "v2_chat_overlay_settings"
 
     channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), primary_key=True)
-    public_token = Column(String(100), nullable=False, unique=True)
     style_mode = Column(String(20), nullable=False, default="options", server_default=text("'options'"))
     style_options = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     custom_css = Column(Text, nullable=False, default="", server_default=text("''"))
@@ -67,7 +66,6 @@ class V2ChatOverlaySetting(Base):
 
     __table_args__ = (
         CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_chat_overlay_settings_style_mode"),
-        Index("idx_v2_chat_overlay_settings_public_token", "public_token"),
     )
 
 
