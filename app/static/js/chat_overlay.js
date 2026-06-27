@@ -27,6 +27,9 @@ function resolveNameColor(payload) {
     if (isPreview && hexColorPattern.test(payload.name_color || "")) {
         return payload.name_color;
     }
+    if (hexColorPattern.test(payload.nickname_color || "")) {
+        return payload.nickname_color;
+    }
     return randomNameColor();
 }
 

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import random
@@ -12,8 +13,37 @@ logger = logging.getLogger("ChzzkRawClient")
 
 _LIVE_DETAIL_URL = "https://api.chzzk.naver.com/service/v3/channels/{channel_id}/live-detail"
 _WS_SERVERS = [f"wss://kr-ss{n}.chat.naver.com/chat" for n in range(1, 7)]
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 _CHATID_RETRY_DELAY = 30
 _RECONNECT_DELAY = 5
+
+# 실제 수집 확인된 채팅 cmd
+_CHAT_CMDS = {93101}
+
+# websockets 버전별 헤더 파라미터 분기 (11.x: extra_headers, 15/16.x: additional_headers)
+_CONNECT_PARAMS = inspect.signature(websockets.connect).parameters
+
+
+def _ws_connect_kwargs() -> dict:
+    if "additional_headers" in _CONNECT_PARAMS:
+        return {
+            "additional_headers": {},
+            "origin": "https://chzzk.naver.com",
+            "user_agent_header": _USER_AGENT,
+        }
+    return {
+        "extra_headers": {
+            "Origin": "https://chzzk.naver.com",
+            "User-Agent": _USER_AGENT,
+        }
+    }
+
+
+_WS_CONNECT_KWARGS = _ws_connect_kwargs()
 
 
 class ChzzkRawChatClient:
@@ -21,7 +51,11 @@ class ChzzkRawChatClient:
         self.platform_channel_id = platform_channel_id
         self._http = httpx.AsyncClient(
             timeout=10.0,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Origin": "https://chzzk.naver.com",
+                "Referer": f"https://chzzk.naver.com/live/{platform_channel_id}",
+            },
         )
 
     async def _get_chat_channel_id(self) -> str | None:
@@ -47,7 +81,7 @@ class ChzzkRawChatClient:
                 ws_url = random.choice(_WS_SERVERS)
                 logger.info("[%s] 연결 시도: %s", self.platform_channel_id, ws_url)
 
-                async with websockets.connect(ws_url) as ws:
+                async with websockets.connect(ws_url, ping_interval=None, **_WS_CONNECT_KWARGS) as ws:
                     auth_packet = json.dumps({
                         "bdy": {
                             "accTkn": "",
@@ -65,7 +99,9 @@ class ChzzkRawChatClient:
                     logger.info("[%s] 인증 패킷 전송 완료", self.platform_channel_id)
 
                     async for raw_msg in ws:
-                        await self._handle_message(ws, raw_msg)
+                        if isinstance(raw_msg, bytes):
+                            raw_msg = raw_msg.decode("utf-8", errors="ignore")
+                        await self._handle_message(ws, raw_msg, chat_channel_id)
 
             except asyncio.CancelledError:
                 logger.info("[%s] raw WS 태스크 취소됨", self.platform_channel_id)
@@ -75,7 +111,7 @@ class ChzzkRawChatClient:
                 logger.warning("[%s] raw WS 오류: %s. %ds 후 재연결", self.platform_channel_id, e, _RECONNECT_DELAY)
                 await asyncio.sleep(_RECONNECT_DELAY)
 
-    async def _handle_message(self, ws, raw_msg: str):
+    async def _handle_message(self, ws, raw_msg: str, chat_channel_id: str):
         try:
             data = json.loads(raw_msg)
         except (json.JSONDecodeError, TypeError):
@@ -88,12 +124,13 @@ class ChzzkRawChatClient:
                 "bdy": {},
                 "cmd": 10000,
                 "svcid": "game",
-                "tid": 2,
-                "ver": "2",
+                "cid": chat_channel_id,
+                "tid": data.get("tid", 2),
+                "ver": data.get("ver", "2"),
             })
             await ws.send(pong)
 
-        elif cmd == 3101:
+        elif cmd in _CHAT_CMDS:
             bdy = data.get("bdy", [])
             if isinstance(bdy, dict):
                 bdy = [bdy]
@@ -116,14 +153,25 @@ class ChzzkRawChatClient:
             except (json.JSONDecodeError, TypeError):
                 extras = {}
 
-        message = body.get("msg") or ""
+        message = body.get("msg") or body.get("content") or ""
         if not message:
             return
 
-        nickname = profile.get("nickname") or ""
-        user_id = profile.get("userIdHash") or body.get("uid") or ""
-        role = profile.get("userRoleCode") or ""
+        nickname = (
+            profile.get("nickname")
+            or profile.get("nick")
+            or profile.get("name")
+            or body.get("nickname")
+            or ""
+        )
+        user_id = profile.get("userIdHash") or profile.get("userId") or body.get("uid") or ""
+        role = profile.get("userRoleCode") or body.get("userRoleCode") or ""
         emojis = extras.get("emojis", {}) if isinstance(extras, dict) else {}
+
+        # streamingProperty.nicknameColor.colorCode → "#RRGGBB" 정규화
+        streaming_prop = profile.get("streamingProperty") or {}
+        raw_color = (streaming_prop.get("nicknameColor") or {}).get("colorCode") or ""
+        nickname_color = f"#{raw_color}" if raw_color and not raw_color.startswith("#") else raw_color
 
         payload = {
             "nickname": nickname,
@@ -132,6 +180,7 @@ class ChzzkRawChatClient:
             "user_id": user_id,
             "extras": extras,
             "emojis": emojis,
+            "nickname_color": nickname_color,
             "raw": body,
         }
 
