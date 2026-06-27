@@ -173,6 +173,9 @@ class ChzzkRawChatClient:
         raw_color = (streaming_prop.get("nicknameColor") or {}).get("colorCode") or ""
         nickname_color = f"#{raw_color}" if raw_color and not raw_color.startswith("#") else raw_color
 
+        badge = profile.get("badge") or {}
+        badge_url = badge.get("imageUrl") if isinstance(badge, dict) else ""
+
         payload = {
             "nickname": nickname,
             "message": message,
@@ -181,6 +184,7 @@ class ChzzkRawChatClient:
             "extras": extras,
             "emojis": emojis,
             "nickname_color": nickname_color,
+            "badge_url": badge_url,
             "raw": body,
         }
 

@@ -11,6 +11,8 @@ const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-pal
     .split(",")
     .map((color) => color.trim())
     .filter(Boolean);
+const streamerNameColor = overlayStyle.getPropertyValue("--overlay-streamer-name-color").trim() || "#FFD700";
+const managerNameColor = overlayStyle.getPropertyValue("--overlay-manager-name-color").trim() || "#FF6B6B";
 const isPreview = new URLSearchParams(location.search).has("preview");
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
@@ -24,6 +26,13 @@ function randomNameColor() {
 }
 
 function resolveNameColor(payload) {
+    const role = String(payload.role || "").toLowerCase();
+    if (role === "streamer") {
+        return streamerNameColor;
+    }
+    if (role === "channel_manager" || role === "manager") {
+        return managerNameColor;
+    }
     if (isPreview && hexColorPattern.test(payload.name_color || "")) {
         return payload.name_color;
     }
@@ -39,7 +48,14 @@ function addMessage(payload) {
 
     const name = document.createElement("span");
     name.className = "chat-name";
-    name.textContent = payload.nickname || "익명";
+    if (payload.badge_url) {
+        const badge = document.createElement("img");
+        badge.className = "chat-badge";
+        badge.src = payload.badge_url;
+        badge.alt = "";
+        name.appendChild(badge);
+    }
+    name.appendChild(document.createTextNode(payload.nickname || "익명"));
     const nameColor = resolveNameColor(payload);
     if (nameColor) {
         name.style.color = nameColor;
