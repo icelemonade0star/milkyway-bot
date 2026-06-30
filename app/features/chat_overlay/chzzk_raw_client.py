@@ -168,13 +168,28 @@ class ChzzkRawChatClient:
         role = profile.get("userRoleCode") or body.get("userRoleCode") or ""
         emojis = extras.get("emojis", {}) if isinstance(extras, dict) else {}
 
-        # streamingProperty.nicknameColor.colorCode → "#RRGGBB" 정규화
         streaming_prop = profile.get("streamingProperty") or {}
-        raw_color = (streaming_prop.get("nicknameColor") or {}).get("colorCode") or ""
-        nickname_color = f"#{raw_color}" if raw_color and not raw_color.startswith("#") else raw_color
 
-        badge = profile.get("badge") or {}
-        badge_url = badge.get("imageUrl") if isinstance(badge, dict) else ""
+        badges: list[str] = []
+
+        # 1. 역할 뱃지 (스트리머·매니저)
+        role_badge = profile.get("badge") or {}
+        if isinstance(role_badge, dict) and role_badge.get("imageUrl"):
+            badges.append(role_badge["imageUrl"])
+
+        # 2. 구독 뱃지
+        sub_badge = (streaming_prop.get("subscription") or {}).get("badge") or {}
+        if isinstance(sub_badge, dict) and sub_badge.get("imageUrl"):
+            badges.append(sub_badge["imageUrl"])
+
+        # 3. 시청자 표시 뱃지 목록 — { type, badge: { imageUrl } }
+        for vb in profile.get("viewerBadges") or []:
+            if not isinstance(vb, dict):
+                continue
+            inner = vb.get("badge") or {}
+            url = inner.get("imageUrl") if isinstance(inner, dict) else None
+            if url:
+                badges.append(url)
 
         payload = {
             "nickname": nickname,
@@ -183,8 +198,7 @@ class ChzzkRawChatClient:
             "user_id": user_id,
             "extras": extras,
             "emojis": emojis,
-            "nickname_color": nickname_color,
-            "badge_url": badge_url,
+            "badges": badges,
             "raw": body,
         }
 

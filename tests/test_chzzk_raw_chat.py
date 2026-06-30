@@ -116,7 +116,72 @@ def iter_bodies(packet: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def print_chat(packet: dict[str, Any]) -> dict[str, Any] | None:
+def extract_badges(profile: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """profile에서 표시할 뱃지를 반환합니다.
+
+    뱃지 순서:
+      1. profile.badge            — 역할 뱃지 (스트리머·매니저), null이면 생략
+      2. profile.viewerBadges[i]  — 실제 채팅창에 표시되는 뱃지 목록
+                                    구조: { type, badge: { badgeId, scope, imageUrl } }
+
+    Returns:
+        badges: (label, badgeId, imageUrl) 목록
+        notes:  디버깅용 메모 (imageUrl 없는 항목, 미확인 필드 등)
+    """
+    badges: list[tuple[str, str, str]] = []
+    notes: list[str] = []
+
+    # 1. 역할 뱃지 — 스트리머·매니저일 때만 non-null
+    role_badge = profile.get("badge") or {}
+    if isinstance(role_badge, dict) and role_badge.get("imageUrl"):
+        badges.append(("badge", role_badge.get("badgeId", ""), role_badge["imageUrl"]))
+
+    # 2. 구독 뱃지 — streamingProperty.subscription.badge.imageUrl
+    streaming_prop = profile.get("streamingProperty") or {}
+    subscription = streaming_prop.get("subscription") or {}
+    sub_badge = subscription.get("badge") or {} if isinstance(subscription, dict) else {}
+    if isinstance(sub_badge, dict) and sub_badge.get("imageUrl"):
+        tier = subscription.get("tier", "")
+        months = subscription.get("accumulativeMonth", "")
+        badges.append((f"subscription (tier={tier} {months}mo)", "subscription", sub_badge["imageUrl"]))
+
+    # 3. 시청자 표시 뱃지 — { type, badge: { badgeId, scope, imageUrl } }
+    viewer_list = profile.get("viewerBadges") or []
+    for i, vb in enumerate(viewer_list):
+        if not isinstance(vb, dict):
+            notes.append(f"viewerBadges[{i}] dict 아님: {type(vb)}")
+            continue
+        inner = vb.get("badge") or {}
+        url = inner.get("imageUrl") if isinstance(inner, dict) else None
+        badge_id = inner.get("badgeId", "") if isinstance(inner, dict) else ""
+        vb_type = vb.get("type", "")
+        if url:
+            badges.append((f"viewerBadges[{i}/{len(viewer_list)}] type={vb_type}", badge_id, url))
+        else:
+            notes.append(f"viewerBadges[{i}/{len(viewer_list)}] imageUrl 없음 type={vb_type} inner_keys={list(inner.keys()) if isinstance(inner, dict) else inner}")
+
+    # 미확인 streamingProperty 하위 키 감지 (새 뱃지 발견용)
+    known_sp_keys = {"nicknameColor", "subscription", "activatedAchievementBadgeIds"}
+    for key, val in streaming_prop.items():
+        if key in known_sp_keys:
+            continue
+        if isinstance(val, dict) and val.get("imageUrl"):
+            badges.append((f"streamingProperty.{key} [UNKNOWN]", "", val["imageUrl"]))
+        elif val:
+            notes.append(f"streamingProperty.{key} [UNKNOWN] raw={str(val)[:120]}")
+
+    return badges, notes
+
+
+KNOWN_PROFILE_KEYS = {
+    "nickname", "nick", "name", "userIdHash", "userId",
+    "userRoleCode", "badge", "streamingProperty",
+    "profileImageUrl", "title", "verifiedMark",
+    "activityBadges", "viewerBadges",
+}
+
+
+def print_chat(packet: dict[str, Any], dump_profile: bool = True) -> dict[str, Any] | None:
     result = None
     for body in iter_bodies(packet):
         profile = parse_json_field(body.get("profile"))
@@ -134,24 +199,32 @@ def print_chat(packet: dict[str, Any]) -> dict[str, Any] | None:
         role = profile.get("userRoleCode") or body.get("userRoleCode") or ""
         emojis = extras.get("emojis", {}) if isinstance(extras, dict) else {}
 
-        streaming_prop = profile.get("streamingProperty") or {}
-        raw_color = (streaming_prop.get("nicknameColor") or {}).get("colorCode") or ""
-        nickname_color = f"#{raw_color}" if raw_color and not raw_color.startswith("#") else raw_color
+        badges, badge_notes = extract_badges(profile)
+        unknown_profile_keys = [k for k in profile if k not in KNOWN_PROFILE_KEYS]
 
-        print(f"[{now()}] CHAT [{nickname}] role={role} color={nickname_color} user={user_id}: {message}")
+        print(f"[{now()}] CHAT [{nickname}] role={role} user={user_id}: {message}")
+        for label, title, url in badges:
+            title_str = f" ({title})" if title else ""
+            print(f"[{now()}]   [{label}]{title_str} {url}")
+        for note in badge_notes:
+            print(f"[{now()}]   [badge-note] {note}")
         if emojis:
             print(f"[{now()}]   emojis={json.dumps(emojis, ensure_ascii=False)}")
         if extras:
             print(f"[{now()}]   extras keys={list(extras.keys())}")
+        if unknown_profile_keys:
+            print(f"[{now()}]   !! unknown profile keys={unknown_profile_keys}")
+        if dump_profile:
+            print(f"[{now()}]   profile={json.dumps(profile, ensure_ascii=False)}")
 
         result = {
             "nickname": nickname,
             "message": message,
             "role": role,
             "user_id": user_id,
-            "nickname_color": nickname_color,
             "extras": extras,
             "emojis": emojis,
+            "badges": [{"label": lbl, "title": t, "url": url} for lbl, t, url in badges],
         }
     return result
 
@@ -161,6 +234,7 @@ async def connect_chat(
     access_token: str,
     ws_url: str | None,
     dump_raw: bool,
+    dump_profile: bool,
     save_file: Path | None,
 ):
     target = ws_url or random.choice(WS_SERVERS)
@@ -188,7 +262,7 @@ async def connect_chat(
             if cmd == 0:
                 await send_pong(ws, packet, chat_channel_id)
             elif cmd in CHAT_CMDS:
-                parsed = print_chat(packet)
+                parsed = print_chat(packet, dump_profile=dump_profile)
                 if save_file and parsed:
                     with save_file.open("a", encoding="utf-8") as f:
                         f.write(json.dumps(parsed, ensure_ascii=False) + "\n")
@@ -202,6 +276,7 @@ async def run_forever(
     forced_chat_channel_id: str,
     ws_url: str | None,
     dump_raw: bool,
+    dump_profile: bool,
     save_file: Path | None,
     reconnect_delay: int = 5,
     chatid_retry_delay: int = 30,
@@ -222,7 +297,7 @@ async def run_forever(
                 await asyncio.sleep(chatid_retry_delay)
                 continue
 
-            await connect_chat(chat_channel_id, access_token, ws_url, dump_raw, save_file)
+            await connect_chat(chat_channel_id, access_token, ws_url, dump_raw, dump_profile, save_file)
 
         except KeyboardInterrupt:
             raise
@@ -238,6 +313,7 @@ async def main():
     parser.add_argument("--chat-channel-id", default="", help="Skip live-detail and connect with this chatChannelId.")
     parser.add_argument("--ws-url", default="", help="Override websocket URL.")
     parser.add_argument("--dump-raw", action="store_true", help="Print full packets.")
+    parser.add_argument("--dump-profile", action="store_true", default=True, help="Print full profile JSON for each chat message.")
     parser.add_argument("--save", default="", help="Append parsed chat lines to this file (JSONL).")
     parser.add_argument("--no-reconnect", action="store_true", help="Exit on disconnect instead of reconnecting.")
     args = parser.parse_args()
@@ -252,7 +328,7 @@ async def main():
         if not chat_channel_id:
             print(f"[{now()}] chatChannelId is empty. Is the channel live?")
             return
-        await connect_chat(chat_channel_id, args.access_token, args.ws_url or None, args.dump_raw, save_file)
+        await connect_chat(chat_channel_id, args.access_token, args.ws_url or None, args.dump_raw, args.dump_profile, save_file)
     else:
         await run_forever(
             channel_id=args.channel_id,
@@ -260,6 +336,7 @@ async def main():
             forced_chat_channel_id=args.chat_channel_id,
             ws_url=args.ws_url or None,
             dump_raw=args.dump_raw,
+            dump_profile=args.dump_profile,
             save_file=save_file,
             reconnect_delay=5,
             chatid_retry_delay=30,

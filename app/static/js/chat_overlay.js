@@ -36,10 +36,34 @@ function resolveNameColor(payload) {
     if (isPreview && hexColorPattern.test(payload.name_color || "")) {
         return payload.name_color;
     }
-    if (hexColorPattern.test(payload.nickname_color || "")) {
-        return payload.nickname_color;
-    }
     return randomNameColor();
+}
+
+const emojiPattern = /\{:(\w+):\}/g;
+
+function renderMessageContent(container, message, emojis) {
+    emojiPattern.lastIndex = 0;
+    let lastIndex = 0;
+    let match;
+    while ((match = emojiPattern.exec(message)) !== null) {
+        if (match.index > lastIndex) {
+            container.appendChild(document.createTextNode(message.slice(lastIndex, match.index)));
+        }
+        const emojiUrl = emojis && emojis[match[1]];
+        if (emojiUrl) {
+            const img = document.createElement("img");
+            img.className = "chat-emoji";
+            img.src = emojiUrl;
+            img.alt = match[0];
+            container.appendChild(img);
+        } else {
+            container.appendChild(document.createTextNode(match[0]));
+        }
+        lastIndex = emojiPattern.lastIndex;
+    }
+    if (lastIndex < message.length) {
+        container.appendChild(document.createTextNode(message.slice(lastIndex)));
+    }
 }
 
 function addMessage(payload) {
@@ -48,10 +72,10 @@ function addMessage(payload) {
 
     const name = document.createElement("span");
     name.className = "chat-name";
-    if (payload.badge_url) {
+    for (const url of payload.badges || []) {
         const badge = document.createElement("img");
         badge.className = "chat-badge";
-        badge.src = payload.badge_url;
+        badge.src = url;
         badge.alt = "";
         name.appendChild(badge);
     }
@@ -63,7 +87,7 @@ function addMessage(payload) {
 
     const text = document.createElement("span");
     text.className = "chat-text";
-    text.textContent = payload.message || "";
+    renderMessageContent(text, payload.message || "", payload.emojis);
 
     item.append(name, text);
     overlay.appendChild(item);
