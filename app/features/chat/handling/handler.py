@@ -83,7 +83,7 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
     from app.core.database import get_session_factory
     session_factory = get_session_factory()
     if not session_factory:
-        logger.error("DB Session Factory is not initialized.")
+        logger.error("DB 세션 팩토리가 초기화되지 않았습니다.")
         return
 
     async with session_factory() as db:

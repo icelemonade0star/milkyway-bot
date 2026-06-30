@@ -80,7 +80,7 @@ class ChatService:
             return config
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             raise HTTPException(status_code=500, detail="DB update failed.")
 
 
@@ -92,7 +92,7 @@ class ChatService:
             return await self.db.get(models.V2ChannelConfig, v2_channel.id)
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             raise HTTPException(status_code=500, detail="DB lookup failed.")
         
 
@@ -126,7 +126,7 @@ class ChatService:
 
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             raise HTTPException(status_code=500, detail="DB 조회 중 오류가 발생했습니다.")
 
     async def get_global_command(self, command: str):
@@ -146,7 +146,7 @@ class ChatService:
             return result.scalars().all()
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             return []
             
     async def get_channel_commands(self, channel_id: str, platform: str):
@@ -163,7 +163,7 @@ class ChatService:
             return result.scalars().all()
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             return []
             
 
@@ -200,7 +200,7 @@ class ChatService:
             return None
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             return None
 
 
@@ -262,7 +262,7 @@ class ChatService:
             return "created", command
         except Exception as e:
             await self.db.rollback()
-            logger.error("Add chat command failed: %s", e)
+            logger.error("채팅 명령어 추가 실패: %s", e)
             return "db_error", None
 
 
@@ -303,7 +303,7 @@ class ChatService:
             return "updated"
         except Exception as e:
             await self.db.rollback()
-            logger.error("Update chat command failed: %s", e)
+            logger.error("채팅 명령어 수정 실패: %s", e)
             return "db_error"
 
     async def delete_chat_command(self, channel_id: str, command: str, platform: str):
@@ -317,7 +317,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            logger.error("DB operation failed: %s", e)
+            logger.error("DB 작업 실패: %s", e)
             return False
 
     # --- 인사말(Greeting) 관련 메서드 ---
@@ -335,7 +335,7 @@ class ChatService:
             result = await self.db.execute(stmt)
             return result.scalars().all()
         except Exception as e:
-            logger.error("Greetings fetch failed: %s", e)
+            logger.error("인사말 목록 조회 실패: %s", e)
             return []
 
 
@@ -371,7 +371,7 @@ class ChatService:
                     return greet_obj
             return None
         except Exception as e:
-            logger.error("Get greeting failed: %s", e)
+            logger.error("인사말 조회 실패: %s", e)
             return None
 
 
@@ -408,7 +408,7 @@ class ChatService:
             return "created", keyword
         except Exception as e:
             await self.db.rollback()
-            logger.error("Add greeting failed: %s", e)
+            logger.error("인사말 추가 실패: %s", e)
             return None, None
 
 
@@ -431,7 +431,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            logger.error("Update greeting failed: %s", e)
+            logger.error("인사말 수정 실패: %s", e)
             return False
 
     async def delete_greeting(self, channel_id: str, keyword: str, platform: str):
@@ -446,7 +446,7 @@ class ChatService:
             return True
         except Exception as e:
             await self.db.rollback()
-            logger.error("Delete greeting failed: %s", e)
+            logger.error("인사말 삭제 실패: %s", e)
             return False
 
     # --- 출석 체크 관련 메서드 ---
@@ -515,7 +515,7 @@ class ChatService:
             }
         except Exception as e:
             await self.db.rollback()
-            logger.error("Attendance check failed: %s", e)
+            logger.error("출석 체크 실패: %s", e)
             return None
 
     async def _mark_stream_closed(self, channel_id: str, platform: str, raw_status: dict | None = None):
@@ -724,12 +724,12 @@ class ChatService:
 
                     await trigger_live_notification_check(platform, channel_id)
                 except Exception as e:
-                    logger.warning("Live notification trigger from stream sync failed: %s", e)
+                    logger.warning("스트림 동기화 중 방송 알림 트리거 실패: %s", e)
 
             return v2_session
         except Exception as e:
             await self.db.rollback()
-            logger.error("Sync stream session failed: %s", e)
+            logger.error("스트림 세션 동기화 실패: %s", e)
             return None
 
 async def get_chat_service(db: AsyncSession = Depends(get_async_db)):

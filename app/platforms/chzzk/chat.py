@@ -102,7 +102,7 @@ class ChzzkSessions:
         response = await _client.get(url, headers=headers)
         
         if response.status_code == 200:
-            logger.debug(f"url 정상: {response.json()}")
+            logger.debug(f"URL 응답 정상: {response.json()}")
             data = response.json()
             
             # 응답 데이터에서 실제 소켓 서버 주소만 추출
@@ -110,7 +110,7 @@ class ChzzkSessions:
             self.socket_url = socket_url
         else:
             # 실패하면 에러 코드 찍고 끝냄
-            logger.error(f"Error: {response.status_code} - {response.text}")
+            logger.error(f"오류: {response.status_code} - {response.text}")
             self.socket_url = None
         
     async def create_session(self):

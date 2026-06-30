@@ -60,7 +60,7 @@ class ChatOverlayBroadcaster:
             try:
                 await connection.websocket.send_json(payload)
             except Exception as exc:
-                logger.debug("Overlay websocket send failed: %s", exc)
+                logger.debug("오버레이 웹소켓 전송 실패: %s", exc)
                 stale.append(connection.websocket)
 
         for websocket in stale:

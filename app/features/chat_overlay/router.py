@@ -24,7 +24,7 @@ def safe_overlay_options(raw_options: dict | None) -> OverlayStyleOptions:
     try:
         return OverlayStyleOptions.model_validate(raw_options or {})
     except ValidationError as exc:
-        logger.warning("Invalid overlay options, using defaults: %s", exc)
+        logger.warning("잘못된 오버레이 옵션, 기본값 사용: %s", exc)
         return OverlayStyleOptions()
 
 

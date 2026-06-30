@@ -28,7 +28,7 @@ class LiveStatePoller:
 
     async def run(self):
         logger.info(
-            "Live state poller started: interval=%ss concurrency=%s",
+            "라이브 상태 폴러 시작: interval=%ss concurrency=%s",
             self.interval_seconds,
             self.concurrency,
         )
@@ -36,14 +36,14 @@ class LiveStatePoller:
             try:
                 await self.poll_once()
             except Exception as e:
-                logger.warning("Live state poll cycle failed: %s", e)
+                logger.warning("라이브 상태 폴링 사이클 실패: %s", e)
 
             try:
                 await asyncio.wait_for(self._stopped.wait(), timeout=self.interval_seconds)
             except asyncio.TimeoutError:
                 pass
 
-        logger.info("Live state poller stopped")
+        logger.info("라이브 상태 폴러 중지됨")
 
     def stop(self):
         self._stopped.set()
@@ -67,7 +67,7 @@ class LiveStatePoller:
         refreshed_count = 0
         for result in results:
             if isinstance(result, Exception):
-                logger.warning("Live state poll task failed: %s", result)
+                logger.warning("라이브 상태 폴링 태스크 실패: %s", result)
             elif result:
                 refreshed_count += 1
         return refreshed_count
@@ -90,14 +90,14 @@ class LiveStatePoller:
         try:
             provider = get_live_provider(channel.platform)
         except ValueError:
-            logger.debug("No live provider for platform=%s", channel.platform)
+            logger.debug("플랫폼에 대한 라이브 프로바이더 없음: platform=%s", channel.platform)
             return False
 
         try:
             live_status = await provider.get_live_status(channel.platform_channel_id)
         except Exception as e:
             logger.warning(
-                "Live status lookup failed: platform=%s channel=%s error=%s",
+                "라이브 상태 조회 실패: platform=%s channel=%s error=%s",
                 channel.platform,
                 channel.platform_channel_id,
                 e,
@@ -130,7 +130,7 @@ class LiveStatePoller:
 
                     await trigger_live_notification_check(db_channel.platform, db_channel.platform_channel_id)
                 except Exception as e:
-                    logger.warning("Discord live notification trigger failed: %s", e)
+                    logger.warning("Discord 방송 알림 트리거 실패: %s", e)
 
             return True
 
@@ -223,4 +223,4 @@ class LiveStatePoller:
             else:
                 await redis_client.set(cache_key, value, ex=60)
         except Exception as e:
-            logger.warning("Live status cache update failed: %s", e)
+            logger.warning("방송 상태 캐시 업데이트 실패: %s", e)

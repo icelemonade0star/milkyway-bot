@@ -20,7 +20,7 @@ def _invalidate_redis_channel_key(platform: str, platform_channel_id: str):
 
         RedisConfigService.invalidate_channel_key(platform, platform_channel_id)
     except Exception as e:
-        logger.warning("Redis channel key invalidation failed: %s", e)
+        logger.warning("Redis 채널 키 무효화 실패: %s", e)
 
 
 @dataclass
@@ -122,7 +122,7 @@ class AuthService:
             await self.db.commit()
         except Exception as e:
             await self.db.rollback()
-            logger.error("save_default_platform_auth failed: %s", e)
+            logger.error("플랫폼 인증 정보 저장 실패: %s", e)
             raise HTTPException(status_code=500, detail="DB 저장 중 오류가 발생했습니다.")
 
         _invalidate_redis_channel_key(platform, platform_auth.channel_id)
@@ -166,7 +166,7 @@ class AuthService:
                 for channel, credential in result.all()
             ]
         except Exception as e:
-            logger.error("Auth list fetch failed: %s", e)
+            logger.error("인증 목록 조회 실패: %s", e)
             return []
         
     async def get_auth_token_by_id(self, platform: str, channel_id: str | None = None):
@@ -186,7 +186,7 @@ class AuthService:
             row = (await self.db.execute(stmt)).one_or_none()
         
             if not row:
-                logger.warning("Auth token not found: channel_id=%s", channel_id)
+                logger.warning("인증 토큰 없음: channel_id=%s", channel_id)
                 return None
                 
             channel, credential = row
@@ -200,7 +200,7 @@ class AuthService:
                 updated_at=channel.updated_at,
             )
         except Exception as e:
-            logger.error("Auth token fetch failed: %s", e)
+            logger.error("인증 토큰 조회 실패: %s", e)
             return None
         
     async def update_auth_token(self, platform: str, channel_id: str, data: dict):
@@ -213,7 +213,7 @@ class AuthService:
         new_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
         if not new_access_token:
-            logger.warning("Token update failed: accessToken missing. data=%s", data)
+            logger.warning("토큰 갱신 실패: accessToken 없음, data=%s", data)
             return None
 
         # 3. DB 업데이트 (여기에 UPDATE 쿼리가 필요합니다)
@@ -253,7 +253,7 @@ class AuthService:
             await self.db.commit()
         except Exception as e:
             await self.db.rollback()
-            logger.error("Token delete failed: %s", e)
+            logger.error("토큰 삭제 실패: %s", e)
             return False
 
         _invalidate_redis_channel_key(platform, channel_id)
@@ -337,13 +337,13 @@ class AuthService:
                 if keys_to_delete:
                     await redis_client.delete(*keys_to_delete)
             except Exception as e:
-                logger.warning("Cleanup Redis cache failed; ignoring: %s", e)
+                logger.warning("Redis 캐시 정리 실패 (무시): %s", e)
 
             return list(inactive_ids)
 
         except Exception as e:
             await self.db.rollback()
-            logger.error("Inactive channel cleanup failed: %s", e)
+            logger.error("비활성 채널 정리 실패: %s", e)
             return []
 
 

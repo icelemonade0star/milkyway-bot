@@ -149,7 +149,7 @@ class DashboardService:
             await self.db.commit()
         except Exception as e:
             await self.db.rollback()
-            logger.warning("Dashboard greeting delete failed: %s", e)
+            logger.warning("대시보드 인사말 삭제 실패: %s", e)
             return False
 
         await self.redis_service.refresh_greetings_cache(channel_id, platform)

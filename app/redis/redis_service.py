@@ -141,7 +141,7 @@ class RedisConfigService:
             if prefix:
                 return prefix
         except Exception as e:
-            logger.warning("Redis lookup failed; falling back to DB: %s", e)
+            logger.warning("Redis 조회 실패, DB로 폴백: %s", e)
         
         # 2. Redis에 없으면 DB에서 조회
         session_factory = get_session_factory()
@@ -160,7 +160,7 @@ class RedisConfigService:
                     if cache_key:
                         await redis_client.set(cache_key, db_prefix, ex=86400)
                 except Exception as e:
-                    logger.warning("Redis prefix save failed: %s", e)
+                    logger.warning("Redis 접두사 저장 실패: %s", e)
                 return db_prefix
         
         # 4. DB에도 정보가 없다면 기본값 반환
@@ -195,7 +195,7 @@ class RedisConfigService:
             if cache_key:
                 await redis_client.set(cache_key, new_prefix, ex=86400)
         except Exception as e:
-            logger.warning("Redis prefix refresh failed: %s", e)
+            logger.warning("Redis 접두사 갱신 실패: %s", e)
 
     def _should_respond(self, message: str, keyword: str) -> bool:
         """
@@ -243,7 +243,7 @@ class RedisConfigService:
 
             await redis_client.set(cache_key, json.dumps(self.serialize_live_status(live_status)), ex=300)
         except Exception as e:
-            logger.warning("Live status prefetch failed: %s", e)
+            logger.warning("방송 상태 프리페치 실패: %s", e)
 
     async def get_greeting_response(
         self,
@@ -284,7 +284,7 @@ class RedisConfigService:
                         return response, True
 
         except Exception as e:
-            logger.warning("Redis greeting lookup failed: %s", e)
+            logger.warning("Redis 인사말 조회 실패: %s", e)
 
         return None, False
 
@@ -320,7 +320,7 @@ class RedisConfigService:
                         pipe.expire(cache_key, 300)
                         await pipe.execute()
             except Exception as e:
-                logger.warning("Redis greeting cache refresh failed: %s", e)
+                logger.warning("Redis 인사말 캐시 갱신 실패: %s", e)
 
     async def check_and_set_cooldown(self, channel_id: str, command: str, cooldown_seconds: int, platform: str) -> bool:
         """
@@ -341,5 +341,5 @@ class RedisConfigService:
             return not was_set
 
         except Exception as e:
-            logger.warning("Redis cooldown check failed: %s", e)
+            logger.warning("Redis 쿨타임 확인 실패: %s", e)
             return False # 에러 시 쿨타임 없이 실행 허용
