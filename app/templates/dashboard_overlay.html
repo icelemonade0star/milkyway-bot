@@ -72,6 +72,10 @@
                                         <input name="show_name" type="checkbox">
                                         <span>닉네임 표시</span>
                                     </label>
+                                    <label class="check-control">
+                                        <input name="name_wrap" type="checkbox">
+                                        <span>닉네임 줄바꿈</span>
+                                    </label>
                                 </div>
                             </div>
                         </section>
@@ -252,6 +256,7 @@
                     <div class="link-row">
                         <input id="overlayUrl" value="{{ overlay_url }}" readonly>
                         <button type="button" id="copyUrl">복사</button>
+                        <button type="button" id="copyUrlWithPreset" title="현재 프리셋으로 고정된 링크로 복사합니다." disabled>프리셋 복사</button>
                     </div>
                     <p class="hint">OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 채팅이 표시됩니다.</p>
                 </div>

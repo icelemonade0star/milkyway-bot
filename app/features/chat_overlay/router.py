@@ -1,6 +1,7 @@
 import logging
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -43,30 +44,52 @@ def overlay_template_context(request: Request, channel, setting, options: Overla
 async def chat_overlay_by_channel(
     platform_channel_id: str,
     request: Request,
+    preset: str | None = Query(default=None),
     db: AsyncSession = Depends(get_async_db),
 ):
-    row = await ChatOverlayService(db).get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+    service = ChatOverlayService(db)
+    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
     if not row:
         raise HTTPException(status_code=404, detail="Overlay not found.")
 
     channel, setting = row
-    options = safe_overlay_options(setting.style_options)
+    display_setting = setting
+
+    if preset:
+        preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
+        if preset_row:
+            display_setting = preset_row
+
+    options = safe_overlay_options(display_setting.style_options)
+    ws_path = f"/overlay/ws/chzzk/{platform_channel_id}"
+    if preset:
+        ws_path += f"?preset={quote(preset, safe='')}"
     return templates.TemplateResponse(
         "chat_overlay.html",
-        overlay_template_context(request, channel, setting, options, f"/overlay/ws/chzzk/{platform_channel_id}"),
+        overlay_template_context(request, channel, display_setting, options, ws_path),
     )
 
 
 @overlay_router.websocket("/ws/chzzk/{platform_channel_id}")
-async def chat_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id: str):
+async def chat_overlay_ws_by_channel(
+    websocket: WebSocket,
+    platform_channel_id: str,
+    preset: str | None = Query(default=None),
+):
     session_factory = websocket.app.state.SessionLocal
     async with session_factory() as db:
-        row = await ChatOverlayService(db).get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+        service = ChatOverlayService(db)
+        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
         if not row:
             await websocket.close(code=1008)
             return
         channel, setting = row
-        options = safe_overlay_options(setting.style_options)
+        display_setting = setting
+        if preset:
+            preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
+            if preset_row:
+                display_setting = preset_row
+        options = safe_overlay_options(display_setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
     await connect_overlay_websocket(websocket, platform_channel_id, options)

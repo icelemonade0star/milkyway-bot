@@ -19,6 +19,7 @@ let styleMode = JSON.parse(document.getElementById("overlayStyleMode").textConte
 let presets = JSON.parse(document.getElementById("overlayPresetData").textContent);
 let previewMode = "sample";
 let syncingStyleMode = false;
+let activePresetName = null;
 
 function setStatus(message) {
     statusEl.textContent = message;
@@ -165,6 +166,7 @@ function getStyleOptions() {
         shadow_strength: Number(form.elements.shadow_strength.value),
         animation: form.elements.animation.value,
         show_name: form.elements.show_name.checked,
+        name_wrap: form.elements.name_wrap.checked,
         bubble_style: form.elements.bubble_style.value,
         blocked_nicknames: readLineList(form.elements.blocked_nicknames.value),
         blocked_roles: Array.from(form.elements.blocked_roles)
@@ -313,6 +315,8 @@ async function applyPreset(id) {
     setControlValues(data.preset.style_options);
     setStyleMode(data.preset.style_mode);
     cssInput.value = data.preset.custom_css;
+    activePresetName = data.preset.name;
+    document.getElementById("copyUrlWithPreset").disabled = false;
     setStatus(`'${data.preset.name}' 프리셋을 적용했습니다.`);
     refreshPreview();
 }
@@ -323,6 +327,11 @@ async function deletePreset(id) {
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || "프리셋을 삭제하지 못했습니다.");
+    }
+    const deleted = presets.find((p) => p.id === id);
+    if (deleted && deleted.name === activePresetName) {
+        activePresetName = null;
+        document.getElementById("copyUrlWithPreset").disabled = true;
     }
     presets = presets.filter((preset) => preset.id !== id);
     renderPresets();
@@ -400,6 +409,13 @@ form.querySelectorAll('input[type="range"]').forEach((input) => {
 document.getElementById("copyUrl").addEventListener("click", async () => {
     await navigator.clipboard.writeText(overlayUrl.value);
     setStatus("링크를 복사했습니다.");
+});
+
+document.getElementById("copyUrlWithPreset").addEventListener("click", async () => {
+    if (!activePresetName) return;
+    const url = `${overlayUrl.value}?preset=${encodeURIComponent(activePresetName)}`;
+    await navigator.clipboard.writeText(url);
+    setStatus(`'${activePresetName}' 프리셋 링크를 복사했습니다.`);
 });
 
 setControlValues(currentOptions);

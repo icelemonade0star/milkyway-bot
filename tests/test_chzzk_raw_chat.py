@@ -313,7 +313,7 @@ async def main():
     parser.add_argument("--chat-channel-id", default="", help="Skip live-detail and connect with this chatChannelId.")
     parser.add_argument("--ws-url", default="", help="Override websocket URL.")
     parser.add_argument("--dump-raw", action="store_true", help="Print full packets.")
-    parser.add_argument("--dump-profile", action="store_true", default=True, help="Print full profile JSON for each chat message.")
+    parser.add_argument("--dump-profile", action=argparse.BooleanOptionalAction, default=True, help="Print full profile JSON. Use --no-dump-profile to disable.")
     parser.add_argument("--save", default="", help="Append parsed chat lines to this file (JSONL).")
     parser.add_argument("--no-reconnect", action="store_true", help="Exit on disconnect instead of reconnecting.")
     args = parser.parse_args()

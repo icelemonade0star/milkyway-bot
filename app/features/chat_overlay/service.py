@@ -41,7 +41,11 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
         "none": "none",
     }[options.animation]
     animation = "none" if animation_name == "none" else f"{animation_name} 180ms ease-out"
-    name_display = "inline" if options.show_name else "none"
+    name_display = "block" if options.name_wrap else "inline"
+    if not options.show_name:
+        name_display = "none"
+    name_margin_right = 0 if options.name_wrap else 8
+    name_margin_bottom = 2 if options.name_wrap else 0
     text_shadow = "none"
     box_shadow = "none"
     if options.shadow_strength:
@@ -154,7 +158,8 @@ html, body {{
 /* 말풍선 안의 닉네임 텍스트입니다. */
 .chat-name {{
     display: {name_display};
-    margin-right: 8px;
+    margin-right: {name_margin_right}px;
+    margin-bottom: {name_margin_bottom}px;
     color: {options.name_color};
     font-weight: 700;
 }}
@@ -257,6 +262,18 @@ class ChatOverlayService:
         if not channel or not setting:
             return None
         return channel, setting
+
+    async def get_preset_by_name(self, platform: str, platform_channel_id: str, preset_name: str):
+        channel = await self.get_channel(platform, platform_channel_id)
+        if not channel:
+            return None
+        result = await self.db.execute(
+            select(models.V2ChatOverlayPreset).where(
+                models.V2ChatOverlayPreset.channel_id == channel.id,
+                models.V2ChatOverlayPreset.name == preset_name,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def update_setting(
         self,
