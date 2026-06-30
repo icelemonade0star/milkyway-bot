@@ -1,211 +1,86 @@
-﻿import asyncio
-import json
 import logging
-import re
-from app.redis.redis_service import RedisConfigService
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.core.database import get_session_factory
-from app.db import models
-from app.features.chat.service import ChatService
-from app.features.chat.handling.placeholders import has_attendance_placeholders, render_placeholders
-from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
-from app.core.config import ALLOWED_PREFIXES
-from app.features.discord_bot.cogs.discord_service import DiscordService
-from app.features.discord_bot.cogs.chzzk_notifications import invalidate_notification_cache
-from app.platforms.constants import PLATFORM_CHZZK
 
-# 로거 설정
+from app.redis.redis_service import RedisConfigService
+from app.features.chat.service import ChatService
+from app.features.chat.handling.helpers import CHAT_PLATFORM, ADMIN_SYSTEM_COMMANDS
+from app.features.chat.handling.placeholders import has_attendance_placeholders, render_placeholders
+from app.features.chat.handling.attendance import (
+    fire_attendance_task,
+    handle_custom_attendance,
+    handle_global_attendance,
+    process_greeting_attendance_with_lock,
+)
+from app.features.chat.handling.cmd_chat import (
+    handle_delete_command,
+    handle_list_channel_commands,
+    handle_list_commands,
+    handle_register_command,
+    handle_text_response,
+    handle_update_prefix,
+)
+from app.features.chat.handling.cmd_greeting import (
+    handle_delete_greeting,
+    handle_list_greetings,
+    handle_register_greeting,
+)
+from app.features.chat.handling.cmd_notification import (
+    handle_delete_notification,
+    handle_set_notification,
+)
+
 logger = logging.getLogger("MessageHandling")
 
-# 헬퍼 함수: 접두사 제거
-def strip_prefix(text: str) -> str:
-    if text and text[0] in ALLOWED_PREFIXES:
-        return text[1:]
-    return text
-
-# 모듈 레벨 컴파일 — 매 호출마다 재컴파일 방지
-_EMOTICON_PATTERN = re.compile(r'\{:[a-zA-Z0-9_]+:\}')
-# 모듈 레벨 싱글톤 — 매 메시지마다 인스턴스 생성 방지
 _redis_service = RedisConfigService()
-CHAT_PLATFORM = PLATFORM_CHZZK
-
-# 진행 중인 출석 처리를 추적 — 인사말 자동 출석과 출석 명령어가 같은 키를 공유해 중복 실행을 막습니다.
-_attendance_in_flight: set[str] = set()
-
-# 커스텀 명령어보다 우선 처리해야 하는 예약 시스템 명령어 목록
-_ADMIN_SYSTEM_COMMANDS = {
-    "명령어등록",
-    "명령어삭제",
-    "접두사수정",
-    "인사등록",
-    "인사삭제",
-    "알림설정",
-    "알림삭제",
-}
-
-# 헬퍼 함수: 이모티콘 체크
-def has_platform_emoticon(text: str) -> bool:
-    return bool(_EMOTICON_PATTERN.search(text))
-
-def get_attendance_response_template(response: str, status: str) -> str | None:
-    try:
-        payload = json.loads(response)
-    except (TypeError, json.JSONDecodeError):
-        if status in {"checked", "already_checked"}:
-            return response
-        return None
-
-    if not isinstance(payload, dict):
-        return None
-
-    template = payload.get(status)
-    if isinstance(template, str) and template.strip():
-        return template
-
-    if status == "already_checked":
-        checked_template = payload.get("checked")
-        if isinstance(checked_template, str) and checked_template.strip():
-            return checked_template
-
-    return None
-
-# 헬퍼 함수: 한국어 조사 판별
-def get_josa(word: str, josa_pair: str) -> str:
-    """
-    입력된 단어의 받침 유무에 따라 적절한 조사를 반환합니다.
-    사용법: get_josa("사과", "은/는") -> "는", get_josa("수박", "이/가") -> "이"
-    """
-    if not word:
-        return ""
-    last_char = word[-1]
-    first, second = josa_pair.split('/')
-    # 한글 유니코드 범위 (가 ~ 힣) 확인
-    if 0xAC00 <= ord(last_char) <= 0xD7A3:
-        # (문자코드 - 0xAC00) % 28 > 0 이면 받침 있음
-        has_batchim = (ord(last_char) - 0xAC00) % 28 > 0
-        return first if has_batchim else second
-    # 숫자인 경우 발음에 따라 조사 결정
-    elif last_char.isdigit():
-        # 0(영), 1(일), 3(삼), 6(육), 7(칠), 8(팔) -> 받침 있음
-        return first if last_char in "013678" else second
-    # 한글, 숫자가 아닌 경우(영어 등) 보통 받침 없는 쪽(뒤)을 기본값으로 사용
-    else:
-        return second
-
-# 헬퍼 함수: 명령어 인자 파싱 ( | 포함 공백 처리 )
-def parse_command_and_content(args_list):
-    if not args_list:
-        return None, None
-    
-    raw_cmd = args_list[0]
-    idx = 1
-    
-    # 파이프(|)가 포함된 명령어가 공백으로 분리된 경우를 처리
-    # 예: "룰| 규칙", "룰 |규칙", "룰 | 규칙" 등
-    while idx < len(args_list):
-        next_arg = args_list[idx]
-        if raw_cmd.endswith('|') or next_arg.startswith('|'):
-            raw_cmd += next_arg
-            idx += 1
-        else:
-            break
-        
-    cmd_no_prefix = strip_prefix(raw_cmd)
-    # | 기준으로 분리 후 각 항목의 공백 제거 및 빈 항목 필터링
-    cleaned_parts = [p.strip() for p in cmd_no_prefix.split('|') if p.strip()]
-    final_cmd = "|".join(cleaned_parts)
-    
-    # 남은 args를 content로 결합
-    content = " ".join(args_list[idx:]) if idx < len(args_list) else ""
-    
-    return final_cmd, content
-
-async def _process_attendance_in_new_session(channel_id: str, user_id: str, user_name: str):
-    session_factory = get_session_factory()
-    if not session_factory:
-        return None
-    async with session_factory() as db:
-        chat_service = ChatService(db)
-        return await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
-
-
-async def _attendance_task(channel_id: str, user_id: str, user_name: str):
-    task_key = f"{channel_id}:{user_id}"
-    try:
-        await _process_attendance_in_new_session(channel_id, user_id, user_name)
-    except Exception as e:
-        logger.warning("출석 처리 실패 [%s/%s]: %s", channel_id, user_id, e)
-    finally:
-        _attendance_in_flight.discard(task_key)
-
-
-async def _process_greeting_attendance_with_lock(channel_id: str, user_id: str, user_name: str):
-    """on_message 인사말 경로 전용: 자체 DB 세션을 열고 in-flight 락을 직접 관리합니다."""
-    task_key = f"{channel_id}:{user_id}"
-    if task_key in _attendance_in_flight:
-        return None
-
-    _attendance_in_flight.add(task_key)
-    try:
-        return await _process_attendance_in_new_session(channel_id, user_id, user_name)
-    except Exception as e:
-        logger.warning("출석 처리 실패 [%s/%s]: %s", channel_id, user_id, e)
-        return None
-    finally:
-        _attendance_in_flight.discard(task_key)
 
 
 async def on_message(channel_id: str, message_text: str, role: str, user_id: str, user_name: str):
-    # 순환 참조 방지를 위해 함수 내부에서 import
     from app.features.chat.session_manager import session_manager
-   
-    # 1. Prefix 조회 (Redis -> DB Fallback)
+
     prefix = await _redis_service.get_command_prefix(channel_id, CHAT_PLATFORM)
-    
-    # 접두사로 시작하지 않으면 인사말(Greeting) 체크
+
     if not message_text.startswith(prefix):
-        # DB 세션 팩토리 확인
+        from app.core.database import get_session_factory
         session_factory = get_session_factory()
         if session_factory:
-            # 인사말 체크 및 응답 (쿨타임이더라도 매칭 여부를 확인)
             greeting_resp, is_greeting = await _redis_service.get_greeting_response(
                 channel_id,
                 message_text.strip(),
                 CHAT_PLATFORM,
             )
-            
+
             if is_greeting:
-                attendance_result = None
                 attendance_attempted = False
-                if greeting_resp:
-                    if has_attendance_placeholders(greeting_resp):
-                        attendance_attempted = True
-                        attendance_result = await _process_greeting_attendance_with_lock(channel_id, user_id, user_name)
-                        if attendance_result is None:
-                            attendance_result = {"total": 0, "streak": 0}
+                attendance_result = None
+
+                if greeting_resp and has_attendance_placeholders(greeting_resp):
+                    attendance_attempted = True
+                    attendance_result = await process_greeting_attendance_with_lock(channel_id, user_id, user_name)
+                    if attendance_result is None:
+                        attendance_result = {"total": 0, "streak": 0}
 
                     session = session_manager.get_existing_session(channel_id)
                     if session:
                         await session.send_chat(render_placeholders(greeting_resp, user_name, attendance_result))
-                # 출석 체크: 이미 처리 중이면 태스크 생성 자체를 건너뜀
-                task_key = f"{channel_id}:{user_id}"
-                if not attendance_attempted and task_key not in _attendance_in_flight:
-                    _attendance_in_flight.add(task_key)
-                    asyncio.create_task(_attendance_task(channel_id, user_id, user_name))
+                elif greeting_resp:
+                    session = session_manager.get_existing_session(channel_id)
+                    if session:
+                        await session.send_chat(render_placeholders(greeting_resp, user_name, attendance_result))
+
+                if not attendance_attempted:
+                    fire_attendance_task(channel_id, user_id, user_name)
         return
 
-    # 3. 명령어 파싱
     content = message_text[len(prefix):].strip()
     if not content:
-        return # 접두사만 있는 경우
+        return
 
     parts = content.split()
     command = parts[0]
     args = parts[1:]
 
-    # 4. DB 연결 및 명령어 실행
+    from app.core.database import get_session_factory
     session_factory = get_session_factory()
     if not session_factory:
         logger.error("DB Session Factory is not initialized.")
@@ -216,357 +91,98 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
         if session:
             await on_command(db, session, channel_id, command, args, role, _redis_service, prefix, user_id, user_name)
 
-async def on_command(db: AsyncSession, session, channel_id: str, command: str, args: list, role: str, redis_service: RedisConfigService, prefix: str, user_id: str, user_name: str):
+
+async def on_command(
+    db: AsyncSession,
+    session,
+    channel_id: str,
+    command: str,
+    args: list,
+    role: str,
+    redis_service: RedisConfigService,
+    prefix: str,
+    user_id: str,
+    user_name: str,
+):
     chat_service = ChatService(db)
-    
-    # 커스텀 명령어와 글로벌 명령어를 순차적으로 조회합니다.
-    # NOTE: SQLAlchemy의 AsyncSession은 단일 세션 객체에 대한 동시 작업을 허용하지 않으므로,
-    # asyncio.gather를 사용한 병렬 조회가 IllegalStateChangeError를 유발했습니다.
+
+    # NOTE: SQLAlchemy AsyncSession은 단일 세션 객체에 대한 동시 작업을 허용하지 않으므로
+    # asyncio.gather 병렬 조회가 IllegalStateChangeError를 유발합니다.
     custom_cmd = await chat_service.get_chat_command(channel_id, command, CHAT_PLATFORM)
     result = await chat_service.get_global_commands(command)
+
     is_admin_system_command = (
         result
         and result.is_active
         and result.type == "system"
-        and result.command in _ADMIN_SYSTEM_COMMANDS
+        and result.command in ADMIN_SYSTEM_COMMANDS
     )
 
     if custom_cmd and custom_cmd.is_active and not is_admin_system_command:
         if custom_cmd.type == 'global':
-            # 쿨타임 체크
             if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
-
-            # response 값을 명령어 이름으로 사용하여 글로벌 명령어 로직으로 진입 (드문 케이스, 재조회)
             command = custom_cmd.response
             result = await chat_service.get_global_commands(command)
+
         elif custom_cmd.type == "attendance":
-            # 출석 명령어는 채널 전체가 아니라 시청자별 쿨타임을 적용합니다.
-            cooldown_key = f"{command}:user:{user_id}"
-            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
-                return
-
-            task_key = f"{channel_id}:{user_id}"
-            if task_key in _attendance_in_flight:
-                return
-
-            _attendance_in_flight.add(task_key)
-            try:
-                result_att = await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
-                if result_att:
-                    template = get_attendance_response_template(custom_cmd.response, result_att["status"])
-                    if template:
-                        await session.send_chat(render_placeholders(template, user_name, result_att))
-                    elif result_att["status"] == "not_streaming":
-                        await session.send_chat(f"@{user_name}님 방송 중에만 출석할 수 있습니다.")
-            finally:
-                _attendance_in_flight.discard(task_key)
+            await handle_custom_attendance(session, chat_service, channel_id, custom_cmd, user_id, user_name, redis_service, command)
             return
+
         else:
-            # 쿨타임 체크
             if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
-
-            await session.send_chat(render_placeholders(custom_cmd.response, user_name))
+            await handle_text_response(session, custom_cmd, user_name)
             return
 
-    if result and result.is_active:
-        # 권한 검사를 쿨타임 체크 전에 수행 — common_user가 쿨타임을 소비하지 않도록
-        if result.type == "system" and result.command in _ADMIN_SYSTEM_COMMANDS and role == 'common_user':
-            return
+    if not (result and result.is_active):
+        return
 
-        # 쿨타임 체크
-        if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds, CHAT_PLATFORM):
-            return
+    if result.type == "system" and result.command in ADMIN_SYSTEM_COMMANDS and role == 'common_user':
+        return
 
-        if result.type == "text":
-            # 텍스트 응답 전송
-            await session.send_chat(render_placeholders(result.response, user_name))
-            return
+    if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds, CHAT_PLATFORM):
+        return
 
-        elif result.type == "system":
+    if result.type == "text":
+        await handle_text_response(session, result, user_name)
+        return
 
-            if result.command == "명령어":
-                # 모든 활성 글로벌 명령어 조회
-                all_cmds = await chat_service.get_all_global_commands()
-                if all_cmds:
-                    cmd_names = [cmd.command.split('|')[0].strip() for cmd in all_cmds]
-                    response_message = f"기본 명령어: {', '.join(cmd_names)}"
-                    await session.send_chat(response_message)
-                return
-            
-            elif result.command == "채널명령어":
-                # 채널 전용 커스텀 명령어 조회
-                channel_cmds = await chat_service.get_channel_commands(channel_id, CHAT_PLATFORM)
-                if channel_cmds:
-                    cmd_names = [cmd.command.split('|')[0].strip() for cmd in channel_cmds]
-                    response_message = f"채널 명령어: {', '.join(cmd_names)}"
-                    await session.send_chat(response_message)
-                else:
-                    await session.send_chat("등록된 채널 명령어가 없습니다.")
-                return
-            
-            elif result.command == "명령어등록":
-                if len(args) < 2:
-                    await session.send_chat("사용법: !명령어등록 [명령어] [내용]")
-                    return
-                
-                new_cmd, new_response = parse_command_and_content(args)
-                if not new_cmd or not new_response:
-                    await session.send_chat("명령어와 내용을 모두 입력해주세요.")
-                    return
+    if result.type == "attendance":
+        await handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service, command)
+        return
 
-                if has_platform_emoticon(new_cmd) or has_platform_emoticon(new_response):
-                    await session.send_chat("명령어 또는 내용에 이모티콘을 포함할 수 없습니다.")
-                    return
+    if result.type == "system":
+        await _dispatch_system_command(session, db, chat_service, channel_id, result.command, args, user_name, redis_service)
 
-                # 명령어 등록/업데이트 시 글로벌 명령어와의 충돌 체크
-                status, actual_cmd = await chat_service.add_chat_command(
-                    channel_id,
-                    new_cmd,
-                    new_response,
-                    platform=CHAT_PLATFORM,
-                )
-                
-                if status in ("created", "updated"):
-                    if status == "updated":
-                        josa = get_josa(actual_cmd, "이/가")
-                        await session.send_chat(f"명령어 '{actual_cmd}'{josa} 수정되었습니다.")
-                    else:
-                        josa = get_josa(actual_cmd, "이/가")
-                        await session.send_chat(f"명령어 '{actual_cmd}'{josa} 등록되었습니다.")
-                elif status == "response_too_long":
-                    await session.send_chat(f"응답은 구분자(|)로 나눈 각 항목이 {MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.")
-                elif status == "command_too_long":
-                    await session.send_chat(f"명령어는 {MAX_COMMAND_NAME_CHARS}자 이하여야 합니다.")
-                elif status == "limit_exceeded":
-                    await session.send_chat(f"명령어는 최대 {MAX_COMMANDS_PER_CHANNEL}개까지 등록할 수 있습니다.")
-                else:
-                    # 글로벌 명령어와 충돌하는 경우
-                    josa = get_josa(new_cmd, "은/는")
-                    await session.send_chat(f"'{new_cmd}'{josa} 이미 존재하는 기본 명령어이거나 등록할 수 없는 명령어입니다.")
-                return
 
-            elif result.command == "명령어삭제":
-                if len(args) < 1:
-                    await session.send_chat("사용법: 명령어삭제 [명령어]")
-                    return
-                
-                target_cmd, _ = parse_command_and_content(args)
-                if not target_cmd:
-                    await session.send_chat("삭제할 명령어를 입력해주세요.")
-                    return
+async def _dispatch_system_command(session, db, chat_service, channel_id, command_name, args, user_name, redis_service):
+    if command_name == "명령어":
+        await handle_list_commands(session, chat_service)
 
-                cmd_obj = await chat_service.get_chat_command(channel_id, target_cmd, CHAT_PLATFORM)
-                if not cmd_obj:
-                    await session.send_chat(f"존재하지 않는 명령어입니다: {target_cmd}")
-                    return
-                
-                actual_cmd = cmd_obj.command
-                if await chat_service.delete_chat_command(channel_id, actual_cmd, CHAT_PLATFORM):
-                    josa = get_josa(actual_cmd, "이/가")
-                    await session.send_chat(f"명령어 '{actual_cmd}'{josa} 삭제되었습니다.")
-                else:
-                    await session.send_chat("명령어 삭제에 실패했습니다.")
-                return
+    elif command_name == "채널명령어":
+        await handle_list_channel_commands(session, chat_service, channel_id)
 
-            elif result.command == "접두사수정":
-                if len(args) < 1:
-                    await session.send_chat("사용법: 접두사수정 [새접두사]")
-                    return
-                new_prefix = args[0]
+    elif command_name == "명령어등록":
+        await handle_register_command(session, chat_service, channel_id, args)
 
-                # 접두사 화이트리스트 검증
-                if len(new_prefix) != 1 or new_prefix not in ALLOWED_PREFIXES:
-                    await session.send_chat(f"허용되지 않는 접두사입니다. 사용 가능: {', '.join(ALLOWED_PREFIXES)}")
-                    return
+    elif command_name == "명령어삭제":
+        await handle_delete_command(session, chat_service, channel_id, args)
 
-                # RedisConfigService를 통해 DB와 Redis 모두 업데이트
-                await redis_service.update_command_prefix(channel_id, new_prefix, CHAT_PLATFORM)
-                josa = get_josa(new_prefix, "으로/로")
-                await session.send_chat(f"접두사가 '{new_prefix}'{josa} 변경되었습니다.")
-                return
+    elif command_name == "접두사수정":
+        await handle_update_prefix(session, channel_id, args, redis_service)
 
-            # --- 인사말 관리 명령어 ---
-            elif result.command == "인사등록":
-                if len(args) < 2:
-                    await session.send_chat("사용법: !인사등록 [키워드] [응답]")
-                    return
-                
-                keywords_str, response = parse_command_and_content(args)
-                if not keywords_str or not response:
-                    await session.send_chat("키워드와 응답을 모두 입력해주세요.")
-                    return
-                
-                # 키워드는 이모티콘 허용 (채팅에서 이모티콘으로 인사하는 경우를 감지하기 위함)
-                if has_platform_emoticon(response):
-                    await session.send_chat("인사말 내용에 이모티콘을 포함할 수 없습니다.")
-                    return
+    elif command_name == "인사등록":
+        await handle_register_greeting(session, chat_service, channel_id, args, redis_service)
 
-                status, actual_keyword = await chat_service.add_greeting(
-                    channel_id,
-                    keywords_str,
-                    response,
-                    CHAT_PLATFORM,
-                )
-                if status == "limit_exceeded":
-                    await session.send_chat(f"인사말은 최대 {MAX_GREETINGS_PER_CHANNEL}개까지 등록할 수 있습니다.")
-                elif status == "response_too_long":
-                    await session.send_chat(f"응답은 구분자(|)로 나눈 각 항목이 {MAX_CHAT_RESPONSE_CHARS}자 이하여야 합니다.")
-                elif status == "updated":
-                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
-                    josa = get_josa(actual_keyword, "이/가")
-                    await session.send_chat(f"인사말 '{actual_keyword}'{josa} 수정되었습니다.")
-                elif status == "created":
-                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
-                    josa = get_josa(actual_keyword, "이/가")
-                    await session.send_chat(f"인사말 '{actual_keyword}'{josa} 등록되었습니다.")
-                else:
-                    await session.send_chat("인사말 등록에 실패했습니다.")
-                return
+    elif command_name == "인사삭제":
+        await handle_delete_greeting(session, chat_service, channel_id, args, redis_service)
 
-            elif result.command == "인사삭제":
-                if len(args) < 1:
-                    await session.send_chat("사용법: !인사삭제 [키워드]")
-                    return
-                
-                keywords_str, _ = parse_command_and_content(args)
-                if not keywords_str:
-                    await session.send_chat("삭제할 키워드를 입력해주세요.")
-                    return
+    elif command_name == "인사목록":
+        await handle_list_greetings(session, chat_service, channel_id)
 
-                target = await chat_service.get_greeting(channel_id, keywords_str, CHAT_PLATFORM)
-                if not target:
-                    await session.send_chat("등록되지 않은 인사말입니다.")
-                    return
+    elif command_name == "알림설정":
+        await handle_set_notification(session, db, channel_id, args, user_name)
 
-                actual_keyword = target.keyword
-                if await chat_service.delete_greeting(channel_id, actual_keyword, CHAT_PLATFORM):
-                    await redis_service.refresh_greetings_cache(channel_id, CHAT_PLATFORM)
-                    josa = get_josa(actual_keyword, "이/가")
-                    await session.send_chat(f"인사말 '{actual_keyword}'{josa} 삭제되었습니다.")
-                else:
-                    await session.send_chat("인사말 삭제에 실패했습니다.")
-                return
-
-            elif result.command == "인사목록":
-                greetings = await chat_service.get_channel_greetings(channel_id, CHAT_PLATFORM)
-                if greetings:
-                    keywords = [g.keyword.split('|')[0].strip() for g in greetings]
-                    await session.send_chat(f"등록된 인사말: {', '.join(keywords)}")
-                else:
-                    await session.send_chat("등록된 인사말이 없습니다.")
-                return
-
-            elif result.command == "알림설정":
-                
-                if len(args) < 1:
-                    await session.send_chat("사용법: 우선, !디스코드봇으로 나온 url로 디스코드에 봇을 초대해주세요. 그리고 채팅창에 !알림설정 [디스코드채널ID]를 입력하세요.")
-                    return
-                
-                discord_channel_id = args[0]
-
-                # [검증] 디스코드 메시지 발송 테스트
-                discord_service = DiscordService()
-                test_msg = f"🔔 [MilkywayBot] '{user_name}'님의 방송 알림이 이 채널로 정상적으로 설정되었습니다."
-                
-                if not await discord_service.send_message(discord_channel_id, test_msg):
-                    await session.send_chat(f"❌ 설정 실패: 디스코드 채널({discord_channel_id})에 테스트 메시지를 보낼 수 없습니다. 봇이 초대되었는지, 채널 ID가 맞는지 확인해주세요.")
-                    return
-                
-                try:
-                    v2_channel = (await db.execute(
-                        select(models.V2Channel).where(
-                            models.V2Channel.platform == CHAT_PLATFORM,
-                            models.V2Channel.platform_channel_id == channel_id,
-                        )
-                    )).scalar_one_or_none()
-
-                    if not v2_channel:
-                        await session.send_chat("알림 설정 실패: v2 채널 정보를 찾을 수 없습니다.")
-                        return
-
-                    existing = (await db.execute(
-                        select(models.V2LiveNotification).where(
-                            models.V2LiveNotification.channel_id == v2_channel.id,
-                            models.V2LiveNotification.destination_platform == "discord",
-                        ).limit(1)
-                    )).scalar_one_or_none()
-
-                    if existing:
-                        existing.destination_channel_id = discord_channel_id
-                        existing.mention_role = existing.mention_role or "@everyone"
-                        existing.is_active = True
-                    else:
-                        db.add(models.V2LiveNotification(
-                            channel_id=v2_channel.id,
-                            destination_platform="discord",
-                            destination_channel_id=discord_channel_id,
-                            mention_role="@everyone",
-                            is_active=True,
-                        ))
-
-                    await db.commit()
-                    invalidate_notification_cache()
-                    msg = f"알림 설정이 {'업데이트' if existing else '등록'}되었습니다. (Discord ID: {discord_channel_id})"
-                    await session.send_chat(msg)
-                except Exception as e:
-                    await db.rollback()
-                    logger.error(f"알림 설정 저장 실패: {e}")
-                    await session.send_chat("알림 설정 중 오류가 발생했습니다.")
-                return
-
-            elif result.command == "알림삭제":
-                v2_channel = (await db.execute(
-                    select(models.V2Channel).where(
-                        models.V2Channel.platform == CHAT_PLATFORM,
-                        models.V2Channel.platform_channel_id == channel_id,
-                    )
-                )).scalar_one_or_none()
-
-                if not v2_channel:
-                    await session.send_chat("활성화된 알림 설정이 없습니다.")
-                    return
-
-                notifications = (await db.execute(
-                    select(models.V2LiveNotification).where(
-                        models.V2LiveNotification.channel_id == v2_channel.id,
-                        models.V2LiveNotification.destination_platform == "discord",
-                        models.V2LiveNotification.is_active == True,
-                    )
-                )).scalars().all()
-                existing = notifications[0] if notifications else None
-                for notification in notifications:
-                    notification.is_active = False
-
-                if existing:
-                    await db.commit()
-                    invalidate_notification_cache()
-                    await session.send_chat("알림 설정이 해제되었습니다.")
-                else:
-                    await session.send_chat("활성화된 알림 설정이 없습니다.")
-                return
-        elif result.type == "attendance":
-            cooldown_key = f"{command}:user:{user_id}"
-            if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, result.cooldown_seconds, CHAT_PLATFORM):
-                return
-
-            task_key = f"{channel_id}:{user_id}"
-            if task_key in _attendance_in_flight:
-                return
-
-            _attendance_in_flight.add(task_key)
-            try:
-                result_att = await chat_service.process_attendance(channel_id, user_id, user_name, CHAT_PLATFORM)
-                if result_att:
-                    if result_att["status"] == "checked":
-                        msg = f"@{user_name}님 출석 체크 완료! (연속 {result_att['streak']}일 / 총 {result_att['total']}일)"
-                        await session.send_chat(msg)
-                    elif result_att["status"] == "already_checked":
-                        msg = f"@{user_name}님은 이미 출석했습니다. (연속 {result_att['streak']}일 / 총 {result_att['total']}일)"
-                        await session.send_chat(msg)
-                    elif result_att["status"] == "not_streaming":
-                        msg = f"@{user_name}님 방송 중에만 출석할 수 있습니다."
-                        await session.send_chat(msg)
-            finally:
-                _attendance_in_flight.discard(task_key)
+    elif command_name == "알림삭제":
+        await handle_delete_notification(session, db, channel_id)
