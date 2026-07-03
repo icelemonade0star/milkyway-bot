@@ -17,21 +17,11 @@ class OverlayRawClientManager:
         if task and task.done():
             self._tasks.pop(channel_id, None)
             self._clients.pop(channel_id, None)
-            self._locks.pop(channel_id, None)
 
     async def ensure_raw_client(self, channel_id: str) -> None:
-        # 빠른 경로: 이미 실행 중이면 락 없이 반환
-        existing_task = self._tasks.get(channel_id)
-        if existing_task and not existing_task.done():
-            return
-
-        self._cleanup_done(channel_id)
-
-        if channel_id not in self._locks:
-            self._locks[channel_id] = asyncio.Lock()
-
-        async with self._locks[channel_id]:
-            # double-check: 락 대기 중에 다른 코루틴이 이미 생성했을 수 있음
+        lock = self._locks.setdefault(channel_id, asyncio.Lock())
+        async with lock:
+            self._cleanup_done(channel_id)
             existing_task = self._tasks.get(channel_id)
             if existing_task and not existing_task.done():
                 return
@@ -42,6 +32,25 @@ class OverlayRawClientManager:
 
             task = asyncio.create_task(client.run_forever(), name=f"raw-ws-{channel_id}")
             self._tasks[channel_id] = task
+
+    async def ensure_raw_client_if_connected(self, channel_id: str) -> None:
+        from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster
+
+        if chat_overlay_broadcaster.has_connections(channel_id):
+            await self.ensure_raw_client(channel_id)
+
+    async def stop_raw_client(self, channel_id: str) -> None:
+        lock = self._locks.setdefault(channel_id, asyncio.Lock())
+        async with lock:
+            task = self._tasks.pop(channel_id, None)
+            self._clients.pop(channel_id, None)
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                logger.info("[%s] 방송 종료로 오버레이 raw WS 클라이언트 종료", channel_id)
 
 
 overlay_manager = OverlayRawClientManager()

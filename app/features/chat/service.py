@@ -546,6 +546,12 @@ class ChatService:
         live_state.last_checked_at = now
         live_state.raw_status = raw_status
 
+        try:
+            from app.features.chat_overlay.overlay_manager import overlay_manager
+            await overlay_manager.stop_raw_client(channel_id)
+        except Exception as e:
+            logger.warning("오버레이 raw WS 종료 실패: %s", e)
+
     @staticmethod
     def _parse_live_datetime(value: str | datetime | None) -> datetime | None:
         if not value:
@@ -715,6 +721,12 @@ class ChatService:
             live_state.raw_status = content
 
             await self.db.commit()
+
+            try:
+                from app.features.chat_overlay.overlay_manager import overlay_manager
+                await overlay_manager.ensure_raw_client_if_connected(channel_id)
+            except Exception as e:
+                logger.warning("오버레이 raw WS 재시작 실패: %s", e)
 
             if notify_discord and (
                 previous_status != "OPEN" or previous_session_id != v2_session.id

@@ -48,6 +48,9 @@ class ChatOverlayBroadcaster:
         if not connections:
             self._connections.pop(channel_id, None)
 
+    def has_connections(self, channel_id: str) -> bool:
+        return bool(self._connections.get(channel_id))
+
     async def publish(self, channel_id: str, payload: dict):
         connections = list(self._connections.get(channel_id, {}).values())
         if not connections:

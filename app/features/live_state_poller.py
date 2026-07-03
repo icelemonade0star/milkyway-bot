@@ -124,6 +124,19 @@ class LiveStatePoller:
 
             await db.commit()
 
+            if live_status.status == "OPEN":
+                try:
+                    from app.features.chat_overlay.overlay_manager import overlay_manager
+                    await overlay_manager.ensure_raw_client_if_connected(db_channel.platform_channel_id)
+                except Exception as e:
+                    logger.warning("오버레이 raw WS 재시작 실패: %s", e)
+            elif live_status.status == "CLOSE":
+                try:
+                    from app.features.chat_overlay.overlay_manager import overlay_manager
+                    await overlay_manager.stop_raw_client(db_channel.platform_channel_id)
+                except Exception as e:
+                    logger.warning("오버레이 raw WS 종료 실패: %s", e)
+
             if should_notify_discord:
                 try:
                     from app.features.discord_bot.cogs.chzzk_notifications import trigger_live_notification_check
