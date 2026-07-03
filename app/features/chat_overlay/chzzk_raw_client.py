@@ -46,6 +46,9 @@ def _ws_connect_kwargs() -> dict:
 _WS_CONNECT_KWARGS = _ws_connect_kwargs()
 
 
+_OVERLAY_QUEUE_MAX = 50
+
+
 class ChzzkRawChatClient:
     def __init__(self, platform_channel_id: str):
         self.platform_channel_id = platform_channel_id
@@ -57,6 +60,7 @@ class ChzzkRawChatClient:
                 "Referer": f"https://chzzk.naver.com/live/{platform_channel_id}",
             },
         )
+        self._pending: asyncio.Queue = asyncio.Queue(maxsize=_OVERLAY_QUEUE_MAX)
 
     async def _get_chat_channel_id(self) -> str | None:
         url = _LIVE_DETAIL_URL.format(channel_id=self.platform_channel_id)
@@ -70,46 +74,62 @@ class ChzzkRawChatClient:
         return None
 
     async def run_forever(self):
-        while True:
+        broadcast_task = asyncio.create_task(self._broadcast_loop())
+        try:
+            while True:
+                try:
+                    chat_channel_id = await self._get_chat_channel_id()
+                    if not chat_channel_id:
+                        logger.info("[%s] chatChannelId 없음. %ds 후 재시도", self.platform_channel_id, _CHATID_RETRY_DELAY)
+                        await asyncio.sleep(_CHATID_RETRY_DELAY)
+                        continue
+
+                    ws_url = random.choice(_WS_SERVERS)
+                    logger.info("[%s] 연결 시도: %s", self.platform_channel_id, ws_url)
+
+                    async with websockets.connect(ws_url, ping_interval=None, **_WS_CONNECT_KWARGS) as ws:
+                        auth_packet = json.dumps({
+                            "bdy": {
+                                "accTkn": "",
+                                "auth": "READ",
+                                "devType": 2001,
+                                "uid": None,
+                            },
+                            "cmd": 100,
+                            "cid": chat_channel_id,
+                            "svcid": "game",
+                            "tid": 1,
+                            "ver": "2",
+                        })
+                        await ws.send(auth_packet)
+                        logger.info("[%s] 인증 패킷 전송 완료", self.platform_channel_id)
+
+                        async for raw_msg in ws:
+                            if isinstance(raw_msg, bytes):
+                                raw_msg = raw_msg.decode("utf-8", errors="ignore")
+                            await self._handle_message(ws, raw_msg, chat_channel_id)
+
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning("[%s] raw WS 오류: %s. %ds 후 재연결", self.platform_channel_id, e, _RECONNECT_DELAY)
+                    await asyncio.sleep(_RECONNECT_DELAY)
+        finally:
+            logger.info("[%s] raw WS 태스크 종료", self.platform_channel_id)
+            broadcast_task.cancel()
             try:
-                chat_channel_id = await self._get_chat_channel_id()
-                if not chat_channel_id:
-                    logger.info("[%s] chatChannelId 없음. %ds 후 재시도", self.platform_channel_id, _CHATID_RETRY_DELAY)
-                    await asyncio.sleep(_CHATID_RETRY_DELAY)
-                    continue
-
-                ws_url = random.choice(_WS_SERVERS)
-                logger.info("[%s] 연결 시도: %s", self.platform_channel_id, ws_url)
-
-                async with websockets.connect(ws_url, ping_interval=None, **_WS_CONNECT_KWARGS) as ws:
-                    auth_packet = json.dumps({
-                        "bdy": {
-                            "accTkn": "",
-                            "auth": "READ",
-                            "devType": 2001,
-                            "uid": None,
-                        },
-                        "cmd": 100,
-                        "cid": chat_channel_id,
-                        "svcid": "game",
-                        "tid": 1,
-                        "ver": "2",
-                    })
-                    await ws.send(auth_packet)
-                    logger.info("[%s] 인증 패킷 전송 완료", self.platform_channel_id)
-
-                    async for raw_msg in ws:
-                        if isinstance(raw_msg, bytes):
-                            raw_msg = raw_msg.decode("utf-8", errors="ignore")
-                        await self._handle_message(ws, raw_msg, chat_channel_id)
-
+                await broadcast_task
             except asyncio.CancelledError:
-                logger.info("[%s] raw WS 태스크 취소됨", self.platform_channel_id)
-                await self._http.aclose()
-                raise
+                pass
+            await self._http.aclose()
+
+    async def _broadcast_loop(self):
+        while True:
+            payload = await self._pending.get()
+            try:
+                await chat_overlay_broadcaster.publish(self.platform_channel_id, payload)
             except Exception as e:
-                logger.warning("[%s] raw WS 오류: %s. %ds 후 재연결", self.platform_channel_id, e, _RECONNECT_DELAY)
-                await asyncio.sleep(_RECONNECT_DELAY)
+                logger.warning("[%s] 오버레이 브로드캐스트 실패: %s", self.platform_channel_id, e)
 
     async def _handle_message(self, ws, raw_msg: str, chat_channel_id: str):
         try:
@@ -202,4 +222,10 @@ class ChzzkRawChatClient:
             "raw": body,
         }
 
-        await chat_overlay_broadcaster.publish(self.platform_channel_id, payload)
+        if self._pending.full():
+            try:
+                self._pending.get_nowait()
+                logger.debug("[%s] 오버레이 큐 포화, 오래된 채팅 1건 드롭", self.platform_channel_id)
+            except asyncio.QueueEmpty:
+                pass
+        self._pending.put_nowait(payload)

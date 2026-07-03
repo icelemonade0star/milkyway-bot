@@ -64,7 +64,7 @@ class SessionManager:
                     return self.active_sessions[channel_id], False
                 
                 logger.info(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
-                await self.remove_session(channel_id)
+                await self._disconnect_session(channel_id)
 
             logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
             
@@ -87,12 +87,18 @@ class SessionManager:
             self.active_sessions[channel_id] = new_session
             return new_session, True
 
-    async def remove_session(self, channel_id: str):
-        """특정 채널 세션 종료 및 제거"""
+    async def _disconnect_session(self, channel_id: str):
+        """락을 보유한 상태에서 호출하는 내부용 세션 제거. _locks는 건드리지 않음."""
         session = self.active_sessions.pop(channel_id, None)
         if session and session.socket_client:
             await session.socket_client.disconnect()
-        self._locks.pop(channel_id, None)
+
+    async def remove_session(self, channel_id: str):
+        """외부 호출용 세션 종료. 락 획득 후 세션을 제거."""
+        if channel_id not in self._locks:
+            self._locks[channel_id] = asyncio.Lock()
+        async with self._locks[channel_id]:
+            await self._disconnect_session(channel_id)
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""
