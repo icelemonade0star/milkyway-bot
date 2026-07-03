@@ -92,6 +92,7 @@ class SessionManager:
         session = self.active_sessions.pop(channel_id, None)
         if session and session.socket_client:
             await session.socket_client.disconnect()
+        self._locks.pop(channel_id, None)
 
     async def close_all(self):
         """서버 종료 시 모든 세션 안전하게 닫기"""

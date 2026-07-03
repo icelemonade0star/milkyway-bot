@@ -28,11 +28,23 @@ class RedisChannelKey:
     channel_uuid: str
 
 
+_CHANNEL_KEY_CACHE_MAX = 1000
+
+
 class RedisConfigService:
     _channel_key_cache: dict[tuple[str, str], RedisChannelKey] = {}
 
     def __init__(self):
         pass
+
+    @classmethod
+    def _cache_channel_key(cls, key: tuple[str, str], value: RedisChannelKey):
+        if len(cls._channel_key_cache) >= _CHANNEL_KEY_CACHE_MAX:
+            # 삽입 순서 기준 오래된 절반 제거 (Python 3.7+ dict 순서 보장)
+            evict = list(cls._channel_key_cache.keys())[: _CHANNEL_KEY_CACHE_MAX // 2]
+            for k in evict:
+                del cls._channel_key_cache[k]
+        cls._channel_key_cache[key] = value
 
     @staticmethod
     def _channel_key(channel: RedisChannelKey) -> str:
@@ -105,7 +117,7 @@ class RedisConfigService:
     ) -> RedisChannelKey | None:
         if channel_uuid:
             channel_key = RedisChannelKey(platform, platform_channel_id, str(channel_uuid))
-            self._channel_key_cache[(platform, platform_channel_id)] = channel_key
+            self._cache_channel_key((platform, platform_channel_id), channel_key)
             return channel_key
 
         cached = self._channel_key_cache.get((platform, platform_channel_id))
@@ -127,7 +139,7 @@ class RedisConfigService:
         if not channel:
             return None
         channel_key = RedisChannelKey(platform, platform_channel_id, str(channel.id))
-        self._channel_key_cache[(platform, platform_channel_id)] = channel_key
+        self._cache_channel_key((platform, platform_channel_id), channel_key)
         return channel_key
 
     async def get_command_prefix(self, channel_id: str, platform: str) -> str:
