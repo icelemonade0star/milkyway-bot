@@ -391,15 +391,9 @@ select:focus {
 }
 
 .radio-preview.is-separate {
-    flex-direction: column;
-    gap: 3px;
-    align-items: flex-start;
-}
-
-.rp-nick-bubble {
-    background: #2a2a3a;
-    border-radius: 3px;
-    padding: 2px 5px;
+    flex-direction: row;
+    gap: 4px;
+    align-items: center;
 }
 
 #nameGapControl {
