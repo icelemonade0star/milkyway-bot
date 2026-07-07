@@ -370,7 +370,7 @@ select:focus {
     display: flex;
     align-items: baseline;
     gap: 3px;
-    min-width: 72px;
+    min-width: 88px;
 }
 
 .rp-nick {
