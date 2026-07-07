@@ -155,22 +155,28 @@ html, body {{
     max-width: min({options.max_width}px, 100%);
     display: flex;
     flex-direction: column;
+    gap: {options.name_gap}px;
     font-size: {options.font_size}px;
     line-height: 1.35;
     animation: {animation};
     overflow-wrap: anywhere;
 }}
 
-/* 말풍선 안의 닉네임 텍스트입니다. */
+/* 닉네임 말풍선 (채팅 말풍선과 분리된 독립 박스) */
 .chat-name {{
     display: block;
-    margin-bottom: {options.name_gap}px;
+    width: fit-content;
+    padding: {options.message_padding_y}px {options.message_padding_x}px;
+    border-radius: {options.radius}px;
+    border: {border};
+    background: {background};
     color: {options.name_color};
     font-weight: 700;
     text-shadow: {text_shadow};
+    box-shadow: {box_shadow};
 }}
 
-/* 말풍선 안의 채팅 본문입니다. */
+/* 채팅 본문 말풍선 */
 .chat-text {{
     min-width: 0;
     padding: {options.message_padding_y}px {options.message_padding_x}px;
