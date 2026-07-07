@@ -57,6 +57,14 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
         name_display = "block"
         name_margin_right = 0
         name_margin_bottom = 0
+    grid_align = {
+        "top-left": "start", "top-right": "start",
+        "bottom-left": "end", "bottom-right": "end", "center": "center",
+    }.get(options.position, "end")
+    grid_justify = {
+        "top-left": "start", "bottom-left": "start",
+        "top-right": "end", "bottom-right": "end", "center": "center",
+    }.get(options.position, "start")
     text_shadow = "none"
     box_shadow = "none"
     if options.shadow_strength:
@@ -150,29 +158,33 @@ html, body {{
 - 말풍선 이미지나 메시지 배경을 넣을 때 사용합니다.
 - 예: background: url("bubble.png") center / 100% 100% no-repeat;
 */
-{f'''.chat-message {{
-    width: fit-content;
+{f'''.chat-list {{
+    display: grid;
     max-width: min({options.max_width}px, 100%);
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: {options.name_gap}px;
+    grid-template-columns: auto 1fr;
+    align-content: {grid_align};
+    justify-content: {grid_justify};
+    row-gap: {options.gap}px;
+    column-gap: {options.name_gap}px;
     font-size: {options.font_size}px;
     line-height: 1.35;
-    animation: {animation};
-    overflow-wrap: anywhere;
 }}
 
-/* 좌측 닉네임 영역 */
+.chat-message {{
+    display: contents;
+}}
+
 .chat-name {{
-    flex-shrink: 0;
+    align-self: start;
     padding-top: {options.message_padding_y}px;
     color: {options.name_color};
     font-weight: 700;
     text-shadow: {text_shadow};
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    animation: {animation};
 }}
 
-/* 우측 채팅 말풍선 */
 .chat-text {{
     min-width: 0;
     padding: {options.message_padding_y}px {options.message_padding_x}px;
@@ -184,6 +196,7 @@ html, body {{
     box-shadow: {box_shadow};
     overflow-wrap: anywhere;
     word-break: break-word;
+    animation: {animation};
 }}''' if options.name_mode == "separate" else f'''.chat-message {{
     width: fit-content;
     max-width: min({options.max_width}px, 100%);
