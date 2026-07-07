@@ -41,11 +41,22 @@ def build_overlay_css(options: OverlayStyleOptions) -> str:
         "none": "none",
     }[options.animation]
     animation = "none" if animation_name == "none" else f"{animation_name} 180ms ease-out"
-    name_display = "block" if options.name_wrap else "inline"
-    if not options.show_name:
+    if options.name_mode == "inline":
+        name_display = "inline"
+        name_margin_right = 8
+        name_margin_bottom = 0
+    elif options.name_mode == "wrap":
+        name_display = "block"
+        name_margin_right = 0
+        name_margin_bottom = 2
+    elif options.name_mode == "hidden":
         name_display = "none"
-    name_margin_right = 0 if options.name_wrap else 8
-    name_margin_bottom = 2 if options.name_wrap else 0
+        name_margin_right = 0
+        name_margin_bottom = 0
+    else:  # separate
+        name_display = "block"
+        name_margin_right = 0
+        name_margin_bottom = 0
     text_shadow = "none"
     box_shadow = "none"
     if options.shadow_strength:
@@ -139,7 +150,39 @@ html, body {{
 - 말풍선 이미지나 메시지 배경을 넣을 때 사용합니다.
 - 예: background: url("bubble.png") center / 100% 100% no-repeat;
 */
-.chat-message {{
+{f'''.chat-message {{
+    width: fit-content;
+    max-width: min({options.max_width}px, 100%);
+    display: flex;
+    flex-direction: column;
+    font-size: {options.font_size}px;
+    line-height: 1.35;
+    animation: {animation};
+    overflow-wrap: anywhere;
+}}
+
+/* 말풍선 안의 닉네임 텍스트입니다. */
+.chat-name {{
+    display: block;
+    margin-bottom: {options.name_gap}px;
+    color: {options.name_color};
+    font-weight: 700;
+    text-shadow: {text_shadow};
+}}
+
+/* 말풍선 안의 채팅 본문입니다. */
+.chat-text {{
+    min-width: 0;
+    padding: {options.message_padding_y}px {options.message_padding_x}px;
+    border-radius: {options.radius}px;
+    border: {border};
+    background: {background};
+    color: {options.text_color};
+    text-shadow: {text_shadow};
+    box-shadow: {box_shadow};
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}}''' if options.name_mode == "separate" else f'''.chat-message {{
     width: fit-content;
     max-width: min({options.max_width}px, 100%);
     padding: {options.message_padding_y}px {options.message_padding_x}px;
@@ -169,7 +212,7 @@ html, body {{
     min-width: 0;
     overflow-wrap: anywhere;
     word-break: break-word;
-}}
+}}'''}
 
 @keyframes message-in-slide {{
     from {{

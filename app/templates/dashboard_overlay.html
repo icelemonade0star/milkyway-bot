@@ -68,14 +68,25 @@
                                             <option value="none">없음</option>
                                         </select>
                                     </label>
-                                    <label class="check-control">
-                                        <input name="show_name" type="checkbox">
-                                        <span>닉네임 표시</span>
-                                    </label>
-                                    <label class="check-control">
-                                        <input name="name_wrap" type="checkbox">
-                                        <span>닉네임 줄바꿈</span>
-                                    </label>
+                                    <fieldset class="name-mode-fieldset">
+                                        <legend>닉네임</legend>
+                                        <label class="radio-control">
+                                            <input type="radio" name="name_mode" value="inline">
+                                            <span>닉네임 표시</span>
+                                        </label>
+                                        <label class="radio-control">
+                                            <input type="radio" name="name_mode" value="wrap">
+                                            <span>닉네임 줄바꿈</span>
+                                        </label>
+                                        <label class="radio-control">
+                                            <input type="radio" name="name_mode" value="separate">
+                                            <span>닉네임 분리</span>
+                                        </label>
+                                        <label class="radio-control">
+                                            <input type="radio" name="name_mode" value="hidden">
+                                            <span>닉네임 미노출</span>
+                                        </label>
+                                    </fieldset>
                                 </div>
                             </div>
                         </section>
@@ -118,6 +129,10 @@
                                     <label class="range-control">
                                         <span>그림자 <output data-for="shadow_strength"></output></span>
                                         <input name="shadow_strength" type="range" min="0" max="100" step="5">
+                                    </label>
+                                    <label class="range-control" id="nameGapControl">
+                                        <span>닉네임 채팅창 거리 <output data-for="name_gap"></output></span>
+                                        <input name="name_gap" type="range" min="0" max="40" step="1">
                                     </label>
                                     <label>
                                         <span>유지 시간(초)</span>

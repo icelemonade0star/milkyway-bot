@@ -117,7 +117,9 @@ function setControlValues(options) {
         if (!input) return;
         if (input instanceof RadioNodeList) {
             Array.from(input).forEach((item) => {
-                if (item.type === "checkbox") {
+                if (item.type === "radio") {
+                    item.checked = item.value === String(value);
+                } else if (item.type === "checkbox") {
                     item.checked = Array.isArray(value) && value.includes(item.value);
                 }
             });
@@ -132,6 +134,7 @@ function setControlValues(options) {
         }
     });
     updateAllRangeOutputs();
+    updateNameGapVisibility();
     renderPalette();
 }
 
@@ -165,8 +168,8 @@ function getStyleOptions() {
         name_color_palette: getPaletteColors(),
         shadow_strength: Number(form.elements.shadow_strength.value),
         animation: form.elements.animation.value,
-        show_name: form.elements.show_name.checked,
-        name_wrap: form.elements.name_wrap.checked,
+        name_mode: form.elements.name_mode.value,
+        name_gap: Number(form.elements.name_gap.value),
         bubble_style: form.elements.bubble_style.value,
         blocked_nicknames: readLineList(form.elements.blocked_nicknames.value),
         blocked_roles: Array.from(form.elements.blocked_roles)
@@ -402,8 +405,17 @@ document.querySelectorAll(".section-toggle").forEach((button) => {
     });
 });
 
+function updateNameGapVisibility() {
+    const isSeparate = form.elements.name_mode.value === "separate";
+    document.getElementById("nameGapControl").classList.toggle("is-visible", isSeparate);
+}
+
 form.querySelectorAll('input[type="range"]').forEach((input) => {
     input.addEventListener("input", () => updateRangeOutput(input));
+});
+
+Array.from(form.elements.name_mode).forEach((radio) => {
+    radio.addEventListener("change", updateNameGapVisibility);
 });
 
 document.getElementById("copyUrl").addEventListener("click", async () => {

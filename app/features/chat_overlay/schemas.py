@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
@@ -27,12 +27,31 @@ class OverlayStyleOptions(BaseModel):
     )
     shadow_strength: int = Field(default=45, ge=0, le=100)
     animation: Literal["slide", "fade", "pop", "none"] = "slide"
-    show_name: bool = True
-    name_wrap: bool = False
+    name_mode: Literal["inline", "wrap", "separate", "hidden"] = "inline"
+    name_gap: int = Field(default=4, ge=0, le=40)
     bubble_style: Literal["solid", "minimal", "badge"] = "solid"
     message_ttl_seconds: int = Field(default=60, ge=3, le=3600)
     blocked_nicknames: list[str] = Field(default_factory=list, max_length=200)
     blocked_roles: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_name_fields(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if "name_mode" not in data:
+            show_name = data.pop("show_name", True)
+            name_wrap = data.pop("name_wrap", False)
+            if not show_name:
+                data["name_mode"] = "hidden"
+            elif name_wrap:
+                data["name_mode"] = "wrap"
+            else:
+                data["name_mode"] = "inline"
+        else:
+            data.pop("show_name", None)
+            data.pop("name_wrap", None)
+        return data
 
     @field_validator("blocked_nicknames")
     @classmethod

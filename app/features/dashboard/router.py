@@ -8,8 +8,25 @@ from app.core.config import DASHBOARD_COOKIE_SECURE, MAX_CHAT_RESPONSE_CHARS, TE
 from app.core.database import get_async_db
 from app.features.auth.platforms.chzzk import get_chzzk_auth
 from app.features.auth.service import AuthService
-from app.features.chat_overlay.schemas import OverlayPresetSaveRequest, OverlaySaveRequest
+from app.features.chat_overlay.schemas import OverlayPresetSaveRequest, OverlaySaveRequest, OverlayStyleOptions
 from app.features.chat_overlay.service import ChatOverlayService, DEFAULT_STYLE_OPTIONS, PresetDeleteResult
+
+
+def _normalize_options(raw: dict | None) -> dict:
+    try:
+        return OverlayStyleOptions.model_validate(raw or {}).model_dump()
+    except Exception:
+        return DEFAULT_STYLE_OPTIONS.model_dump()
+
+
+def _preset_payload(preset) -> dict:
+    return {
+        "id": preset.id,
+        "name": preset.name,
+        "style_mode": preset.style_mode,
+        "style_options": _normalize_options(preset.style_options),
+        "custom_css": preset.custom_css,
+    }
 from app.features.dashboard.messages import save_error_detail
 from app.features.dashboard.schemas import CommandSaveRequest, DeleteRequest, GreetingSaveRequest
 from app.features.dashboard.service import DashboardService
@@ -95,17 +112,8 @@ async def dashboard_overlay(
             "setting": setting,
             "style_mode": setting.style_mode if setting.style_mode is not None else "options",
             "base_style_options": DEFAULT_STYLE_OPTIONS.model_dump(),
-            "style_options": setting.style_options if setting.style_options is not None else DEFAULT_STYLE_OPTIONS.model_dump(),
-            "presets": [
-                {
-                    "id": preset.id,
-                    "name": preset.name,
-                    "style_mode": preset.style_mode,
-                    "style_options": preset.style_options,
-                    "custom_css": preset.custom_css,
-                }
-                for preset in presets
-            ],
+            "style_options": _normalize_options(setting.style_options),
+            "presets": [_preset_payload(preset) for preset in presets],
             "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         },
     )
@@ -131,7 +139,7 @@ async def save_dashboard_overlay(
         "status": "success",
         "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         "style_mode": setting.style_mode,
-        "style_options": setting.style_options,
+        "style_options": _normalize_options(setting.style_options),
         "custom_css": setting.custom_css,
     }
 
@@ -154,13 +162,7 @@ async def save_dashboard_overlay_preset(
         raise HTTPException(status_code=403, detail="채널 정보를 찾을 수 없습니다.")
     return {
         "status": "success",
-        "preset": {
-            "id": preset.id,
-            "name": preset.name,
-            "style_mode": preset.style_mode,
-            "style_options": preset.style_options,
-            "custom_css": preset.custom_css,
-        },
+        "preset": _preset_payload(preset),
     }
 
 
@@ -182,13 +184,7 @@ async def apply_dashboard_overlay_preset(
     return {
         "status": "success",
         "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
-        "preset": {
-            "id": preset.id,
-            "name": preset.name,
-            "style_mode": preset.style_mode,
-            "style_options": preset.style_options,
-            "custom_css": preset.custom_css,
-        },
+        "preset": _preset_payload(preset),
     }
 
 
