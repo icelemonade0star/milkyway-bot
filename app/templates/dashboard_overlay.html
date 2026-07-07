@@ -40,53 +40,90 @@
                                 <span class="chevron" aria-hidden="true">⌄</span>
                             </button>
                             <div class="section-body">
-                                <div class="control-grid">
-                                    <label>
-                                        <span>위치</span>
-                                        <select name="position">
+                                <div class="ctrl-grid-2">
+                                    <div>
+                                        <label class="ctrl-label" for="select-position">위치</label>
+                                        <select id="select-position" name="position">
                                             <option value="bottom-left">왼쪽 아래</option>
                                             <option value="bottom-right">오른쪽 아래</option>
                                             <option value="top-left">왼쪽 위</option>
                                             <option value="top-right">오른쪽 위</option>
                                             <option value="center">가운데</option>
                                         </select>
-                                    </label>
-                                    <label>
-                                        <span>말풍선 스타일</span>
-                                        <select name="bubble_style">
+                                    </div>
+                                    <div>
+                                        <label class="ctrl-label" for="select-bubble-style">말풍선 스타일</label>
+                                        <select id="select-bubble-style" name="bubble_style">
                                             <option value="solid">기본</option>
                                             <option value="minimal">미니멀</option>
                                             <option value="badge">배지형</option>
                                         </select>
-                                    </label>
-                                    <label>
-                                        <span>등장 효과</span>
-                                        <select name="animation">
-                                            <option value="slide">아래에서</option>
-                                            <option value="fade">페이드</option>
-                                            <option value="pop">팝</option>
-                                            <option value="none">없음</option>
-                                        </select>
-                                    </label>
-                                    <fieldset class="name-mode-fieldset">
-                                        <legend>닉네임</legend>
-                                        <label class="radio-control">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="ctrl-label" for="select-animation">등장 효과</label>
+                                    <select id="select-animation" name="animation">
+                                        <option value="slide">아래에서</option>
+                                        <option value="fade">페이드</option>
+                                        <option value="pop">팝</option>
+                                        <option value="none">없음</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <span class="radio-group-label">닉네임</span>
+                                    <div class="radio-cards">
+                                        <label class="radio-card">
                                             <input type="radio" name="name_mode" value="inline">
-                                            <span>닉네임 표시</span>
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">표시</span>
+                                                </span>
+                                                <span class="radio-preview">
+                                                    <span class="rp-nick">닉</span><span class="rp-msg">메시지</span>
+                                                </span>
+                                            </span>
                                         </label>
-                                        <label class="radio-control">
+                                        <label class="radio-card">
                                             <input type="radio" name="name_mode" value="wrap">
-                                            <span>닉네임 줄바꿈</span>
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">줄바꿈</span>
+                                                    <span class="radio-card-sub">닉네임 위, 본문 아래</span>
+                                                </span>
+                                                <span class="radio-preview is-wrap">
+                                                    <span class="rp-nick">닉</span><span class="rp-msg">메시지</span>
+                                                </span>
+                                            </span>
                                         </label>
-                                        <label class="radio-control">
+                                        <label class="radio-card">
                                             <input type="radio" name="name_mode" value="separate">
-                                            <span>닉네임 분리</span>
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">분리</span>
+                                                    <span class="radio-card-sub">닉네임 별도 말풍선</span>
+                                                </span>
+                                                <span class="radio-preview is-separate">
+                                                    <span class="rp-nick-bubble"><span class="rp-nick">닉</span></span>
+                                                    <span class="rp-msg">메시지</span>
+                                                </span>
+                                            </span>
                                         </label>
-                                        <label class="radio-control">
+                                        <label class="radio-card">
                                             <input type="radio" name="name_mode" value="hidden">
-                                            <span>닉네임 미노출</span>
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">미노출</span>
+                                                </span>
+                                                <span class="radio-preview">
+                                                    <span class="rp-msg">메시지만</span>
+                                                </span>
+                                            </span>
                                         </label>
-                                    </fieldset>
+                                    </div>
                                 </div>
                             </div>
                         </section>

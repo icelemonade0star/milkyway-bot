@@ -172,10 +172,11 @@ main {
 }
 
 .section-body {
-    padding: 12px 14px 14px;
+    padding: 4px 16px 16px;
     border-top: 1px solid var(--line);
-    display: grid;
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     background: var(--subtle-bg);
 }
 
@@ -228,34 +229,177 @@ input[type="radio"] {
     width: auto;
 }
 
-.name-mode-fieldset {
-    grid-column: 1 / -1;
-    margin: 0;
-    padding: 8px 10px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
+.ctrl-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
 }
 
-.name-mode-fieldset legend {
-    padding: 0 4px;
+.ctrl-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
     color: var(--muted);
-    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+}
+
+select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.radio-group-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 5px;
+}
+
+.radio-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.radio-card {
+    display: block;
+    cursor: pointer;
+}
+
+.radio-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.radio-card-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 0.5px solid var(--line);
+    border-radius: 8px;
+    background: var(--control-bg);
+    transition: border-color 0.12s, background 0.12s;
+}
+
+.radio-card:hover .radio-card-inner {
+    border-color: var(--accent);
+    background: var(--subtle-bg);
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-inner {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.radio-card input[type="radio"]:focus-visible + .radio-card-inner {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.radio-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line);
+    flex-shrink: 0;
+    position: relative;
+    transition: border-color 0.12s;
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-dot {
+    border-color: var(--accent);
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-dot::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.radio-card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.radio-card-title {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.3;
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-card-title {
+    color: var(--accent);
     font-weight: 700;
 }
 
-.radio-control {
-    min-height: 26px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 400;
+.radio-card-sub {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.3;
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-card-sub {
+    color: var(--accent);
+}
+
+.radio-preview {
+    margin-left: auto;
+    background: #1e1e2a;
+    border-radius: 4px;
+    padding: 3px 7px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    min-width: 72px;
+}
+
+.rp-nick {
+    font-size: 9px;
+    font-weight: 700;
+    color: #7ee2a8;
+}
+
+.rp-msg {
+    font-size: 9px;
+    color: #ccc;
+}
+
+.radio-preview.is-wrap {
+    flex-direction: column;
+    gap: 1px;
+    align-items: flex-start;
+}
+
+.radio-preview.is-separate {
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+}
+
+.rp-nick-bubble {
+    background: #2a2a3a;
+    border-radius: 3px;
+    padding: 2px 5px;
 }
 
 #nameGapControl {
@@ -524,6 +668,7 @@ iframe {
 @media (max-width: 720px) {
     .control-grid,
     .control-grid.colors,
+    .ctrl-grid-2,
     .preset-save,
     .sample-chat-form,
     .link-row {
