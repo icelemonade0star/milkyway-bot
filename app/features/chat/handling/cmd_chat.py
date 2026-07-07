@@ -107,5 +107,16 @@ async def handle_update_prefix(session, channel_id, args, redis_service):
     await session.send_chat(f"접두사가 '{new_prefix}'{josa} 변경되었습니다.")
 
 
+async def handle_notice(session, args):
+    if not args:
+        await session.send_chat("사용법: !공지 [내용]")
+        return
+
+    message = " ".join(args)
+    success = await session.send_notice(message)
+    if not success:
+        await session.send_chat("공지 등록에 실패했습니다.")
+
+
 async def handle_text_response(session, cmd, user_name):
     await session.send_chat(render_placeholders(cmd.response, user_name))

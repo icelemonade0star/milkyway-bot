@@ -16,6 +16,7 @@ from app.features.chat.handling.cmd_chat import (
     handle_delete_command,
     handle_list_channel_commands,
     handle_list_commands,
+    handle_notice,
     handle_register_command,
     handle_text_response,
     handle_update_prefix,
@@ -186,3 +187,6 @@ async def _dispatch_system_command(session, db, chat_service, channel_id, comman
 
     elif command_name == "알림삭제":
         await handle_delete_notification(session, db, channel_id)
+
+    elif command_name == "공지":
+        await handle_notice(session, args)

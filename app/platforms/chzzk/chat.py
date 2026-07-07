@@ -181,6 +181,33 @@ class ChzzkSessions:
             logger.error(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
             return False
     
+    async def send_notice(self, message: str):
+        message = message.strip()
+        if not message:
+            return False
+
+        await self._ensure_auth()
+
+        headers = {
+            'Authorization': f'Bearer {self.access_token}',
+            'Content-Type': 'application/json',
+        }
+
+        uri = "/open/v1/chats/notice"
+        response = await _client.post(uri, headers=headers, json={"message": message})
+
+        if response.status_code == 401:
+            if await self._refresh_token():
+                headers['Authorization'] = f'Bearer {self.access_token}'
+                response = await _client.post(uri, headers=headers, json={"message": message})
+
+        if response.status_code == 200:
+            logger.info(f"✅ [{self.channel_id}] 채팅 공지 등록 성공: {message}")
+            return True
+        else:
+            logger.error(f"❌ [{self.channel_id}] 채팅 공지 등록 실패: {response.status_code} - {response.text}")
+            return False
+
     async def send_chat(self, message: str):
         message = message.strip()
         if not message:
