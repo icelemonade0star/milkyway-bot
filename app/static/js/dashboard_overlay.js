@@ -73,8 +73,8 @@ function getTimerStyleOptions() {
         timer_title_color: form.elements.timer_title_color.value,
         timer_done_color: form.elements.timer_done_color.value,
         timer_background_color: form.elements.timer_background_color.value,
-        timer_background_opacity: Number(form.elements.timer_background_opacity.value),
-        timer_global_opacity: Number(form.elements.timer_global_opacity.value),
+        timer_background_opacity: 100 - Number(form.elements.timer_background_opacity.value),
+        timer_global_opacity: 100 - Number(form.elements.timer_global_opacity.value),
     };
 }
 
@@ -227,7 +227,7 @@ function setControlValues(kind, options) {
             input.checked = Boolean(value);
         } else if (Array.isArray(value)) {
             input.value = value.join("\n");
-        } else if (key === "background_opacity") {
+        } else if (["background_opacity", "timer_background_opacity", "timer_global_opacity"].includes(key)) {
             input.value = 100 - Number(value);
         } else {
             input.value = value;
