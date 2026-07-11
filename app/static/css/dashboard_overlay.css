@@ -41,11 +41,12 @@ h1 {
     margin-top: 4px;
 }
 
-.nav {
+.top-actions {
     display: flex;
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 a, button {
@@ -200,6 +201,10 @@ label {
     color: var(--muted);
     font-size: 12px;
     font-weight: 700;
+}
+
+.timer-title-control[hidden] {
+    display: none;
 }
 
 .palette-control {
@@ -640,6 +645,32 @@ iframe {
     gap: 8px;
 }
 
+.sample-chat-form[hidden] {
+    display: none;
+}
+
+.sample-timer-form {
+    margin-bottom: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.sample-timer-form[hidden] {
+    display: none;
+}
+
+.timer-command-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+}
+
+.timer-command-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .link-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -673,6 +704,7 @@ iframe {
     .ctrl-grid-2,
     .preset-save,
     .sample-chat-form,
+    .timer-command-row,
     .link-row {
         grid-template-columns: 1fr;
     }

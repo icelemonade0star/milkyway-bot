@@ -6,35 +6,15 @@ from app.features.chat_overlay.timer import overlay_timer_manager, parse_timer_d
 from app.platforms.constants import PLATFORM_CHZZK
 
 
-_AUTOPLAY_ON = {"자동재생", "--자동재생", "autoplay", "--autoplay"}
-_AUTOPLAY_OFF = {"수동", "--수동", "manual", "--manual", "대기", "--대기"}
-
-
-def _extract_autoplay(args: list[str]) -> tuple[list[str], bool | None]:
-    autoplay: bool | None = None
-    cleaned: list[str] = []
-    for arg in args:
-        normalized = arg.strip().casefold()
-        if normalized in _AUTOPLAY_ON:
-            autoplay = True
-            continue
-        if normalized in _AUTOPLAY_OFF:
-            autoplay = False
-            continue
-        cleaned.append(arg)
-    return cleaned, autoplay
-
-
-async def _get_timer_autoplay(chat_service, channel_id: str) -> bool:
+async def _get_timer_options(chat_service, channel_id: str) -> TimerOverlayStyleOptions:
     try:
         row = await ChatOverlayService(chat_service.db).get_setting_by_channel(PLATFORM_CHZZK, channel_id, "timer")
         if not row:
-            return True
+            return TimerOverlayStyleOptions()
         _channel, setting = row
-        options = TimerOverlayStyleOptions.model_validate(setting.style_options or {})
-        return options.timer_autoplay
+        return TimerOverlayStyleOptions.model_validate(setting.style_options or {})
     except ValidationError:
-        return True
+        return TimerOverlayStyleOptions()
 
 
 async def handle_timer_command(session, chat_service, channel_id: str, args: list[str]):
@@ -62,21 +42,15 @@ async def handle_timer_command(session, chat_service, channel_id: str, args: lis
         await session.send_chat("타이머를 삭제했습니다.")
         return
 
-    cleaned_args, command_autoplay = _extract_autoplay(args)
-    if not cleaned_args:
-        await session.send_chat("타이머 시간을 입력해 주세요.")
-        return
-
-    duration_arg = cleaned_args[-1]
+    duration_arg = args[-1]
     duration_seconds = parse_timer_duration(duration_arg)
     if duration_seconds is None:
         await session.send_chat("시간 형식이 올바르지 않습니다. 예: 10, 10분, 90초, 01:30, 1:00:00")
         return
 
-    title = " ".join(cleaned_args[:-1]).strip() or "타이머"
-    autoplay = command_autoplay
-    if autoplay is None:
-        autoplay = await _get_timer_autoplay(chat_service, channel_id)
+    timer_options = await _get_timer_options(chat_service, channel_id)
+    title = " ".join(args[:-1]).strip() or timer_options.timer_title_text
+    autoplay = timer_options.timer_autoplay
 
     await overlay_timer_manager.set_timer(channel_id, title, duration_seconds, autoplay)
     status = "시작" if autoplay else "대기"

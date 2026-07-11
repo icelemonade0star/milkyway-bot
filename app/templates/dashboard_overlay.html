@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Overlay Editor</title>
+    <title>Milkyway Bot Overlay Editor</title>
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/base.css">
     <link rel="stylesheet" href="/static/css/dashboard_overlay.css">
@@ -12,14 +12,12 @@
     <header>
         <div class="topbar">
             <div>
-                <h1>채팅 오버레이</h1>
+                <h1>오버레이</h1>
                 <div class="channel">{{ channel.channel_name }} · {{ channel.platform_channel_id }}</div>
             </div>
-            <nav class="nav">
+            <div class="top-actions">
                 <a href="/auth/dashboard">대시보드</a>
-                <a href="{{ overlay_url }}" target="_blank" rel="noopener">채팅 OBS</a>
-                <a href="{{ timer_overlay_url }}" target="_blank" rel="noopener">타이머 OBS</a>
-            </nav>
+            </div>
         </div>
     </header>
 
@@ -174,6 +172,10 @@
                                             </span>
                                         </label>
                                     </div>
+                                </div>
+                                <div class="timer-title-control" id="timerTitleControl">
+                                    <label class="ctrl-label" for="timerTitleText">제목 텍스트</label>
+                                    <input id="timerTitleText" name="timer_title_text" maxlength="40" placeholder="타이머">
                                 </div>
                                 <div>
                                     <span class="radio-group-label">굵기</span>
@@ -419,7 +421,7 @@
                     <h2>미리보기</h2>
                     <div class="mode-tabs" aria-label="preview mode">
                         <button type="button" data-preview-mode="sample" aria-pressed="true">샘플</button>
-                        <button type="button" data-preview-mode="live" aria-pressed="false">현재 채팅</button>
+                        <button type="button" data-preview-mode="live" aria-pressed="false">라이브</button>
                     </div>
                 </div>
                 <div class="preview-shell">
@@ -431,12 +433,23 @@
                         <input id="sampleMessage" maxlength="300" placeholder="샘플 채팅 입력">
                         <button type="submit">보내기</button>
                     </form>
+                    <form class="sample-timer-form" id="sampleTimerForm" hidden>
+                        <div class="timer-command-row">
+                            <input id="sampleTimerCommand" maxlength="120" value="!타이머 25:00" aria-label="타이머 명령어">
+                            <button class="primary" type="submit">실행</button>
+                        </div>
+                        <div class="timer-command-actions" aria-label="타이머 명령">
+                            <button type="button" data-timer-command="!타이머 재생">재생</button>
+                            <button type="button" data-timer-command="!타이머 정지">정지</button>
+                            <button class="danger" type="button" data-timer-command="!타이머 삭제">삭제</button>
+                        </div>
+                    </form>
                     <div class="link-row">
                         <input id="overlayUrl" value="{{ overlay_url }}" readonly>
                         <button type="button" id="copyUrl">복사</button>
                         <button type="button" id="copyUrlWithPreset" title="현재 프리셋으로 고정된 링크로 복사합니다." disabled>프리셋 복사</button>
                     </div>
-                    <p class="hint">OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 채팅이 표시됩니다.</p>
+                    <p class="hint" id="linkHint">OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 채팅이 표시됩니다.</p>
                 </div>
             </div>
         </section>

@@ -108,6 +108,7 @@ class ChatOverlayStyleOptions(BaseModel):
 class TimerOverlayStyleOptions(BaseModel):
     timer_autoplay: bool = True
     timer_display_mode: Literal["simple", "titled"] = "titled"
+    timer_title_text: str = Field(default="타이머", max_length=40)
     timer_font_size: int = Field(default=72, ge=32, le=160)
     timer_font_weight: Literal["400", "600", "700", "900"] = "700"
     timer_text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
@@ -116,6 +117,11 @@ class TimerOverlayStyleOptions(BaseModel):
     timer_background_color: str = Field(default="#1a1a2a", pattern=HEX_COLOR_PATTERN)
     timer_background_opacity: int = Field(default=100, ge=0, le=100)
     timer_global_opacity: int = Field(default=100, ge=0, le=100)
+
+    @field_validator("timer_title_text")
+    @classmethod
+    def normalize_timer_title_text(cls, value: str) -> str:
+        return value.strip() or "타이머"
 
 
 class _CssSnippetMixin(BaseModel):

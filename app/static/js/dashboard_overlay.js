@@ -11,12 +11,17 @@ const paletteColorInput = document.getElementById("paletteColorInput");
 const sampleChatForm = document.getElementById("sampleChatForm");
 const sampleNickname = document.getElementById("sampleNickname");
 const sampleMessage = document.getElementById("sampleMessage");
+const sampleTimerForm = document.getElementById("sampleTimerForm");
+const sampleTimerCommand = document.getElementById("sampleTimerCommand");
+const linkHint = document.getElementById("linkHint");
 const overlayUrls = JSON.parse(document.getElementById("overlayUrls").textContent);
 
 let previewMode = "sample";
 let activeOverlayKind = "chat";
 let activePresetName = null;
+let sampleTimerState = null;
 const syncingStyleMode = {chat: false, timer: false};
+const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
 
 function parseJson(id) {
     return JSON.parse(document.getElementById(id).textContent);
@@ -59,6 +64,7 @@ function getTimerStyleOptions() {
     return {
         timer_autoplay: form.elements.timer_autoplay.checked,
         timer_display_mode: form.elements.timer_display_mode.value,
+        timer_title_text: form.elements.timer_title_text.value.trim() || "타이머",
         timer_font_size: Number(form.elements.timer_font_size.value),
         timer_font_weight: form.elements.timer_font_weight.value,
         timer_text_color: form.elements.timer_text_color.value,
@@ -127,6 +133,10 @@ function setOverlayKind(kind) {
     });
     overlayUrl.value = overlayUrls[activeOverlayKind] || overlayUrls.chat;
     sampleChatForm.hidden = activeOverlayKind !== "chat";
+    sampleTimerForm.hidden = activeOverlayKind !== "timer";
+    linkHint.textContent = activeOverlayKind === "timer"
+        ? "OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 타이머가 표시됩니다."
+        : "OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 채팅이 표시됩니다.";
     document.getElementById("copyUrlWithPreset").hidden = activeOverlayKind !== "chat";
     refreshPreview();
 }
@@ -225,6 +235,8 @@ function setControlValues(kind, options) {
     if (kind === "chat") {
         updateNameGapVisibility();
         renderPalette();
+    } else if (kind === "timer") {
+        updateTimerTitleVisibility();
     }
 }
 
@@ -293,25 +305,181 @@ function sendSampleChat(nickname, message) {
     }, window.location.origin);
 }
 
-function sendSampleTimer() {
+function parseTimerDuration(value) {
+    const text = value.trim().toLowerCase();
+    if (!text) {
+        return null;
+    }
+
+    const clockParts = text.split(":");
+    if (clockParts.length >= 2 && clockParts.length <= 3 && clockParts.every((part) => /^\d{1,2}$/.test(part))) {
+        const numbers = clockParts.map(Number);
+        const seconds = numbers.length === 3
+            ? numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+            : numbers[0] * 60 + numbers[1];
+        const minutes = numbers.length === 3 ? numbers[1] : numbers[0];
+        const secondPart = numbers.length === 3 ? numbers[2] : numbers[1];
+        const durationMs = seconds * 1000;
+        return durationMs > 0 && durationMs <= MAX_TIMER_MS && minutes < 60 && secondPart < 60 ? durationMs : null;
+    }
+
+    if (/^\d+$/.test(text)) {
+        const durationMs = Number(text) * 60 * 1000;
+        return durationMs > 0 && durationMs <= MAX_TIMER_MS ? durationMs : null;
+    }
+
+    const unitPattern = /(\d+)\s*(시간|시|h|분|m|초|s)/gi;
+    let totalSeconds = 0;
+    let matched = false;
+    let consumed = "";
+    for (const match of text.matchAll(unitPattern)) {
+        matched = true;
+        consumed += match[0];
+        const amount = Number(match[1]);
+        const unit = match[2];
+        if (["시간", "시", "h"].includes(unit)) totalSeconds += amount * 3600;
+        if (["분", "m"].includes(unit)) totalSeconds += amount * 60;
+        if (["초", "s"].includes(unit)) totalSeconds += amount;
+    }
+    if (matched) {
+        const durationMs = totalSeconds * 1000;
+        const normalizedConsumed = consumed.replace(/\s+/g, "");
+        const normalizedText = text.replace(/\s+/g, "");
+        return durationMs > 0 && durationMs <= MAX_TIMER_MS && normalizedConsumed === normalizedText ? durationMs : null;
+    }
+
+    return null;
+}
+
+function parseTimerCreateArgs(parts) {
+    const durationText = parts.at(-1);
+    const durationMs = parseTimerDuration(durationText);
+    if (!durationMs) {
+        return null;
+    }
+    return {
+        title: parts.slice(0, -1).join(" ").trim(),
+        durationMs,
+    };
+}
+
+function currentSampleTimerRemaining() {
+    if (!sampleTimerState) {
+        return 0;
+    }
+    if (sampleTimerState.running && sampleTimerState.ends_at_ms) {
+        return Math.max(0, sampleTimerState.ends_at_ms - Date.now());
+    }
+    return Math.max(0, Number(sampleTimerState.remaining_ms) || 0);
+}
+
+function getTimerDefaultTitle() {
+    return form.elements.timer_title_text.value.trim() || "타이머";
+}
+
+function postSampleTimer(payload) {
     if (previewMode !== "sample" || activeOverlayKind !== "timer") {
         setStatus("샘플 모드에서만 테스트 타이머를 보낼 수 있습니다.");
-        return;
+        return false;
     }
     preview.contentWindow?.postMessage({
         type: "milkyway-overlay-sample-timer",
-        payload: {
-            action: "snapshot",
-            timer: {
-                title: "휴식 시간",
-                duration_ms: 25 * 60 * 1000,
-                remaining_ms: 25 * 60 * 1000,
-                running: false,
-                started_at_ms: null,
-                ends_at_ms: null,
-            },
-        },
+        payload,
     }, window.location.origin);
+    return true;
+}
+
+function sendSampleTimer() {
+    if (!sampleTimerState) {
+        const durationMs = 25 * 60 * 1000;
+        sampleTimerState = {
+            title: getTimerDefaultTitle(),
+            duration_ms: durationMs,
+            remaining_ms: durationMs,
+            running: false,
+            started_at_ms: null,
+            ends_at_ms: null,
+        };
+    }
+    postSampleTimer({action: "snapshot", timer: {...sampleTimerState}});
+}
+
+function runSampleTimerCommand(command) {
+    const normalized = command.trim().replace(/\s+/g, " ");
+    if (!normalized.startsWith("!타이머")) {
+        setStatus("!타이머 명령어를 입력해 주세요.");
+        return;
+    }
+
+    const args = normalized.slice("!타이머".length).trim();
+    if (!args) {
+        setStatus("시간을 입력해 주세요.");
+        return;
+    }
+
+    if (args === "삭제") {
+        sampleTimerState = null;
+        if (postSampleTimer({action: "delete"})) {
+            setStatus("타이머 삭제 명령을 실행했습니다.");
+        }
+        return;
+    }
+
+    if (args === "정지") {
+        if (!sampleTimerState) {
+            setStatus("정지할 타이머가 없습니다.");
+            return;
+        }
+        sampleTimerState = {
+            ...sampleTimerState,
+            remaining_ms: currentSampleTimerRemaining(),
+            running: false,
+            started_at_ms: null,
+            ends_at_ms: null,
+        };
+        if (postSampleTimer({action: "snapshot", timer: {...sampleTimerState}})) {
+            setStatus("타이머 정지 명령을 실행했습니다.");
+        }
+        return;
+    }
+
+    if (args === "재생") {
+        if (!sampleTimerState) {
+            setStatus("재생할 타이머가 없습니다.");
+            return;
+        }
+        const remainingMs = currentSampleTimerRemaining();
+        sampleTimerState = {
+            ...sampleTimerState,
+            remaining_ms: remainingMs,
+            running: remainingMs > 0,
+            started_at_ms: remainingMs > 0 ? Date.now() : null,
+            ends_at_ms: remainingMs > 0 ? Date.now() + remainingMs : null,
+        };
+        if (postSampleTimer({action: "snapshot", timer: {...sampleTimerState}})) {
+            setStatus("타이머 재생 명령을 실행했습니다.");
+        }
+        return;
+    }
+
+    const createArgs = parseTimerCreateArgs(args.split(" "));
+    if (!createArgs) {
+        setStatus("시간은 25:00, 10분, 30초 같은 형식으로 입력해 주세요.");
+        return;
+    }
+
+    const shouldRun = form.elements.timer_autoplay.checked;
+    sampleTimerState = {
+        title: createArgs.title || getTimerDefaultTitle(),
+        duration_ms: createArgs.durationMs,
+        remaining_ms: createArgs.durationMs,
+        running: shouldRun,
+        started_at_ms: shouldRun ? Date.now() : null,
+        ends_at_ms: shouldRun ? Date.now() + createArgs.durationMs : null,
+    };
+    if (postSampleTimer({action: "snapshot", timer: {...sampleTimerState}})) {
+        setStatus("타이머 명령을 실행했습니다.");
+    }
 }
 
 function getSampleNameColor() {
@@ -478,6 +646,18 @@ sampleChatForm.addEventListener("submit", (event) => {
     sampleMessage.value = "";
 });
 
+sampleTimerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runSampleTimerCommand(sampleTimerCommand.value);
+});
+
+document.querySelectorAll("[data-timer-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+        sampleTimerCommand.value = button.dataset.timerCommand;
+        runSampleTimerCommand(button.dataset.timerCommand);
+    });
+});
+
 preview.addEventListener("load", () => {
     if (previewMode === "sample" && activeOverlayKind === "timer") {
         window.setTimeout(sendSampleTimer, 300);
@@ -511,12 +691,21 @@ function updateNameGapVisibility() {
     document.getElementById("nameGapControl").classList.toggle("is-visible", isSeparate);
 }
 
+function updateTimerTitleVisibility() {
+    const isTitled = form.elements.timer_display_mode.value === "titled";
+    document.getElementById("timerTitleControl").hidden = !isTitled;
+}
+
 form.querySelectorAll('input[type="range"]').forEach((input) => {
     input.addEventListener("input", () => updateRangeOutput(input));
 });
 
 Array.from(form.elements.name_mode).forEach((radio) => {
     radio.addEventListener("change", updateNameGapVisibility);
+});
+
+Array.from(form.elements.timer_display_mode).forEach((radio) => {
+    radio.addEventListener("change", updateTimerTitleVisibility);
 });
 
 document.getElementById("copyUrl").addEventListener("click", async () => {
