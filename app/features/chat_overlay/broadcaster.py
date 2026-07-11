@@ -71,3 +71,4 @@ class ChatOverlayBroadcaster:
 
 
 chat_overlay_broadcaster = ChatOverlayBroadcaster()
+timer_overlay_broadcaster = ChatOverlayBroadcaster()

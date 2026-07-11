@@ -30,6 +30,7 @@ from app.features.chat.handling.cmd_notification import (
     handle_delete_notification,
     handle_set_notification,
 )
+from app.features.chat.handling.cmd_timer import handle_timer_command
 
 logger = logging.getLogger("MessageHandling")
 
@@ -106,6 +107,12 @@ async def on_command(
     user_name: str,
 ):
     chat_service = ChatService(db)
+
+    if command == "타이머":
+        if role == "common_user":
+            return
+        await handle_timer_command(session, chat_service, channel_id, args)
+        return
 
     # NOTE: SQLAlchemy AsyncSession은 단일 세션 객체에 대한 동시 작업을 허용하지 않으므로
     # asyncio.gather 병렬 조회가 IllegalStateChangeError를 유발합니다.

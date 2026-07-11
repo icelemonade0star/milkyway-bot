@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>타이머 오버레이</title>
+<style>
+/* ===== 토큰 ===== */
+:root {
+  --color-bg:            #ffffff;
+  --color-bg-secondary:  #f7f7f8;
+  --color-bg-selected:   #EEEDFE;
+  --color-text-primary:  #111111;
+  --color-text-secondary:#555555;
+  --color-text-tertiary: #999999;
+  --color-border:        rgba(0,0,0,0.10);
+  --color-border-hover:  rgba(0,0,0,0.22);
+  --color-accent:        #534AB7;
+  --color-accent-dark:   #3C3489;
+  --color-accent-bg:     #EEEDFE;
+  --color-accent-sub:    #7F77DD;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  background: #f0f0f2;
+  min-height: 100vh;
+  padding: 24px 16px;
+}
+
+/* ===== 레이아웃 ===== */
+.workspace {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1px;
+  background: var(--color-border);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.editor-col {
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+}
+.preview-col {
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== 탑바 ===== */
+.topbar {
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.topbar-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.topbar-sub { font-size: 11px; color: var(--color-text-tertiary); margin-top: 1px; }
+.btn-primary {
+  font-size: 12px; padding: 6px 14px;
+  background: var(--color-accent); color: #EEEDFE;
+  border: none; border-radius: var(--radius-md);
+  cursor: pointer; font-weight: 500;
+}
+.btn-ghost {
+  font-size: 12px; padding: 6px 12px;
+  background: transparent; color: var(--color-text-secondary);
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.btn-danger {
+  font-size: 12px; padding: 6px 12px;
+  background: transparent; color: #A32D2D;
+  border: 0.5px solid #F7C1C1; border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+/* ===== 섹션 ===== */
+.settings-scroll { flex: 1; overflow-y: auto; }
+.settings-section { border-bottom: 0.5px solid var(--color-border); }
+.section-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 16px; background: none; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--color-text-primary);
+}
+.chevron { font-size: 16px; color: var(--color-text-tertiary); transition: transform 0.15s; }
+.settings-section.is-collapsed .chevron { transform: rotate(-90deg); }
+.settings-section.is-collapsed .section-body { display: none; }
+.section-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+/* ===== 공통 컨트롤 ===== */
+.ctrl-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 5px; display: block; }
+.ctrl-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+select {
+  width: 100%; padding: 7px 10px; font-size: 13px;
+  color: var(--color-text-primary); background: var(--color-bg);
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-md);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; cursor: pointer;
+}
+select:hover { border-color: var(--color-border-hover); }
+select:focus { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+
+/* 슬라이더 */
+.range-row { display: flex; align-items: center; gap: 8px; }
+.range-row input[type=range] { flex: 1; accent-color: var(--color-accent); }
+.range-val { font-size: 12px; font-weight: 500; color: var(--color-text-primary); min-width: 36px; text-align: right; }
+
+/* 색상 피커 행 */
+.color-row { display: flex; align-items: center; gap: 10px; }
+.color-chip-btn {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  border: 0.5px solid var(--color-border); cursor: pointer; flex-shrink: 0;
+  padding: 0; overflow: hidden; position: relative;
+}
+.color-chip-btn input[type=color] {
+  position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px);
+  border: none; padding: 0; cursor: pointer; opacity: 0;
+}
+.color-swatch { width: 100%; height: 100%; pointer-events: none; }
+.color-chip-label { font-size: 12px; color: var(--color-text-secondary); }
+
+/* 시간 입력 */
+.time-input-row { display: flex; align-items: center; gap: 6px; }
+.time-unit { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.time-unit input {
+  width: 56px; text-align: center; font-size: 20px; font-weight: 600;
+  color: var(--color-text-primary); padding: 8px 4px;
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+.time-unit input:focus { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.time-unit-label { font-size: 10px; color: var(--color-text-tertiary); }
+.time-sep { font-size: 20px; font-weight: 600; color: var(--color-text-tertiary); margin-bottom: 14px; }
+
+/* 라디오 카드 */
+.radio-group-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 5px; display: block; }
+.radio-cards { display: flex; flex-direction: column; gap: 5px; }
+.radio-card { cursor: pointer; display: block; }
+.radio-card input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+.radio-card-inner {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg); transition: border-color 0.12s, background 0.12s;
+}
+.radio-card:hover .radio-card-inner { border-color: var(--color-border-hover); background: var(--color-bg-secondary); }
+.radio-card input[type="radio"]:checked + .radio-card-inner { border-color: var(--color-accent); background: var(--color-accent-bg); }
+.radio-card input[type="radio"]:focus-visible + .radio-card-inner { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.radio-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--color-border-hover); flex-shrink: 0; position: relative;
+  transition: border-color 0.12s;
+}
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-dot { border-color: var(--color-accent); }
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-dot::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); width: 7px; height: 7px;
+  border-radius: 50%; background: var(--color-accent);
+}
+.radio-card-text { display: flex; flex-direction: column; gap: 1px; }
+.radio-card-title { font-size: 13px; color: var(--color-text-primary); line-height: 1.3; }
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-card-title { color: var(--color-accent-dark); font-weight: 500; }
+.radio-card-sub { font-size: 11px; color: var(--color-text-tertiary); line-height: 1.3; }
+.radio-card input[type="radio"]:checked + .radio-card-inner .radio-card-sub { color: var(--color-accent-sub); }
+
+/* 라디오 오른쪽 미리보기 뱃지 */
+.radio-preview {
+  margin-left: auto; background: #1e1e2a; border-radius: 4px;
+  padding: 4px 8px; flex-shrink: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; min-width: 72px; gap: 1px;
+}
+.rp-timer { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.05em; font-variant-numeric: tabular-nums; }
+.rp-title { font-size: 8px; color: #aaa; }
+
+/* ===== 하단 바 ===== */
+.bottom-bar {
+  padding: 10px 16px; border-top: 0.5px solid var(--color-border);
+  display: flex; gap: 6px; align-items: center;
+}
+.save-status { font-size: 11px; color: #3B6D11; margin-left: auto; }
+
+/* ===== 미리보기 컬럼 ===== */
+.preview-head {
+  padding: 12px 16px; border-bottom: 0.5px solid var(--color-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.preview-head h2 { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.tab-row { display: flex; border: 0.5px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+.tab { font-size: 11px; padding: 4px 14px; background: var(--color-bg); color: var(--color-text-secondary); border: none; cursor: pointer; }
+.tab.on { background: var(--color-accent); color: #EEEDFE; font-weight: 500; }
+
+.preview-shell {
+  flex: 1; background: #1a1a2a;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 320px; position: relative;
+}
+
+/* ===== 타이머 오버레이 표시 (미리보기용) ===== */
+.timer-display {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: all 0.3s;
+}
+.timer-title-text {
+  font-size: 18px; font-weight: 500; color: #ffffff;
+  letter-spacing: 0.02em; opacity: 0.85;
+}
+.timer-time {
+  font-size: 72px; font-weight: 700; color: #ffffff;
+  letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+  line-height: 1; text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+  transition: font-size 0.2s, color 0.2s;
+}
+.timer-display.simple .timer-title-text { display: none; }
+.timer-display.simple .timer-time { font-size: 96px; }
+
+/* 타이머가 끝났을 때 */
+.timer-display.done .timer-time { color: #ff8fab; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* 링크 패널 */
+.link-panel { padding: 12px 16px; border-top: 0.5px solid var(--color-border); }
+.link-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.link-url {
+  flex: 1; font-size: 11px; font-family: monospace; padding: 5px 8px;
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg-secondary); color: var(--color-text-secondary);
+}
+.hint { font-size: 11px; color: var(--color-text-tertiary); line-height: 1.5; }
+
+.danger-zone {
+  padding: 10px 16px; border-top: 0.5px solid #F7C1C1;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.danger-title { font-size: 12px; font-weight: 500; color: #A32D2D; }
+.danger-desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 1px; }
+
+
+</style>
+</head>
+<body>
+
+<div class="workspace">
+  <!-- ===== 왼쪽: 설정 ===== -->
+  <div class="editor-col">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">타이머 오버레이</div>
+        <div class="topbar-sub">밀키웨이 봇</div>
+      </div>
+      <button class="btn-primary" onclick="window.open('#')">OBS 열기</button>
+    </div>
+
+    <div class="settings-scroll">
+      <form id="timerForm">
+
+        <!-- 기본 -->
+        <section class="settings-section" data-section="basic">
+          <button class="section-toggle" type="button" aria-expanded="true" onclick="toggleSection(this)">
+            <span>기본</span><span class="chevron">⌄</span>
+          </button>
+          <div class="section-body">
+
+            <!-- 화면 구성 (라디오 카드) -->
+            <div>
+              <span class="radio-group-label">화면 구성</span>
+              <div class="radio-cards">
+                <label class="radio-card">
+                  <input type="radio" name="display_mode" value="simple" onchange="applyDisplayMode(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text">
+                      <span class="radio-card-title">심플</span>
+                      <span class="radio-card-sub">숫자만 크게</span>
+                    </span>
+                    <span class="radio-preview">
+                      <span class="rp-timer">25:00</span>
+                    </span>
+                  </span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="display_mode" value="titled" checked onchange="applyDisplayMode(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text">
+                      <span class="radio-card-title">제목 + 타이머</span>
+                      <span class="radio-card-sub">텍스트와 숫자 함께</span>
+                    </span>
+                    <span class="radio-preview">
+                      <span class="rp-title">휴식 시간</span>
+                      <span class="rp-timer">25:00</span>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 제목 텍스트 (titled 모드에서만 보임) -->
+            <div id="titleInputWrap">
+              <label class="ctrl-label" for="timerTitle">제목 텍스트</label>
+              <input id="timerTitle" type="text" maxlength="40" placeholder="방송 준비 중…"
+                style="width:100%;padding:7px 10px;font-size:13px;border:0.5px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text-primary);"
+                oninput="document.getElementById('previewTitle').textContent=this.value||'제목 없음'">
+            </div>
+
+            <!-- 시작 시간 -->
+            <div>
+              <span class="ctrl-label">카운트다운 시간</span>
+              <div class="time-input-row">
+                <div class="time-unit">
+                  <input type="number" id="inputHour" min="0" max="23" value="0" placeholder="00" oninput="syncTime()">
+                  <span class="time-unit-label">시간</span>
+                </div>
+                <span class="time-sep">:</span>
+                <div class="time-unit">
+                  <input type="number" id="inputMin" min="0" max="59" value="25" placeholder="00" oninput="syncTime()">
+                  <span class="time-unit-label">분</span>
+                </div>
+                <span class="time-sep">:</span>
+                <div class="time-unit">
+                  <input type="number" id="inputSec" min="0" max="59" value="0" placeholder="00" oninput="syncTime()">
+                  <span class="time-unit-label">초</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- 색상 -->
+        <section class="settings-section" data-section="colors">
+          <button class="section-toggle" type="button" aria-expanded="true" onclick="toggleSection(this)">
+            <span>색상</span><span class="chevron">⌄</span>
+          </button>
+          <div class="section-body">
+
+            <div class="color-row">
+              <div class="color-chip-btn" style="background:#ffffff">
+                <input type="color" value="#ffffff" oninput="applyColor('--timer-text-color', this.value); this.parentElement.style.background=this.value">
+                <div class="color-swatch"></div>
+              </div>
+              <span class="color-chip-label">숫자 색상</span>
+            </div>
+
+            <div class="color-row">
+              <div class="color-chip-btn" style="background:#cccccc">
+                <input type="color" value="#cccccc" oninput="applyColor('--timer-title-color', this.value); this.parentElement.style.background=this.value">
+                <div class="color-swatch"></div>
+              </div>
+              <span class="color-chip-label">제목 색상</span>
+            </div>
+
+            <div class="color-row">
+              <div class="color-chip-btn" style="background:#ff8fab">
+                <input type="color" value="#ff8fab" oninput="applyColor('--timer-done-color', this.value); this.parentElement.style.background=this.value">
+                <div class="color-swatch"></div>
+              </div>
+              <span class="color-chip-label">종료 시 색상</span>
+            </div>
+
+            <!-- 배경 -->
+            <div style="border-top:0.5px solid var(--color-border);padding-top:10px;display:flex;flex-direction:column;gap:10px">
+              <span class="ctrl-label" style="margin-bottom:0">배경</span>
+              <div class="color-row">
+                <div class="color-chip-btn" id="bgChip" style="background:#1a1a2a">
+                  <input type="color" value="#1a1a2a" oninput="applyBg(this.value, null); this.parentElement.style.background=this.value">
+                  <div class="color-swatch"></div>
+                </div>
+                <span class="color-chip-label">배경색</span>
+              </div>
+              <div>
+                <label class="ctrl-label">배경 투명도 <span id="bgOpVal" style="float:right;font-weight:500;color:var(--color-text-primary)">100%</span></label>
+                <input type="range" min="0" max="100" value="100" style="width:100%;accent-color:var(--color-accent)"
+                  oninput="document.getElementById('bgOpVal').textContent=this.value+'%'; applyBg(null, this.value)">
+              </div>
+              <div style="border-top:0.5px solid var(--color-border);padding-top:10px">
+                <label class="ctrl-label">전체 투명도 <span id="globalOpVal" style="float:right;font-weight:500;color:var(--color-text-primary)">100%</span></label>
+                <input type="range" min="0" max="100" value="100" style="width:100%;accent-color:var(--color-accent)"
+                  oninput="document.getElementById('globalOpVal').textContent=this.value+'%'; document.getElementById('timerDisplay').style.opacity=this.value/100">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 글자 스타일 -->
+        <section class="settings-section" data-section="font">
+          <button class="section-toggle" type="button" aria-expanded="true" onclick="toggleSection(this)">
+            <span>글자 스타일</span><span class="chevron">⌄</span>
+          </button>
+          <div class="section-body">
+
+            <div>
+              <label class="ctrl-label" for="fontFamily">폰트</label>
+              <select id="fontFamily" onchange="applyFont(this.value)">
+                <option value="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif">Pretendard (기본)</option>
+                <option value="'Noto Sans KR',sans-serif">Noto Sans KR</option>
+                <option value="'Black Han Sans',sans-serif">Black Han Sans</option>
+                <option value="'Jua',sans-serif">Jua</option>
+                <option value="'Gugi',sans-serif">Gugi</option>
+                <option value="monospace">고정폭 (Monospace)</option>
+              </select>
+            </div>
+
+            <div>
+              <span class="radio-group-label">굵기</span>
+              <div class="radio-cards">
+                <label class="radio-card">
+                  <input type="radio" name="font_weight" value="400" onchange="applyFontWeight(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text"><span class="radio-card-title" style="font-weight:400">보통</span></span>
+                  </span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="font_weight" value="600" onchange="applyFontWeight(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text"><span class="radio-card-title" style="font-weight:600">세미볼드</span></span>
+                  </span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="font_weight" value="700" checked onchange="applyFontWeight(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text"><span class="radio-card-title" style="font-weight:700">볼드</span></span>
+                  </span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="font_weight" value="900" onchange="applyFontWeight(this.value)">
+                  <span class="radio-card-inner">
+                    <span class="radio-dot"></span>
+                    <span class="radio-card-text"><span class="radio-card-title" style="font-weight:900">엑스트라 볼드</span></span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label class="ctrl-label">글자 크기 <span id="fsVal" style="float:right;font-weight:500;color:var(--color-text-primary)">72px</span></label>
+              <input type="range" min="32" max="160" value="72" style="width:100%;accent-color:var(--color-accent)"
+                oninput="document.getElementById('fsVal').textContent=this.value+'px'; document.getElementById('previewTime').style.fontSize=this.value+'px'">
+            </div>
+
+          </div>
+        </section>
+
+        <!-- 고급 CSS -->
+        <section class="settings-section is-collapsed" data-section="css">
+          <button class="section-toggle" type="button" aria-expanded="false" onclick="toggleSection(this)">
+            <span>고급 CSS</span><span class="chevron">⌄</span>
+          </button>
+          <div class="section-body">
+            <div style="font-size:11px;font-family:monospace;background:var(--color-bg-secondary);border:0.5px solid var(--color-border);border-radius:var(--radius-md);padding:10px;color:var(--color-text-secondary);line-height:1.7">
+.timer-overlay { /* 전체 영역 */ }<br>
+.timer-time    { /* 숫자 */ }<br>
+.timer-title   { /* 제목 텍스트 */ }
+            </div>
+            <textarea spellcheck="false" placeholder="/* 추가 CSS */"
+              style="width:100%;font-size:11px;font-family:monospace;padding:8px;border:0.5px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text-primary);resize:vertical;min-height:72px;line-height:1.6"></textarea>
+          </div>
+        </section>
+
+      </form>
+    </div>
+
+    <div class="bottom-bar">
+      <button class="btn-primary" onclick="saveSettings()">저장</button>
+      <div class="save-status" id="saveStatus" style="display:none">✓ 저장됨</div>
+    </div>
+  </div>
+
+  <!-- ===== 오른쪽: 미리보기 ===== -->
+  <div class="preview-col">
+    <div class="preview-head">
+      <h2>미리보기</h2>
+      <div class="tab-row">
+        <button class="tab on">미리보기</button>
+      </div>
+    </div>
+
+    <div class="preview-shell" id="previewShell" style="justify-content:center;align-items:center">
+      <div class="timer-display titled" id="timerDisplay">
+        <div class="timer-title-text" id="previewTitle">제목 없음</div>
+        <div class="timer-time" id="previewTime">25:00</div>
+      </div>
+    </div>
+
+    <div class="link-panel">
+      <div class="link-row">
+        <input class="link-url" readonly value="https://milkywaybot.cloud/overlay/timer/chzzk/…">
+        <button class="btn-ghost">복사</button>
+      </div>
+      <p class="hint">OBS 브라우저 소스에 이 링크를 넣으면 방송 화면에 타이머가 표시됩니다.</p>
+    </div>
+
+    <div class="danger-zone">
+      <div>
+        <div class="danger-title">링크 재발급</div>
+        <div class="danger-desc">기존 OBS 링크가 즉시 무효화됩니다</div>
+      </div>
+      <button class="btn-danger" onclick="if(confirm('링크를 재발급하면 OBS에서 링크를 다시 설정해야 합니다. 계속할까요?')) alert('재발급됨')">재발급</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== 섹션 토글 ===== */
+function toggleSection(btn) {
+  const sec = btn.closest('.settings-section');
+  const collapsed = sec.classList.toggle('is-collapsed');
+  btn.setAttribute('aria-expanded', !collapsed);
+}
+
+/* ===== 타이머 미리보기 표시 ===== */
+function fmt(h, m, s) {
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function syncTime() {
+  const h = parseInt(document.getElementById('inputHour').value) || 0;
+  const m = parseInt(document.getElementById('inputMin').value)  || 0;
+  const s = parseInt(document.getElementById('inputSec').value)  || 0;
+  document.getElementById('previewTime').textContent = fmt(h, m, s);
+}
+
+/* ===== 디스플레이 모드 ===== */
+function applyDisplayMode(mode) {
+  const d = document.getElementById('timerDisplay');
+  d.className = 'timer-display ' + mode;
+  document.getElementById('titleInputWrap').style.display = mode === 'simple' ? 'none' : '';
+}
+
+/* ===== 배경 (색상 + 투명도 분리) ===== */
+let bgColor = '#1a1a2a';
+let bgOpacity = 1;
+function applyBg(color, opacity) {
+  if (color !== null) bgColor = color;
+  if (opacity !== null) bgOpacity = opacity / 100;
+  const hex = bgColor;
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  document.getElementById('previewShell').style.background = `rgba(${r},${g},${b},${bgOpacity})`;
+}
+
+/* ===== 색상 ===== */
+function applyColor(prop, val) {
+  if (prop === '--timer-text-color')  document.getElementById('previewTime').style.color  = val;
+  if (prop === '--timer-title-color') document.getElementById('previewTitle').style.color = val;
+}
+
+/* ===== 폰트 ===== */
+function applyFont(val) {
+  document.getElementById('timerDisplay').style.fontFamily = val;
+}
+function applyFontWeight(val) {
+  document.getElementById('previewTime').style.fontWeight = val;
+}
+
+/* ===== 저장 (더미) ===== */
+function saveSettings() {
+  const st = document.getElementById('saveStatus');
+  st.style.display = 'block';
+  setTimeout(() => st.style.display = 'none', 2000);
+}
+
+syncTime();
+</script>
+</body>
+</html>

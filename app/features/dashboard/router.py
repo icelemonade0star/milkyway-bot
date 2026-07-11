@@ -115,6 +115,7 @@ async def dashboard_overlay(
             "style_options": _normalize_options(setting.style_options),
             "presets": [_preset_payload(preset) for preset in presets],
             "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
+            "timer_overlay_url": ChatOverlayService.timer_overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         },
     )
 
@@ -138,6 +139,7 @@ async def save_dashboard_overlay(
     return {
         "status": "success",
         "overlay_url": ChatOverlayService.overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
+        "timer_overlay_url": ChatOverlayService.timer_overlay_url(DASHBOARD_PLATFORM, channel.platform_channel_id),
         "style_mode": setting.style_mode,
         "style_options": _normalize_options(setting.style_options),
         "custom_css": setting.custom_css,

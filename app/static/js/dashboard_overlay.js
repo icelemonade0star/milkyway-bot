@@ -13,12 +13,17 @@ const sampleChatForm = document.getElementById("sampleChatForm");
 const sampleNickname = document.getElementById("sampleNickname");
 const sampleMessage = document.getElementById("sampleMessage");
 const advancedCss = document.querySelector('[data-section="css"]');
+const timerAdvancedCss = document.querySelector('[data-section="timer-css"]');
 const defaults = JSON.parse(document.getElementById("overlayStyleDefaults").textContent);
 const currentOptions = JSON.parse(document.getElementById("overlayStyleCurrent").textContent);
+const overlayUrls = JSON.parse(document.getElementById("overlayUrls").textContent);
 let styleMode = JSON.parse(document.getElementById("overlayStyleMode").textContent) || "options";
+let timerStyleMode = currentOptions.timer_style_mode === "custom" ? "custom" : "options";
 let presets = JSON.parse(document.getElementById("overlayPresetData").textContent);
 let previewMode = "sample";
+let activeOverlayKind = "chat";
 let syncingStyleMode = false;
+let syncingTimerStyleMode = false;
 let activePresetName = null;
 
 function setStatus(message) {
@@ -26,11 +31,12 @@ function setStatus(message) {
 }
 
 function previewSource() {
-    const separator = overlayUrl.value.includes("?") ? "&" : "?";
+    const baseUrl = overlayUrls[activeOverlayKind] || overlayUrls.chat;
+    const separator = baseUrl.includes("?") ? "&" : "?";
     if (previewMode === "sample") {
-        return `${overlayUrl.value}${separator}preview=1&t=${Date.now()}`;
+        return `${baseUrl}${separator}preview=1&t=${Date.now()}`;
     }
-    return `${overlayUrl.value}${separator}t=${Date.now()}`;
+    return `${baseUrl}${separator}t=${Date.now()}`;
 }
 
 function refreshPreview() {
@@ -42,6 +48,20 @@ function setPreviewMode(mode) {
     modeButtons.forEach((button) => {
         button.setAttribute("aria-pressed", String(button.dataset.previewMode === mode));
     });
+    refreshPreview();
+}
+
+function setOverlayKind(kind) {
+    activeOverlayKind = kind === "timer" ? "timer" : "chat";
+    document.querySelectorAll("[data-overlay-kind]").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.overlayKind === activeOverlayKind));
+    });
+    document.querySelectorAll("[data-overlay-pane]").forEach((section) => {
+        section.classList.toggle("is-hidden", section.dataset.overlayPane !== activeOverlayKind);
+    });
+    overlayUrl.value = overlayUrls[activeOverlayKind] || overlayUrls.chat;
+    sampleChatForm.hidden = activeOverlayKind !== "chat";
+    document.getElementById("copyUrlWithPreset").hidden = activeOverlayKind !== "chat";
     refreshPreview();
 }
 
@@ -60,9 +80,16 @@ function setStyleMode(mode) {
     syncingStyleMode = false;
 }
 
+function setTimerStyleMode(mode) {
+    timerStyleMode = mode === "custom" ? "custom" : "options";
+    syncingTimerStyleMode = true;
+    setSectionOpen(timerAdvancedCss, timerStyleMode === "custom");
+    syncingTimerStyleMode = false;
+}
+
 function formatRangeValue(name, value) {
-    if (["font_size", "max_width"].includes(name)) return `${value}px`;
-    if (name === "background_opacity") return `${value}%`;
+    if (["font_size", "max_width", "timer_font_size"].includes(name)) return `${value}px`;
+    if (["background_opacity", "timer_background_opacity", "timer_global_opacity"].includes(name)) return `${value}%`;
     return value;
 }
 
@@ -176,6 +203,18 @@ function getStyleOptions() {
             .filter((input) => input.checked)
             .map((input) => input.value),
         message_ttl_seconds: Number(form.elements.message_ttl_seconds.value),
+        timer_autoplay: form.elements.timer_autoplay.checked,
+        timer_display_mode: form.elements.timer_display_mode.value,
+        timer_font_size: Number(form.elements.timer_font_size.value),
+        timer_font_weight: form.elements.timer_font_weight.value,
+        timer_text_color: form.elements.timer_text_color.value,
+        timer_title_color: form.elements.timer_title_color.value,
+        timer_done_color: form.elements.timer_done_color.value,
+        timer_background_color: form.elements.timer_background_color.value,
+        timer_background_opacity: Number(form.elements.timer_background_opacity.value),
+        timer_global_opacity: Number(form.elements.timer_global_opacity.value),
+        timer_style_mode: timerStyleMode,
+        timer_custom_css: form.elements.timer_custom_css.value,
     };
 }
 
@@ -197,6 +236,7 @@ async function save() {
     const data = await response.json();
     if (data.style_options) {
         setControlValues(data.style_options);
+        setTimerStyleMode(data.style_options.timer_style_mode);
     }
     if (data.style_mode) {
         setStyleMode(data.style_mode);
@@ -213,6 +253,7 @@ async function resetOptions() {
     }
     setControlValues(defaults);
     setStyleMode("options");
+    setTimerStyleMode("options");
     cssInput.value = "";
     await save();
     setStatus("기본 옵션으로 초기화되었습니다.");
@@ -227,6 +268,27 @@ function sendSampleChat(nickname, message) {
     preview.contentWindow?.postMessage({
         type: "milkyway-overlay-sample-chat",
         payload: {nickname, message, name_color: getSampleNameColor()},
+    }, window.location.origin);
+}
+
+function sendSampleTimer() {
+    if (previewMode !== "sample" || activeOverlayKind !== "timer") {
+        setStatus("샘플 모드에서만 테스트 타이머를 보낼 수 있습니다.");
+        return;
+    }
+    preview.contentWindow?.postMessage({
+        type: "milkyway-overlay-sample-timer",
+        payload: {
+            action: "snapshot",
+            timer: {
+                title: "휴식 시간",
+                duration_ms: 25 * 60 * 1000,
+                remaining_ms: 25 * 60 * 1000,
+                running: false,
+                started_at_ms: null,
+                ends_at_ms: null,
+            },
+        },
     }, window.location.origin);
 }
 
@@ -317,6 +379,7 @@ async function applyPreset(id) {
     const data = await response.json();
     setControlValues(data.preset.style_options);
     setStyleMode(data.preset.style_mode);
+    setTimerStyleMode(data.preset.style_options.timer_style_mode);
     cssInput.value = data.preset.custom_css;
     activePresetName = data.preset.name;
     document.getElementById("copyUrlWithPreset").disabled = false;
@@ -390,8 +453,18 @@ sampleChatForm.addEventListener("submit", (event) => {
     sampleMessage.value = "";
 });
 
+preview.addEventListener("load", () => {
+    if (previewMode === "sample" && activeOverlayKind === "timer") {
+        window.setTimeout(sendSampleTimer, 300);
+    }
+});
+
 modeButtons.forEach((button) => {
     button.addEventListener("click", () => setPreviewMode(button.dataset.previewMode));
+});
+
+document.querySelectorAll("[data-overlay-kind]").forEach((button) => {
+    button.addEventListener("click", () => setOverlayKind(button.dataset.overlayKind));
 });
 
 document.querySelectorAll(".section-toggle").forEach((button) => {
@@ -401,6 +474,9 @@ document.querySelectorAll(".section-toggle").forEach((button) => {
         setSectionOpen(section, willOpen);
         if (section === advancedCss && !syncingStyleMode) {
             styleMode = willOpen ? "custom" : "options";
+        }
+        if (section === timerAdvancedCss && !syncingTimerStyleMode) {
+            timerStyleMode = willOpen ? "custom" : "options";
         }
     });
 });
@@ -432,4 +508,6 @@ document.getElementById("copyUrlWithPreset").addEventListener("click", async () 
 
 setControlValues(currentOptions);
 setStyleMode(styleMode);
+setTimerStyleMode(timerStyleMode);
+setOverlayKind("chat");
 renderPresets();

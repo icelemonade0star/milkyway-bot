@@ -607,6 +607,14 @@ textarea {
     background: var(--accent);
 }
 
+.overlay-tabs {
+    flex-shrink: 0;
+}
+
+.settings-section.is-hidden {
+    display: none;
+}
+
 .preview-shell {
     min-height: 520px;
     background: var(--preview-bg);

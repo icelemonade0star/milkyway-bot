@@ -258,6 +258,74 @@ html, body {{
 """
 
 
+def build_timer_overlay_css(options: OverlayStyleOptions) -> str:
+    """채팅 오버레이와 완전히 독립된 타이머 오버레이 전용 CSS입니다."""
+    timer_background = _rgba(options.timer_background_color, options.timer_background_opacity)
+    timer_title_display = "none" if options.timer_display_mode == "simple" else "block"
+    timer_font_size = 96 if options.timer_display_mode == "simple" else options.timer_font_size
+
+    return f"""body {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}}
+
+.timer-overlay {{
+    min-width: min(520px, 100%);
+    padding: 18px 22px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 8px;
+    background: {timer_background};
+    opacity: {options.timer_global_opacity / 100:.2f};
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+}}
+
+.timer-overlay.is-visible {{
+    display: flex;
+}}
+
+.timer-title {{
+    display: {timer_title_display};
+    color: {options.timer_title_color};
+    font-size: 18px;
+    font-weight: 500;
+    opacity: 0.85;
+    overflow-wrap: anywhere;
+    letter-spacing: 0;
+}}
+
+.timer-time {{
+    color: {options.timer_text_color};
+    font-size: {timer_font_size}px;
+    font-weight: {options.timer_font_weight};
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+}}
+
+.timer-overlay.is-done .timer-time {{
+    color: {options.timer_done_color};
+    animation: timer-pulse 1s ease-in-out infinite;
+}}
+
+@keyframes timer-pulse {{
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.5; }}
+}}
+"""
+
+
+def resolve_timer_overlay_css(options: OverlayStyleOptions) -> str:
+    if options.timer_style_mode == "custom":
+        return options.timer_custom_css
+    return build_timer_overlay_css(options)
+
+
 DEFAULT_STYLE_OPTIONS = OverlayStyleOptions()
 DEFAULT_OVERLAY_CSS = build_overlay_css(DEFAULT_STYLE_OPTIONS)
 
@@ -456,3 +524,7 @@ class ChatOverlayService:
     @staticmethod
     def overlay_url(platform: str, platform_channel_id: str) -> str:
         return f"{PUBLIC_SITE_URL}/overlay/chat/{platform}/{platform_channel_id}"
+
+    @staticmethod
+    def timer_overlay_url(platform: str, platform_channel_id: str) -> str:
+        return f"{PUBLIC_SITE_URL}/overlay/timer/{platform}/{platform_channel_id}"

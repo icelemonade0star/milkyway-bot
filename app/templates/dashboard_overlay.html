@@ -17,7 +17,8 @@
             </div>
             <nav class="nav">
                 <a href="/auth/dashboard">대시보드</a>
-                <a href="{{ overlay_url }}" target="_blank" rel="noopener">OBS 화면 열기</a>
+                <a href="{{ overlay_url }}" target="_blank" rel="noopener">채팅 OBS</a>
+                <a href="{{ timer_overlay_url }}" target="_blank" rel="noopener">타이머 OBS</a>
             </nav>
         </div>
     </header>
@@ -30,11 +31,15 @@
                         <h2>오버레이 설정</h2>
                         <p>{{ channel.channel_name }}</p>
                     </div>
+                    <div class="mode-tabs overlay-tabs" aria-label="overlay editor">
+                        <button type="button" data-overlay-kind="chat" aria-pressed="true">채팅</button>
+                        <button type="button" data-overlay-kind="timer" aria-pressed="false">타이머</button>
+                    </div>
                 </div>
 
                 <div class="settings-scroll">
                     <form id="overlayForm">
-                        <section class="settings-section" data-section="basic">
+                        <section class="settings-section" data-section="basic" data-overlay-pane="chat">
                             <button class="section-toggle" type="button" aria-expanded="true">
                                 <span>기본</span>
                                 <span class="chevron" aria-hidden="true">⌄</span>
@@ -128,7 +133,128 @@
                             </div>
                         </section>
 
-                        <section class="settings-section" data-section="spacing">
+                        <section class="settings-section" data-section="timer" data-overlay-pane="timer">
+                            <button class="section-toggle" type="button" aria-expanded="true">
+                                <span>타이머</span>
+                                <span class="chevron" aria-hidden="true">⌄</span>
+                            </button>
+                            <div class="section-body">
+                                <label class="check-control">
+                                    <input type="checkbox" name="timer_autoplay">
+                                    <span>새 타이머 자동재생</span>
+                                </label>
+                                <div>
+                                    <span class="radio-group-label">화면 구성</span>
+                                    <div class="radio-cards">
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_display_mode" value="simple">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">심플</span>
+                                                    <span class="radio-card-sub">숫자만 크게</span>
+                                                </span>
+                                                <span class="radio-preview">
+                                                    <span class="rp-msg">25:00</span>
+                                                </span>
+                                            </span>
+                                        </label>
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_display_mode" value="titled">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text">
+                                                    <span class="radio-card-title">제목 + 타이머</span>
+                                                    <span class="radio-card-sub">텍스트와 숫자 함께</span>
+                                                </span>
+                                                <span class="radio-preview is-wrap">
+                                                    <span class="rp-nick">휴식 시간</span>
+                                                    <span class="rp-msg">25:00</span>
+                                                </span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="radio-group-label">굵기</span>
+                                    <div class="radio-cards">
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_font_weight" value="400">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text"><span class="radio-card-title">보통</span></span>
+                                            </span>
+                                        </label>
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_font_weight" value="600">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text"><span class="radio-card-title">세미볼드</span></span>
+                                            </span>
+                                        </label>
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_font_weight" value="700">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text"><span class="radio-card-title">볼드</span></span>
+                                            </span>
+                                        </label>
+                                        <label class="radio-card">
+                                            <input type="radio" name="timer_font_weight" value="900">
+                                            <span class="radio-card-inner">
+                                                <span class="radio-dot"></span>
+                                                <span class="radio-card-text"><span class="radio-card-title">엑스트라 볼드</span></span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <label class="range-control">
+                                    <span>글자 크기 <output data-for="timer_font_size"></output></span>
+                                    <input name="timer_font_size" type="range" min="32" max="160" step="1">
+                                </label>
+                                <div class="control-grid colors">
+                                    <label>
+                                        <span>숫자 색상</span>
+                                        <input name="timer_text_color" type="color">
+                                    </label>
+                                    <label>
+                                        <span>제목 색상</span>
+                                        <input name="timer_title_color" type="color">
+                                    </label>
+                                    <label>
+                                        <span>종료 시 색상</span>
+                                        <input name="timer_done_color" type="color">
+                                    </label>
+                                    <label>
+                                        <span>배경색</span>
+                                        <input name="timer_background_color" type="color">
+                                    </label>
+                                    <label class="range-control">
+                                        <span>배경 투명도 <output data-for="timer_background_opacity"></output></span>
+                                        <input name="timer_background_opacity" type="range" min="0" max="100" step="1">
+                                    </label>
+                                    <label class="range-control">
+                                        <span>전체 투명도 <output data-for="timer_global_opacity"></output></span>
+                                        <input name="timer_global_opacity" type="range" min="0" max="100" step="1">
+                                    </label>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="settings-section is-collapsed" data-section="timer-css" data-overlay-pane="timer">
+                            <button class="section-toggle" type="button" aria-expanded="false">
+                                <span>고급 CSS</span>
+                                <span class="chevron" aria-hidden="true">⌄</span>
+                            </button>
+                            <div class="section-body">
+                                <div class="css-guide">.timer-overlay { /* 전체 영역 */ }
+.timer-time    { /* 숫자 */ }
+.timer-title   { /* 제목 텍스트 */ }</div>
+                                <textarea id="timerCustomCss" name="timer_custom_css" spellcheck="false"></textarea>
+                            </div>
+                        </section>
+
+                        <section class="settings-section" data-section="spacing" data-overlay-pane="chat">
                             <button class="section-toggle" type="button" aria-expanded="true">
                                 <span>크기와 간격</span>
                                 <span class="chevron" aria-hidden="true">⌄</span>
@@ -179,7 +305,7 @@
                             </div>
                         </section>
 
-                        <section class="settings-section" data-section="colors">
+                        <section class="settings-section" data-section="colors" data-overlay-pane="chat">
                             <button class="section-toggle" type="button" aria-expanded="true">
                                 <span>색상</span>
                                 <span class="chevron" aria-hidden="true">⌄</span>
@@ -222,7 +348,7 @@
                             </div>
                         </section>
 
-                        <section class="settings-section is-collapsed" data-section="filters">
+                        <section class="settings-section is-collapsed" data-section="filters" data-overlay-pane="chat">
                             <button class="section-toggle" type="button" aria-expanded="false">
                                 <span>필터</span>
                                 <span class="chevron" aria-hidden="true">⌄</span>
@@ -248,7 +374,7 @@
                             </div>
                         </section>
 
-                        <section class="settings-section is-collapsed" data-section="css">
+                        <section class="settings-section is-collapsed" data-section="css" data-overlay-pane="chat">
                             <button class="section-toggle" type="button" aria-expanded="false">
                                 <span>고급 CSS</span>
                                 <span class="chevron" aria-hidden="true">⌄</span>
@@ -264,7 +390,7 @@
                         </section>
                     </form>
 
-                    <section class="settings-section is-collapsed" data-section="presets">
+                    <section class="settings-section is-collapsed" data-section="presets" data-overlay-pane="chat">
                         <button class="section-toggle" type="button" aria-expanded="false">
                             <span>프리셋</span>
                             <span class="chevron" aria-hidden="true">⌄</span>
@@ -320,6 +446,7 @@
     <script id="overlayStyleDefaults" type="application/json">{{ base_style_options|tojson }}</script>
     <script id="overlayStyleCurrent" type="application/json">{{ style_options|tojson }}</script>
     <script id="overlayPresetData" type="application/json">{{ presets|tojson }}</script>
+    <script id="overlayUrls" type="application/json">{{ {"chat": overlay_url, "timer": timer_overlay_url}|tojson }}</script>
     <script src="/static/js/dashboard_overlay.js"></script>
 </body>
 </html>

@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import TEMPLATE_DIR
 from app.core.database import get_async_db
-from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster
+from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster, timer_overlay_broadcaster
 from app.features.chat_overlay.overlay_manager import overlay_manager
 from app.features.chat_overlay.schemas import OverlayStyleOptions
-from app.features.chat_overlay.service import ChatOverlayService
+from app.features.chat_overlay.service import ChatOverlayService, resolve_timer_overlay_css
+from app.features.chat_overlay.timer import overlay_timer_manager
 from app.platforms.constants import PLATFORM_CHZZK
 
 overlay_router = APIRouter(prefix="/overlay", tags=["chat-overlay"])
@@ -70,6 +71,38 @@ async def chat_overlay_by_channel(
     )
 
 
+@overlay_router.get("/timer/chzzk/{platform_channel_id}", response_class=HTMLResponse)
+async def timer_overlay_by_channel(
+    platform_channel_id: str,
+    request: Request,
+    preset: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_async_db),
+):
+    service = ChatOverlayService(db)
+    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Overlay not found.")
+
+    channel, setting = row
+    display_setting = setting
+
+    if preset:
+        preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
+        if preset_row:
+            display_setting = preset_row
+
+    options = safe_overlay_options(display_setting.style_options)
+    return templates.TemplateResponse(
+        "timer_overlay.html",
+        {
+            "request": request,
+            "channel": channel,
+            "timer_css": resolve_timer_overlay_css(options),
+            "overlay_websocket_path": f"/overlay/ws/timer/chzzk/{platform_channel_id}",
+        },
+    )
+
+
 @overlay_router.websocket("/ws/chzzk/{platform_channel_id}")
 async def chat_overlay_ws_by_channel(
     websocket: WebSocket,
@@ -110,3 +143,30 @@ async def connect_overlay_websocket(websocket: WebSocket, platform_channel_id: s
         pass
     finally:
         chat_overlay_broadcaster.disconnect(platform_channel_id, websocket)
+
+
+@overlay_router.websocket("/ws/timer/chzzk/{platform_channel_id}")
+async def timer_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id: str):
+    session_factory = websocket.app.state.SessionLocal
+    async with session_factory() as db:
+        service = ChatOverlayService(db)
+        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+        if not row:
+            await websocket.close(code=1008)
+            return
+        channel, _setting = row
+        platform_channel_id = channel.platform_channel_id
+
+    await connect_timer_overlay_websocket(websocket, platform_channel_id)
+
+
+async def connect_timer_overlay_websocket(websocket: WebSocket, platform_channel_id: str):
+    await timer_overlay_broadcaster.connect(platform_channel_id, websocket)
+    await overlay_timer_manager.publish_snapshot(platform_channel_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        timer_overlay_broadcaster.disconnect(platform_channel_id, websocket)

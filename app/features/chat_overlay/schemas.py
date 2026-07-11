@@ -7,6 +7,15 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 
+def _validate_css_snippet(value: str) -> str:
+    lowered = value.lower()
+    if "</style" in lowered or "<script" in lowered:
+        raise ValueError("CSS만 입력할 수 있습니다.")
+    if "@import" in lowered or "javascript:" in lowered:
+        raise ValueError("외부 CSS import나 스크립트 URL은 사용할 수 없습니다.")
+    return value
+
+
 class OverlayStyleOptions(BaseModel):
     position: Literal["bottom-left", "bottom-right", "top-left", "top-right", "center"] = "bottom-left"
     font_size: int = Field(default=20, ge=12, le=48)
@@ -31,6 +40,18 @@ class OverlayStyleOptions(BaseModel):
     name_gap: int = Field(default=4, ge=0, le=40)
     bubble_style: Literal["solid", "minimal", "badge"] = "solid"
     message_ttl_seconds: int = Field(default=60, ge=3, le=3600)
+    timer_autoplay: bool = True
+    timer_display_mode: Literal["simple", "titled"] = "titled"
+    timer_font_size: int = Field(default=72, ge=32, le=160)
+    timer_font_weight: Literal["400", "600", "700", "900"] = "700"
+    timer_text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
+    timer_title_color: str = Field(default="#cccccc", pattern=HEX_COLOR_PATTERN)
+    timer_done_color: str = Field(default="#ff8fab", pattern=HEX_COLOR_PATTERN)
+    timer_background_color: str = Field(default="#1a1a2a", pattern=HEX_COLOR_PATTERN)
+    timer_background_opacity: int = Field(default=100, ge=0, le=100)
+    timer_global_opacity: int = Field(default=100, ge=0, le=100)
+    timer_style_mode: Literal["options", "custom"] = "options"
+    timer_custom_css: str = Field(default="", max_length=12000)
     blocked_nicknames: list[str] = Field(default_factory=list, max_length=200)
     blocked_roles: list[str] = Field(default_factory=list, max_length=20)
 
@@ -95,6 +116,11 @@ class OverlayStyleOptions(BaseModel):
             normalized.append(item)
         return normalized
 
+    @field_validator("timer_custom_css")
+    @classmethod
+    def validate_timer_custom_css(cls, value: str) -> str:
+        return _validate_css_snippet(value)
+
 
 class OverlaySaveRequest(BaseModel):
     custom_css: str = Field(default="", max_length=12000)
@@ -105,12 +131,7 @@ class OverlaySaveRequest(BaseModel):
     @field_validator("custom_css")
     @classmethod
     def validate_custom_css(cls, value: str) -> str:
-        lowered = value.lower()
-        if "</style" in lowered or "<script" in lowered:
-            raise ValueError("CSS만 입력할 수 있습니다.")
-        if "@import" in lowered or "javascript:" in lowered:
-            raise ValueError("외부 CSS import나 스크립트 URL은 사용할 수 없습니다.")
-        return value
+        return _validate_css_snippet(value)
 
 
 class OverlayPresetSaveRequest(BaseModel):
@@ -130,4 +151,4 @@ class OverlayPresetSaveRequest(BaseModel):
     @field_validator("custom_css")
     @classmethod
     def validate_custom_css(cls, value: str) -> str:
-        return OverlaySaveRequest.validate_custom_css(value)
+        return _validate_css_snippet(value)

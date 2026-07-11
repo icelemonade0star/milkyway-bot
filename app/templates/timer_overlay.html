@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ channel.channel_name }} Timer Overlay</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        :where(body) {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        :where(.timer-overlay) {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: min(520px, 100%);
+            padding: 18px 22px;
+            border-radius: 8px;
+            background: rgba(26, 26, 42, 1);
+            color: #ffffff;
+            font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        :where(.timer-overlay.is-visible) {
+            display: flex;
+        }
+
+        :where(.timer-title) {
+            font-size: 18px;
+            font-weight: 500;
+            color: #cccccc;
+            opacity: 0.85;
+            overflow-wrap: anywhere;
+        }
+
+        :where(.timer-time) {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        :where(.timer-overlay.is-done .timer-time) {
+            color: #ff8fab;
+            animation: timer-pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes timer-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        {{ timer_css|safe }}
+    </style>
+</head>
+<body>
+    <div class="timer-overlay" id="timerOverlay" aria-live="polite">
+        <div class="timer-title" id="timerTitle"></div>
+        <div class="timer-time" id="timerTime">00:00</div>
+    </div>
+
+    <script id="timerOverlayConfig" type="application/json">
+        {"websocket_path": {{ overlay_websocket_path|tojson }}}
+    </script>
+    <script src="/static/js/timer_overlay.js"></script>
+</body>
+</html>
