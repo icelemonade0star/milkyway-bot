@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from app.features.chat_overlay.schemas import OverlayStyleOptions
+from app.features.chat_overlay.schemas import TimerOverlayStyleOptions
 from app.features.chat_overlay.service import ChatOverlayService
 from app.features.chat_overlay.timer import overlay_timer_manager, parse_timer_duration
 from app.platforms.constants import PLATFORM_CHZZK
@@ -27,11 +27,11 @@ def _extract_autoplay(args: list[str]) -> tuple[list[str], bool | None]:
 
 async def _get_timer_autoplay(chat_service, channel_id: str) -> bool:
     try:
-        row = await ChatOverlayService(chat_service.db).get_setting_by_channel(PLATFORM_CHZZK, channel_id)
+        row = await ChatOverlayService(chat_service.db).get_setting_by_channel(PLATFORM_CHZZK, channel_id, "timer")
         if not row:
             return True
         _channel, setting = row
-        options = OverlayStyleOptions.model_validate(setting.style_options or {})
+        options = TimerOverlayStyleOptions.model_validate(setting.style_options or {})
         return options.timer_autoplay
     except ValidationError:
         return True

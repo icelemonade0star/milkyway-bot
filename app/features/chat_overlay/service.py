@@ -1,12 +1,15 @@
+from dataclasses import dataclass
 from enum import Enum
+from typing import Callable
 
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import PUBLIC_SITE_URL
 from app.db import models
-from app.features.chat_overlay.schemas import OverlayStyleOptions
+from app.features.chat_overlay.schemas import ChatOverlayStyleOptions, TimerOverlayStyleOptions
 
 
 def _hex_to_rgb(color: str) -> tuple[int, int, int]:
@@ -19,7 +22,7 @@ def _rgba(color: str, opacity: int) -> str:
     return f"rgba({red}, {green}, {blue}, {opacity / 100:.2f})"
 
 
-def build_overlay_css(options: OverlayStyleOptions) -> str:
+def build_overlay_css(options: ChatOverlayStyleOptions) -> str:
     justify_map = {
         "top-left": "flex-start",
         "top-right": "flex-start",
@@ -258,7 +261,7 @@ html, body {{
 """
 
 
-def build_timer_overlay_css(options: OverlayStyleOptions) -> str:
+def build_timer_overlay_css(options: TimerOverlayStyleOptions) -> str:
     """채팅 오버레이와 완전히 독립된 타이머 오버레이 전용 CSS입니다."""
     timer_background = _rgba(options.timer_background_color, options.timer_background_opacity)
     timer_title_display = "none" if options.timer_display_mode == "simple" else "block"
@@ -320,14 +323,22 @@ def build_timer_overlay_css(options: OverlayStyleOptions) -> str:
 """
 
 
-def resolve_timer_overlay_css(options: OverlayStyleOptions) -> str:
-    if options.timer_style_mode == "custom":
-        return options.timer_custom_css
-    return build_timer_overlay_css(options)
+@dataclass(frozen=True)
+class OverlayKindConfig:
+    style_options_cls: type[BaseModel]
+    default_options: BaseModel
+    build_css: Callable[[BaseModel], str]
 
 
-DEFAULT_STYLE_OPTIONS = OverlayStyleOptions()
-DEFAULT_OVERLAY_CSS = build_overlay_css(DEFAULT_STYLE_OPTIONS)
+DEFAULT_CHAT_STYLE_OPTIONS = ChatOverlayStyleOptions()
+DEFAULT_TIMER_STYLE_OPTIONS = TimerOverlayStyleOptions()
+DEFAULT_OVERLAY_CSS = build_overlay_css(DEFAULT_CHAT_STYLE_OPTIONS)
+DEFAULT_TIMER_OVERLAY_CSS = build_timer_overlay_css(DEFAULT_TIMER_STYLE_OPTIONS)
+
+OVERLAY_KIND_CONFIG: dict[str, OverlayKindConfig] = {
+    "chat": OverlayKindConfig(ChatOverlayStyleOptions, DEFAULT_CHAT_STYLE_OPTIONS, build_overlay_css),
+    "timer": OverlayKindConfig(TimerOverlayStyleOptions, DEFAULT_TIMER_STYLE_OPTIONS, build_timer_overlay_css),
+}
 
 
 class PresetDeleteResult(str, Enum):
@@ -349,18 +360,20 @@ class ChatOverlayService:
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create_setting(self, platform: str, platform_channel_id: str):
+    async def get_or_create_setting(self, platform: str, platform_channel_id: str, overlay_kind: str = "chat"):
         channel = await self.get_channel(platform, platform_channel_id)
         if not channel:
             return None, None
 
-        setting = await self.db.get(models.V2ChatOverlaySetting, channel.id)
+        setting = await self.db.get(models.V2OverlaySetting, (channel.id, overlay_kind))
         if not setting:
-            setting = models.V2ChatOverlaySetting(
+            config = OVERLAY_KIND_CONFIG[overlay_kind]
+            setting = models.V2OverlaySetting(
                 channel_id=channel.id,
+                overlay_kind=overlay_kind,
                 style_mode="options",
-                style_options=DEFAULT_STYLE_OPTIONS.model_dump(),
-                custom_css=DEFAULT_OVERLAY_CSS,
+                style_options=config.default_options.model_dump(),
+                custom_css=config.build_css(config.default_options),
                 is_active=True,
             )
             self.db.add(setting)
@@ -369,34 +382,38 @@ class ChatOverlayService:
                 await self.db.refresh(setting)
             except IntegrityError:
                 await self.db.rollback()
-                setting = await self.db.get(models.V2ChatOverlaySetting, channel.id)
+                setting = await self.db.get(models.V2OverlaySetting, (channel.id, overlay_kind))
                 if not setting:
                     raise
 
         return channel, setting
 
     async def get_dashboard_overlay_data(self, platform: str, platform_channel_id: str):
-        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
-        if not channel or not setting:
-            return None, None, []
+        """타이머는 프리셋을 지원하지 않으므로 프리셋은 채팅용만 반환합니다."""
+        channel, chat_setting = await self.get_or_create_setting(platform, platform_channel_id, "chat")
+        if not channel or not chat_setting:
+            return None, {}, []
 
-        presets = await self.list_presets(channel.id)
-        return channel, setting, presets
+        _channel, timer_setting = await self.get_or_create_setting(platform, platform_channel_id, "timer")
+        settings_by_kind = {"chat": chat_setting, "timer": timer_setting}
+        presets = await self.list_presets(channel.id, "chat")
+        return channel, settings_by_kind, presets
 
-    async def get_setting_by_channel(self, platform: str, platform_channel_id: str):
-        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
+    async def get_setting_by_channel(self, platform: str, platform_channel_id: str, overlay_kind: str = "chat"):
+        channel, setting = await self.get_or_create_setting(platform, platform_channel_id, overlay_kind)
         if not channel or not setting:
             return None
         return channel, setting
 
-    async def get_preset_by_name(self, platform: str, platform_channel_id: str, preset_name: str):
+    async def get_preset_by_name(self, platform: str, platform_channel_id: str, preset_name: str, overlay_kind: str = "chat"):
         channel = await self.get_channel(platform, platform_channel_id)
         if not channel:
             return None
         result = await self.db.execute(
-            select(models.V2ChatOverlayPreset).where(
-                models.V2ChatOverlayPreset.channel_id == channel.id,
-                models.V2ChatOverlayPreset.name == preset_name,
+            select(models.V2OverlayPreset).where(
+                models.V2OverlayPreset.channel_id == channel.id,
+                models.V2OverlayPreset.overlay_kind == overlay_kind,
+                models.V2OverlayPreset.name == preset_name,
             )
         )
         return result.scalar_one_or_none()
@@ -405,34 +422,36 @@ class ChatOverlayService:
         self,
         platform: str,
         platform_channel_id: str,
+        overlay_kind: str,
         custom_css: str,
         is_active: bool,
         style_mode: str = "options",
-        style_options: OverlayStyleOptions | None = None,
+        style_options: BaseModel | None = None,
     ):
-        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
+        channel, setting = await self.get_or_create_setting(platform, platform_channel_id, overlay_kind)
         if not channel or not setting:
             return None, None
 
+        config = OVERLAY_KIND_CONFIG[overlay_kind]
+        options = style_options or config.default_options
         if style_mode == "custom":
             setting.style_mode = "custom"
-            setting.style_options = (style_options or DEFAULT_STYLE_OPTIONS).model_dump()
+            setting.style_options = options.model_dump()
             setting.custom_css = custom_css
         else:
-            options = style_options or DEFAULT_STYLE_OPTIONS
             setting.style_mode = "options"
             setting.style_options = options.model_dump()
-            setting.custom_css = build_overlay_css(options)
+            setting.custom_css = config.build_css(options)
         setting.is_active = is_active
         await self.db.commit()
         await self.db.refresh(setting)
         return channel, setting
 
-    async def list_presets(self, channel_id):
+    async def list_presets(self, channel_id, overlay_kind: str = "chat"):
         result = await self.db.execute(
-            select(models.V2ChatOverlayPreset)
-            .where(models.V2ChatOverlayPreset.channel_id == channel_id)
-            .order_by(models.V2ChatOverlayPreset.updated_at.desc(), models.V2ChatOverlayPreset.name.asc())
+            select(models.V2OverlayPreset)
+            .where(models.V2OverlayPreset.channel_id == channel_id, models.V2OverlayPreset.overlay_kind == overlay_kind)
+            .order_by(models.V2OverlayPreset.updated_at.desc(), models.V2OverlayPreset.name.asc())
         )
         return result.scalars().all()
 
@@ -440,22 +459,25 @@ class ChatOverlayService:
         self,
         platform: str,
         platform_channel_id: str,
+        overlay_kind: str,
         name: str,
-        style_options: OverlayStyleOptions,
+        style_options: BaseModel,
         custom_css: str = "",
         style_mode: str = "options",
     ):
-        channel, _setting = await self.get_or_create_setting(platform, platform_channel_id)
+        channel, _setting = await self.get_or_create_setting(platform, platform_channel_id, overlay_kind)
         if not channel:
             return None
 
+        config = OVERLAY_KIND_CONFIG[overlay_kind]
         options_data = style_options.model_dump()
         mode = "custom" if style_mode == "custom" else "options"
-        css = custom_css if mode == "custom" else build_overlay_css(style_options)
+        css = custom_css if mode == "custom" else config.build_css(style_options)
         result = await self.db.execute(
-            select(models.V2ChatOverlayPreset).where(
-                models.V2ChatOverlayPreset.channel_id == channel.id,
-                models.V2ChatOverlayPreset.name == name,
+            select(models.V2OverlayPreset).where(
+                models.V2OverlayPreset.channel_id == channel.id,
+                models.V2OverlayPreset.overlay_kind == overlay_kind,
+                models.V2OverlayPreset.name == name,
             )
         )
         preset = result.scalar_one_or_none()
@@ -464,8 +486,9 @@ class ChatOverlayService:
             preset.style_options = options_data
             preset.custom_css = css
         else:
-            preset = models.V2ChatOverlayPreset(
+            preset = models.V2OverlayPreset(
                 channel_id=channel.id,
+                overlay_kind=overlay_kind,
                 name=name,
                 style_mode=mode,
                 style_options=options_data,
@@ -478,9 +501,10 @@ class ChatOverlayService:
         except IntegrityError:
             await self.db.rollback()
             result = await self.db.execute(
-                select(models.V2ChatOverlayPreset).where(
-                    models.V2ChatOverlayPreset.channel_id == channel.id,
-                    models.V2ChatOverlayPreset.name == name,
+                select(models.V2OverlayPreset).where(
+                    models.V2OverlayPreset.channel_id == channel.id,
+                    models.V2OverlayPreset.overlay_kind == overlay_kind,
+                    models.V2OverlayPreset.name == name,
                 )
             )
             preset = result.scalar_one()
@@ -491,13 +515,13 @@ class ChatOverlayService:
         await self.db.refresh(preset)
         return preset
 
-    async def apply_preset(self, platform: str, platform_channel_id: str, preset_id: int):
-        channel, setting = await self.get_or_create_setting(platform, platform_channel_id)
+    async def apply_preset(self, platform: str, platform_channel_id: str, overlay_kind: str, preset_id: int):
+        channel, setting = await self.get_or_create_setting(platform, platform_channel_id, overlay_kind)
         if not channel or not setting:
             return None, None, None
 
-        preset = await self.db.get(models.V2ChatOverlayPreset, preset_id)
-        if not preset or preset.channel_id != channel.id:
+        preset = await self.db.get(models.V2OverlayPreset, preset_id)
+        if not preset or preset.channel_id != channel.id or preset.overlay_kind != overlay_kind:
             return channel, setting, None
 
         setting.custom_css = preset.custom_css
@@ -507,15 +531,16 @@ class ChatOverlayService:
         await self.db.refresh(setting)
         return channel, setting, preset
 
-    async def delete_preset(self, platform: str, platform_channel_id: str, preset_id: int) -> PresetDeleteResult:
+    async def delete_preset(self, platform: str, platform_channel_id: str, overlay_kind: str, preset_id: int) -> PresetDeleteResult:
         channel = await self.get_channel(platform, platform_channel_id)
         if not channel:
             return PresetDeleteResult.CHANNEL_NOT_FOUND
 
         result = await self.db.execute(
-            delete(models.V2ChatOverlayPreset).where(
-                models.V2ChatOverlayPreset.id == preset_id,
-                models.V2ChatOverlayPreset.channel_id == channel.id,
+            delete(models.V2OverlayPreset).where(
+                models.V2OverlayPreset.id == preset_id,
+                models.V2OverlayPreset.channel_id == channel.id,
+                models.V2OverlayPreset.overlay_kind == overlay_kind,
             )
         )
         await self.db.commit()

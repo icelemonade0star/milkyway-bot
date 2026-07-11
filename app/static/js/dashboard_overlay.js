@@ -1,5 +1,4 @@
 const form = document.getElementById("overlayForm");
-const cssInput = document.getElementById("customCss");
 const statusEl = document.getElementById("status");
 const preview = document.getElementById("preview");
 const overlayUrl = document.getElementById("overlayUrl");
@@ -12,23 +11,90 @@ const paletteColorInput = document.getElementById("paletteColorInput");
 const sampleChatForm = document.getElementById("sampleChatForm");
 const sampleNickname = document.getElementById("sampleNickname");
 const sampleMessage = document.getElementById("sampleMessage");
-const advancedCss = document.querySelector('[data-section="css"]');
-const timerAdvancedCss = document.querySelector('[data-section="timer-css"]');
-const defaults = JSON.parse(document.getElementById("overlayStyleDefaults").textContent);
-const currentOptions = JSON.parse(document.getElementById("overlayStyleCurrent").textContent);
 const overlayUrls = JSON.parse(document.getElementById("overlayUrls").textContent);
-let styleMode = JSON.parse(document.getElementById("overlayStyleMode").textContent) || "options";
-let timerStyleMode = currentOptions.timer_style_mode === "custom" ? "custom" : "options";
-let presets = JSON.parse(document.getElementById("overlayPresetData").textContent);
+
 let previewMode = "sample";
 let activeOverlayKind = "chat";
-let syncingStyleMode = false;
-let syncingTimerStyleMode = false;
 let activePresetName = null;
+const syncingStyleMode = {chat: false, timer: false};
+
+function parseJson(id) {
+    return JSON.parse(document.getElementById(id).textContent);
+}
 
 function setStatus(message) {
     statusEl.textContent = message;
 }
+
+function getChatStyleOptions() {
+    return {
+        position: form.elements.position.value,
+        font_size: Number(form.elements.font_size.value),
+        max_width: Number(form.elements.max_width.value),
+        gap: Number(form.elements.gap.value),
+        padding: Number(form.elements.padding.value),
+        message_padding_y: Number(form.elements.message_padding_y.value),
+        message_padding_x: Number(form.elements.message_padding_x.value),
+        radius: Number(form.elements.radius.value),
+        background_color: form.elements.background_color.value,
+        background_opacity: 100 - Number(form.elements.background_opacity.value),
+        text_color: form.elements.text_color.value,
+        name_color: form.elements.name_color.value,
+        name_color_mode: form.elements.name_color_mode.value,
+        name_color_palette: getPaletteColors(),
+        shadow_strength: Number(form.elements.shadow_strength.value),
+        animation: form.elements.animation.value,
+        name_mode: form.elements.name_mode.value,
+        name_gap: Number(form.elements.name_gap.value),
+        bubble_style: form.elements.bubble_style.value,
+        blocked_nicknames: readLineList(form.elements.blocked_nicknames.value),
+        blocked_roles: Array.from(form.elements.blocked_roles)
+            .filter((input) => input.checked)
+            .map((input) => input.value),
+        message_ttl_seconds: Number(form.elements.message_ttl_seconds.value),
+    };
+}
+
+function getTimerStyleOptions() {
+    return {
+        timer_autoplay: form.elements.timer_autoplay.checked,
+        timer_display_mode: form.elements.timer_display_mode.value,
+        timer_font_size: Number(form.elements.timer_font_size.value),
+        timer_font_weight: form.elements.timer_font_weight.value,
+        timer_text_color: form.elements.timer_text_color.value,
+        timer_title_color: form.elements.timer_title_color.value,
+        timer_done_color: form.elements.timer_done_color.value,
+        timer_background_color: form.elements.timer_background_color.value,
+        timer_background_opacity: Number(form.elements.timer_background_opacity.value),
+        timer_global_opacity: Number(form.elements.timer_global_opacity.value),
+    };
+}
+
+const KIND_CONFIG = {
+    chat: {
+        defaults: parseJson("chatStyleDefaults"),
+        current: parseJson("chatStyleCurrent"),
+        styleMode: parseJson("chatStyleMode") || "options",
+        presets: parseJson("chatPresetData"),
+        getOptions: getChatStyleOptions,
+        cssTextarea: document.getElementById("customCss"),
+        advancedCssSection: document.querySelector('[data-section="css"]'),
+        saveUrl: "/auth/dashboard/overlay/chat",
+        presetSaveUrl: "/auth/dashboard/overlay/chat/presets",
+        presetApplyUrl: (id) => `/auth/dashboard/overlay/chat/presets/${id}/apply`,
+        presetDeleteUrl: (id) => `/auth/dashboard/overlay/chat/presets/${id}`,
+    },
+    timer: {
+        // 타이머는 프리셋을 지원하지 않습니다.
+        defaults: parseJson("timerStyleDefaults"),
+        current: parseJson("timerStyleCurrent"),
+        styleMode: parseJson("timerStyleMode") || "options",
+        getOptions: getTimerStyleOptions,
+        cssTextarea: document.getElementById("timerCustomCss"),
+        advancedCssSection: document.querySelector('[data-section="timer-css"]'),
+        saveUrl: "/auth/dashboard/overlay/timer",
+    },
+};
 
 function previewSource() {
     const baseUrl = overlayUrls[activeOverlayKind] || overlayUrls.chat;
@@ -73,18 +139,12 @@ function setSectionOpen(section, isOpen) {
     }
 }
 
-function setStyleMode(mode) {
-    styleMode = mode === "custom" ? "custom" : "options";
-    syncingStyleMode = true;
-    setSectionOpen(advancedCss, styleMode === "custom");
-    syncingStyleMode = false;
-}
-
-function setTimerStyleMode(mode) {
-    timerStyleMode = mode === "custom" ? "custom" : "options";
-    syncingTimerStyleMode = true;
-    setSectionOpen(timerAdvancedCss, timerStyleMode === "custom");
-    syncingTimerStyleMode = false;
+function setStyleMode(kind, mode) {
+    const config = KIND_CONFIG[kind];
+    config.styleMode = mode === "custom" ? "custom" : "options";
+    syncingStyleMode[kind] = true;
+    setSectionOpen(config.advancedCssSection, config.styleMode === "custom");
+    syncingStyleMode[kind] = false;
 }
 
 function formatRangeValue(name, value) {
@@ -138,8 +198,9 @@ function renderPalette() {
     });
 }
 
-function setControlValues(options) {
-    Object.entries({...defaults, ...options}).forEach(([key, value]) => {
+function setControlValues(kind, options) {
+    const config = KIND_CONFIG[kind];
+    Object.entries({...config.defaults, ...options}).forEach(([key, value]) => {
         const input = form.elements[key];
         if (!input) return;
         if (input instanceof RadioNodeList) {
@@ -161,8 +222,10 @@ function setControlValues(options) {
         }
     });
     updateAllRangeOutputs();
-    updateNameGapVisibility();
-    renderPalette();
+    if (kind === "chat") {
+        updateNameGapVisibility();
+        renderPalette();
+    }
 }
 
 function readLineList(value) {
@@ -177,56 +240,16 @@ function readLineList(value) {
         });
 }
 
-function getStyleOptions() {
-    return {
-        position: form.elements.position.value,
-        font_size: Number(form.elements.font_size.value),
-        max_width: Number(form.elements.max_width.value),
-        gap: Number(form.elements.gap.value),
-        padding: Number(form.elements.padding.value),
-        message_padding_y: Number(form.elements.message_padding_y.value),
-        message_padding_x: Number(form.elements.message_padding_x.value),
-        radius: Number(form.elements.radius.value),
-        background_color: form.elements.background_color.value,
-        background_opacity: 100 - Number(form.elements.background_opacity.value),
-        text_color: form.elements.text_color.value,
-        name_color: form.elements.name_color.value,
-        name_color_mode: form.elements.name_color_mode.value,
-        name_color_palette: getPaletteColors(),
-        shadow_strength: Number(form.elements.shadow_strength.value),
-        animation: form.elements.animation.value,
-        name_mode: form.elements.name_mode.value,
-        name_gap: Number(form.elements.name_gap.value),
-        bubble_style: form.elements.bubble_style.value,
-        blocked_nicknames: readLineList(form.elements.blocked_nicknames.value),
-        blocked_roles: Array.from(form.elements.blocked_roles)
-            .filter((input) => input.checked)
-            .map((input) => input.value),
-        message_ttl_seconds: Number(form.elements.message_ttl_seconds.value),
-        timer_autoplay: form.elements.timer_autoplay.checked,
-        timer_display_mode: form.elements.timer_display_mode.value,
-        timer_font_size: Number(form.elements.timer_font_size.value),
-        timer_font_weight: form.elements.timer_font_weight.value,
-        timer_text_color: form.elements.timer_text_color.value,
-        timer_title_color: form.elements.timer_title_color.value,
-        timer_done_color: form.elements.timer_done_color.value,
-        timer_background_color: form.elements.timer_background_color.value,
-        timer_background_opacity: Number(form.elements.timer_background_opacity.value),
-        timer_global_opacity: Number(form.elements.timer_global_opacity.value),
-        timer_style_mode: timerStyleMode,
-        timer_custom_css: form.elements.timer_custom_css.value,
-    };
-}
-
-async function save() {
-    const response = await fetch("/auth/dashboard/overlay", {
+async function save(kind) {
+    const config = KIND_CONFIG[kind];
+    const response = await fetch(config.saveUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-            custom_css: styleMode === "custom" ? cssInput.value : "",
+            custom_css: config.styleMode === "custom" ? config.cssTextarea.value : "",
             is_active: true,
-            style_mode: styleMode,
-            style_options: getStyleOptions(),
+            style_mode: config.styleMode,
+            style_options: config.getOptions(),
         }),
     });
     if (!response.ok) {
@@ -235,27 +258,26 @@ async function save() {
     }
     const data = await response.json();
     if (data.style_options) {
-        setControlValues(data.style_options);
-        setTimerStyleMode(data.style_options.timer_style_mode);
+        setControlValues(kind, data.style_options);
     }
     if (data.style_mode) {
-        setStyleMode(data.style_mode);
+        setStyleMode(kind, data.style_mode);
     }
     if (data.custom_css !== undefined) {
-        cssInput.value = data.custom_css;
+        config.cssTextarea.value = data.custom_css;
     }
     return data;
 }
 
-async function resetOptions() {
+async function resetOptions(kind) {
     if (!confirm("모든 스타일 옵션을 기본값으로 초기화할까요?")) {
         return;
     }
-    setControlValues(defaults);
-    setStyleMode("options");
-    setTimerStyleMode("options");
-    cssInput.value = "";
-    await save();
+    const config = KIND_CONFIG[kind];
+    setControlValues(kind, config.defaults);
+    setStyleMode(kind, "options");
+    config.cssTextarea.value = "";
+    await save(kind);
     setStatus("기본 옵션으로 초기화되었습니다.");
     refreshPreview();
 }
@@ -304,8 +326,9 @@ function getSampleNameColor() {
 }
 
 function renderPresets() {
+    const config = KIND_CONFIG.chat;
     presetList.innerHTML = "";
-    if (!presets.length) {
+    if (!config.presets.length) {
         const empty = document.createElement("p");
         empty.className = "empty";
         empty.textContent = "저장된 프리셋이 없습니다.";
@@ -313,7 +336,7 @@ function renderPresets() {
         return;
     }
 
-    presets.forEach((preset) => {
+    config.presets.forEach((preset) => {
         const row = document.createElement("div");
         row.className = "preset-row";
 
@@ -349,14 +372,15 @@ async function savePreset(event) {
         return;
     }
 
-    const response = await fetch("/auth/dashboard/overlay/presets", {
+    const config = KIND_CONFIG.chat;
+    const response = await fetch(config.presetSaveUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             name,
-            custom_css: styleMode === "custom" ? cssInput.value : "",
-            style_mode: styleMode,
-            style_options: getStyleOptions(),
+            custom_css: config.styleMode === "custom" ? config.cssTextarea.value : "",
+            style_mode: config.styleMode,
+            style_options: config.getOptions(),
         }),
     });
     if (!response.ok) {
@@ -364,23 +388,23 @@ async function savePreset(event) {
         throw new Error(data.detail || "프리셋을 저장하지 못했습니다.");
     }
     const data = await response.json();
-    presets = [data.preset, ...presets.filter((preset) => preset.id !== data.preset.id)];
+    config.presets = [data.preset, ...config.presets.filter((preset) => preset.id !== data.preset.id)];
     presetName.value = "";
     renderPresets();
     setStatus("프리셋이 저장되었습니다.");
 }
 
 async function applyPreset(id) {
-    const response = await fetch(`/auth/dashboard/overlay/presets/${id}/apply`, {method: "POST"});
+    const config = KIND_CONFIG.chat;
+    const response = await fetch(config.presetApplyUrl(id), {method: "POST"});
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || "프리셋을 적용하지 못했습니다.");
     }
     const data = await response.json();
-    setControlValues(data.preset.style_options);
-    setStyleMode(data.preset.style_mode);
-    setTimerStyleMode(data.preset.style_options.timer_style_mode);
-    cssInput.value = data.preset.custom_css;
+    setControlValues("chat", data.preset.style_options);
+    setStyleMode("chat", data.preset.style_mode);
+    config.cssTextarea.value = data.preset.custom_css;
     activePresetName = data.preset.name;
     document.getElementById("copyUrlWithPreset").disabled = false;
     setStatus(`'${data.preset.name}' 프리셋을 적용했습니다.`);
@@ -389,17 +413,18 @@ async function applyPreset(id) {
 
 async function deletePreset(id) {
     if (!confirm("이 프리셋을 삭제할까요?")) return;
-    const response = await fetch(`/auth/dashboard/overlay/presets/${id}`, {method: "DELETE"});
+    const config = KIND_CONFIG.chat;
+    const response = await fetch(config.presetDeleteUrl(id), {method: "DELETE"});
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || "프리셋을 삭제하지 못했습니다.");
     }
-    const deleted = presets.find((p) => p.id === id);
+    const deleted = config.presets.find((p) => p.id === id);
     if (deleted && deleted.name === activePresetName) {
         activePresetName = null;
         document.getElementById("copyUrlWithPreset").disabled = true;
     }
-    presets = presets.filter((preset) => preset.id !== id);
+    config.presets = config.presets.filter((preset) => preset.id !== id);
     renderPresets();
     setStatus("프리셋을 삭제했습니다.");
 }
@@ -407,7 +432,7 @@ async function deletePreset(id) {
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-        await save();
+        await save(activeOverlayKind);
         setStatus("적용되었습니다.");
         refreshPreview();
     } catch (error) {
@@ -422,7 +447,7 @@ presetForm.addEventListener("submit", (event) => {
 document.getElementById("refreshPreview").addEventListener("click", refreshPreview);
 
 document.getElementById("resetOptions").addEventListener("click", () => {
-    resetOptions().catch((error) => setStatus(error.message));
+    resetOptions(activeOverlayKind).catch((error) => setStatus(error.message));
 });
 
 document.getElementById("addPaletteColor").addEventListener("click", () => {
@@ -472,11 +497,11 @@ document.querySelectorAll(".section-toggle").forEach((button) => {
         const section = button.closest(".settings-section");
         const willOpen = section.classList.contains("is-collapsed");
         setSectionOpen(section, willOpen);
-        if (section === advancedCss && !syncingStyleMode) {
-            styleMode = willOpen ? "custom" : "options";
-        }
-        if (section === timerAdvancedCss && !syncingTimerStyleMode) {
-            timerStyleMode = willOpen ? "custom" : "options";
+        for (const kind of Object.keys(KIND_CONFIG)) {
+            const config = KIND_CONFIG[kind];
+            if (section === config.advancedCssSection && !syncingStyleMode[kind]) {
+                config.styleMode = willOpen ? "custom" : "options";
+            }
         }
     });
 });
@@ -506,8 +531,9 @@ document.getElementById("copyUrlWithPreset").addEventListener("click", async () 
     setStatus(`'${activePresetName}' 프리셋 링크를 복사했습니다.`);
 });
 
-setControlValues(currentOptions);
-setStyleMode(styleMode);
-setTimerStyleMode(timerStyleMode);
+setControlValues("chat", KIND_CONFIG.chat.current);
+setControlValues("timer", KIND_CONFIG.timer.current);
+setStyleMode("chat", KIND_CONFIG.chat.styleMode);
+setStyleMode("timer", KIND_CONFIG.timer.styleMode);
 setOverlayKind("chat");
 renderPresets();

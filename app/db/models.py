@@ -53,10 +53,11 @@ class V2ChannelConfig(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
-class V2ChatOverlaySetting(Base):
-    __tablename__ = "v2_chat_overlay_settings"
+class V2OverlaySetting(Base):
+    __tablename__ = "v2_overlay_settings"
 
     channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), primary_key=True)
+    overlay_kind = Column(String(20), primary_key=True, default="chat", server_default=text("'chat'"))
     style_mode = Column(String(20), nullable=False, default="options", server_default=text("'options'"))
     style_options = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     custom_css = Column(Text, nullable=False, default="", server_default=text("''"))
@@ -65,15 +66,17 @@ class V2ChatOverlaySetting(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_chat_overlay_settings_style_mode"),
+        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_overlay_settings_style_mode"),
+        CheckConstraint("overlay_kind IN ('chat', 'timer')", name="check_v2_overlay_settings_overlay_kind"),
     )
 
 
-class V2ChatOverlayPreset(Base):
-    __tablename__ = "v2_chat_overlay_presets"
+class V2OverlayPreset(Base):
+    __tablename__ = "v2_overlay_presets"
 
     id = Column(BigInteger, Identity(always=True), primary_key=True)
     channel_id = Column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), nullable=False)
+    overlay_kind = Column(String(20), nullable=False, default="chat", server_default=text("'chat'"))
     name = Column(String(80), nullable=False)
     style_mode = Column(String(20), nullable=False, default="options", server_default=text("'options'"))
     style_options = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
@@ -82,9 +85,10 @@ class V2ChatOverlayPreset(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_chat_overlay_presets_style_mode"),
-        UniqueConstraint("channel_id", "name", name="unique_v2_chat_overlay_presets_channel_name"),
-        Index("idx_v2_chat_overlay_presets_channel_id", "channel_id"),
+        CheckConstraint("style_mode IN ('options', 'custom')", name="check_v2_overlay_presets_style_mode"),
+        CheckConstraint("overlay_kind IN ('chat', 'timer')", name="check_v2_overlay_presets_overlay_kind"),
+        UniqueConstraint("channel_id", "overlay_kind", "name", name="unique_v2_overlay_presets_channel_kind_name"),
+        Index("idx_v2_overlay_presets_channel_kind", "channel_id", "overlay_kind"),
     )
 
 

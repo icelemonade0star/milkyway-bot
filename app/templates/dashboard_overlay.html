@@ -250,7 +250,7 @@
                                 <div class="css-guide">.timer-overlay { /* 전체 영역 */ }
 .timer-time    { /* 숫자 */ }
 .timer-title   { /* 제목 텍스트 */ }</div>
-                                <textarea id="timerCustomCss" name="timer_custom_css" spellcheck="false"></textarea>
+                                <textarea id="timerCustomCss" name="timer_custom_css" spellcheck="false">{{ timer_custom_css }}</textarea>
                             </div>
                         </section>
 
@@ -385,7 +385,7 @@
 .chat-message { /* 말풍선 */ }
 .chat-name    { /* 닉네임 */ }
 .chat-text    { /* 본문 */ }</div>
-                                <textarea id="customCss" name="custom_css" spellcheck="false">{{ setting.custom_css }}</textarea>
+                                <textarea id="customCss" name="custom_css" spellcheck="false">{{ chat_custom_css }}</textarea>
                             </div>
                         </section>
                     </form>
@@ -442,10 +442,13 @@
         </section>
     </main>
 
-    <script id="overlayStyleMode" type="application/json">{{ style_mode|tojson }}</script>
-    <script id="overlayStyleDefaults" type="application/json">{{ base_style_options|tojson }}</script>
-    <script id="overlayStyleCurrent" type="application/json">{{ style_options|tojson }}</script>
-    <script id="overlayPresetData" type="application/json">{{ presets|tojson }}</script>
+    <script id="chatStyleMode" type="application/json">{{ chat_style_mode|tojson }}</script>
+    <script id="chatStyleDefaults" type="application/json">{{ chat_style_defaults|tojson }}</script>
+    <script id="chatStyleCurrent" type="application/json">{{ chat_style_options|tojson }}</script>
+    <script id="chatPresetData" type="application/json">{{ chat_presets|tojson }}</script>
+    <script id="timerStyleMode" type="application/json">{{ timer_style_mode|tojson }}</script>
+    <script id="timerStyleDefaults" type="application/json">{{ timer_style_defaults|tojson }}</script>
+    <script id="timerStyleCurrent" type="application/json">{{ timer_style_options|tojson }}</script>
     <script id="overlayUrls" type="application/json">{{ {"chat": overlay_url, "timer": timer_overlay_url}|tojson }}</script>
     <script src="/static/js/dashboard_overlay.js"></script>
 </body>

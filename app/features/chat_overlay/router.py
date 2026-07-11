@@ -11,8 +11,8 @@ from app.core.config import TEMPLATE_DIR
 from app.core.database import get_async_db
 from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster, timer_overlay_broadcaster
 from app.features.chat_overlay.overlay_manager import overlay_manager
-from app.features.chat_overlay.schemas import OverlayStyleOptions
-from app.features.chat_overlay.service import ChatOverlayService, resolve_timer_overlay_css
+from app.features.chat_overlay.schemas import ChatOverlayStyleOptions, TimerOverlayStyleOptions
+from app.features.chat_overlay.service import ChatOverlayService
 from app.features.chat_overlay.timer import overlay_timer_manager
 from app.platforms.constants import PLATFORM_CHZZK
 
@@ -21,15 +21,23 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 logger = logging.getLogger("ChatOverlayRouter")
 
 
-def safe_overlay_options(raw_options: dict | None) -> OverlayStyleOptions:
+def safe_chat_overlay_options(raw_options: dict | None) -> ChatOverlayStyleOptions:
     try:
-        return OverlayStyleOptions.model_validate(raw_options or {})
+        return ChatOverlayStyleOptions.model_validate(raw_options or {})
     except ValidationError as exc:
-        logger.warning("잘못된 오버레이 옵션, 기본값 사용: %s", exc)
-        return OverlayStyleOptions()
+        logger.warning("잘못된 채팅 오버레이 옵션, 기본값 사용: %s", exc)
+        return ChatOverlayStyleOptions()
 
 
-def overlay_template_context(request: Request, channel, setting, options: OverlayStyleOptions, websocket_path: str):
+def safe_timer_overlay_options(raw_options: dict | None) -> TimerOverlayStyleOptions:
+    try:
+        return TimerOverlayStyleOptions.model_validate(raw_options or {})
+    except ValidationError as exc:
+        logger.warning("잘못된 타이머 오버레이 옵션, 기본값 사용: %s", exc)
+        return TimerOverlayStyleOptions()
+
+
+def overlay_template_context(request: Request, channel, setting, options: ChatOverlayStyleOptions, websocket_path: str):
     return {
         "request": request,
         "channel": channel,
@@ -49,7 +57,7 @@ async def chat_overlay_by_channel(
     db: AsyncSession = Depends(get_async_db),
 ):
     service = ChatOverlayService(db)
-    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id, "chat")
     if not row:
         raise HTTPException(status_code=404, detail="Overlay not found.")
 
@@ -57,11 +65,11 @@ async def chat_overlay_by_channel(
     display_setting = setting
 
     if preset:
-        preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
+        preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset, "chat")
         if preset_row:
             display_setting = preset_row
 
-    options = safe_overlay_options(display_setting.style_options)
+    options = safe_chat_overlay_options(display_setting.style_options)
     ws_path = f"/overlay/ws/chzzk/{platform_channel_id}"
     if preset:
         ws_path += f"?preset={quote(preset, safe='')}"
@@ -75,29 +83,21 @@ async def chat_overlay_by_channel(
 async def timer_overlay_by_channel(
     platform_channel_id: str,
     request: Request,
-    preset: str | None = Query(default=None),
     db: AsyncSession = Depends(get_async_db),
 ):
     service = ChatOverlayService(db)
-    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+    row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id, "timer")
     if not row:
         raise HTTPException(status_code=404, detail="Overlay not found.")
 
     channel, setting = row
-    display_setting = setting
 
-    if preset:
-        preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
-        if preset_row:
-            display_setting = preset_row
-
-    options = safe_overlay_options(display_setting.style_options)
     return templates.TemplateResponse(
         "timer_overlay.html",
         {
             "request": request,
             "channel": channel,
-            "timer_css": resolve_timer_overlay_css(options),
+            "timer_css": setting.custom_css,
             "overlay_websocket_path": f"/overlay/ws/timer/chzzk/{platform_channel_id}",
         },
     )
@@ -112,23 +112,23 @@ async def chat_overlay_ws_by_channel(
     session_factory = websocket.app.state.SessionLocal
     async with session_factory() as db:
         service = ChatOverlayService(db)
-        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id, "chat")
         if not row:
             await websocket.close(code=1008)
             return
         channel, setting = row
         display_setting = setting
         if preset:
-            preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset)
+            preset_row = await service.get_preset_by_name(PLATFORM_CHZZK, platform_channel_id, preset, "chat")
             if preset_row:
                 display_setting = preset_row
-        options = safe_overlay_options(display_setting.style_options)
+        options = safe_chat_overlay_options(display_setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
     await connect_overlay_websocket(websocket, platform_channel_id, options)
 
 
-async def connect_overlay_websocket(websocket: WebSocket, platform_channel_id: str, options: OverlayStyleOptions):
+async def connect_overlay_websocket(websocket: WebSocket, platform_channel_id: str, options: ChatOverlayStyleOptions):
     await overlay_manager.ensure_raw_client(platform_channel_id)
     await chat_overlay_broadcaster.connect(
         platform_channel_id,
@@ -150,7 +150,7 @@ async def timer_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id:
     session_factory = websocket.app.state.SessionLocal
     async with session_factory() as db:
         service = ChatOverlayService(db)
-        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id)
+        row = await service.get_setting_by_channel(PLATFORM_CHZZK, platform_channel_id, "timer")
         if not row:
             await websocket.close(code=1008)
             return

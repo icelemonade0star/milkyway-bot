@@ -16,7 +16,7 @@ def _validate_css_snippet(value: str) -> str:
     return value
 
 
-class OverlayStyleOptions(BaseModel):
+class ChatOverlayStyleOptions(BaseModel):
     position: Literal["bottom-left", "bottom-right", "top-left", "top-right", "center"] = "bottom-left"
     font_size: int = Field(default=20, ge=12, le=48)
     max_width: int = Field(default=760, ge=260, le=1400)
@@ -40,18 +40,6 @@ class OverlayStyleOptions(BaseModel):
     name_gap: int = Field(default=4, ge=0, le=40)
     bubble_style: Literal["solid", "minimal", "badge"] = "solid"
     message_ttl_seconds: int = Field(default=60, ge=3, le=3600)
-    timer_autoplay: bool = True
-    timer_display_mode: Literal["simple", "titled"] = "titled"
-    timer_font_size: int = Field(default=72, ge=32, le=160)
-    timer_font_weight: Literal["400", "600", "700", "900"] = "700"
-    timer_text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
-    timer_title_color: str = Field(default="#cccccc", pattern=HEX_COLOR_PATTERN)
-    timer_done_color: str = Field(default="#ff8fab", pattern=HEX_COLOR_PATTERN)
-    timer_background_color: str = Field(default="#1a1a2a", pattern=HEX_COLOR_PATTERN)
-    timer_background_opacity: int = Field(default=100, ge=0, le=100)
-    timer_global_opacity: int = Field(default=100, ge=0, le=100)
-    timer_style_mode: Literal["options", "custom"] = "options"
-    timer_custom_css: str = Field(default="", max_length=12000)
     blocked_nicknames: list[str] = Field(default_factory=list, max_length=200)
     blocked_roles: list[str] = Field(default_factory=list, max_length=20)
 
@@ -116,31 +104,29 @@ class OverlayStyleOptions(BaseModel):
             normalized.append(item)
         return normalized
 
-    @field_validator("timer_custom_css")
-    @classmethod
-    def validate_timer_custom_css(cls, value: str) -> str:
-        return _validate_css_snippet(value)
+
+class TimerOverlayStyleOptions(BaseModel):
+    timer_autoplay: bool = True
+    timer_display_mode: Literal["simple", "titled"] = "titled"
+    timer_font_size: int = Field(default=72, ge=32, le=160)
+    timer_font_weight: Literal["400", "600", "700", "900"] = "700"
+    timer_text_color: str = Field(default="#ffffff", pattern=HEX_COLOR_PATTERN)
+    timer_title_color: str = Field(default="#cccccc", pattern=HEX_COLOR_PATTERN)
+    timer_done_color: str = Field(default="#ff8fab", pattern=HEX_COLOR_PATTERN)
+    timer_background_color: str = Field(default="#1a1a2a", pattern=HEX_COLOR_PATTERN)
+    timer_background_opacity: int = Field(default=100, ge=0, le=100)
+    timer_global_opacity: int = Field(default=100, ge=0, le=100)
 
 
-class OverlaySaveRequest(BaseModel):
-    custom_css: str = Field(default="", max_length=12000)
-    is_active: bool = True
-    style_mode: Literal["options", "custom"] = "options"
-    style_options: OverlayStyleOptions | None = None
-
-    @field_validator("custom_css")
+class _CssSnippetMixin(BaseModel):
+    @field_validator("custom_css", check_fields=False)
     @classmethod
     def validate_custom_css(cls, value: str) -> str:
         return _validate_css_snippet(value)
 
 
-class OverlayPresetSaveRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    custom_css: str = Field(default="", max_length=12000)
-    style_mode: Literal["options", "custom"] = "options"
-    style_options: OverlayStyleOptions
-
-    @field_validator("name")
+class _PresetNameMixin(BaseModel):
+    @field_validator("name", check_fields=False)
     @classmethod
     def normalize_name(cls, value: str) -> str:
         value = value.strip()
@@ -148,7 +134,23 @@ class OverlayPresetSaveRequest(BaseModel):
             raise ValueError("프리셋 이름을 입력해 주세요.")
         return value
 
-    @field_validator("custom_css")
-    @classmethod
-    def validate_custom_css(cls, value: str) -> str:
-        return _validate_css_snippet(value)
+
+class ChatOverlaySaveRequest(_CssSnippetMixin):
+    custom_css: str = Field(default="", max_length=12000)
+    is_active: bool = True
+    style_mode: Literal["options", "custom"] = "options"
+    style_options: ChatOverlayStyleOptions | None = None
+
+
+class TimerOverlaySaveRequest(_CssSnippetMixin):
+    custom_css: str = Field(default="", max_length=12000)
+    is_active: bool = True
+    style_mode: Literal["options", "custom"] = "options"
+    style_options: TimerOverlayStyleOptions | None = None
+
+
+class ChatOverlayPresetSaveRequest(_CssSnippetMixin, _PresetNameMixin):
+    name: str = Field(min_length=1, max_length=80)
+    custom_css: str = Field(default="", max_length=12000)
+    style_mode: Literal["options", "custom"] = "options"
+    style_options: ChatOverlayStyleOptions

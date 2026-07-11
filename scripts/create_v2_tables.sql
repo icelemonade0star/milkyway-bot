@@ -64,8 +64,9 @@ BEFORE UPDATE ON v2_channel_configs
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
-CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
-    channel_id UUID PRIMARY KEY REFERENCES v2_channels(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS v2_overlay_settings (
+    channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
+    overlay_kind VARCHAR(20) NOT NULL DEFAULT 'chat',
     style_mode VARCHAR(20) NOT NULL DEFAULT 'options',
     style_options JSONB NOT NULL DEFAULT '{}'::jsonb,
     custom_css TEXT NOT NULL DEFAULT '',
@@ -73,19 +74,23 @@ CREATE TABLE IF NOT EXISTS v2_chat_overlay_settings (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT check_v2_chat_overlay_settings_style_mode
-        CHECK (style_mode IN ('options', 'custom'))
+    CONSTRAINT v2_overlay_settings_pkey PRIMARY KEY (channel_id, overlay_kind),
+    CONSTRAINT check_v2_overlay_settings_style_mode
+        CHECK (style_mode IN ('options', 'custom')),
+    CONSTRAINT check_v2_overlay_settings_overlay_kind
+        CHECK (overlay_kind IN ('chat', 'timer'))
 );
 
-DROP TRIGGER IF EXISTS trg_v2_chat_overlay_settings_updated_at ON v2_chat_overlay_settings;
-CREATE TRIGGER trg_v2_chat_overlay_settings_updated_at
-BEFORE UPDATE ON v2_chat_overlay_settings
+DROP TRIGGER IF EXISTS trg_v2_overlay_settings_updated_at ON v2_overlay_settings;
+CREATE TRIGGER trg_v2_overlay_settings_updated_at
+BEFORE UPDATE ON v2_overlay_settings
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
-CREATE TABLE IF NOT EXISTS v2_chat_overlay_presets (
+CREATE TABLE IF NOT EXISTS v2_overlay_presets (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     channel_id UUID NOT NULL REFERENCES v2_channels(id) ON DELETE CASCADE,
+    overlay_kind VARCHAR(20) NOT NULL DEFAULT 'chat',
     name VARCHAR(80) NOT NULL,
     style_mode VARCHAR(20) NOT NULL DEFAULT 'options',
     style_options JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -93,18 +98,20 @@ CREATE TABLE IF NOT EXISTS v2_chat_overlay_presets (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT check_v2_chat_overlay_presets_style_mode
+    CONSTRAINT check_v2_overlay_presets_style_mode
         CHECK (style_mode IN ('options', 'custom')),
-    CONSTRAINT unique_v2_chat_overlay_presets_channel_name
-        UNIQUE (channel_id, name)
+    CONSTRAINT check_v2_overlay_presets_overlay_kind
+        CHECK (overlay_kind IN ('chat', 'timer')),
+    CONSTRAINT unique_v2_overlay_presets_channel_kind_name
+        UNIQUE (channel_id, overlay_kind, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_chat_overlay_presets_channel_id
-ON v2_chat_overlay_presets(channel_id);
+CREATE INDEX IF NOT EXISTS idx_v2_overlay_presets_channel_kind
+ON v2_overlay_presets(channel_id, overlay_kind);
 
-DROP TRIGGER IF EXISTS trg_v2_chat_overlay_presets_updated_at ON v2_chat_overlay_presets;
-CREATE TRIGGER trg_v2_chat_overlay_presets_updated_at
-BEFORE UPDATE ON v2_chat_overlay_presets
+DROP TRIGGER IF EXISTS trg_v2_overlay_presets_updated_at ON v2_overlay_presets;
+CREATE TRIGGER trg_v2_overlay_presets_updated_at
+BEFORE UPDATE ON v2_overlay_presets
 FOR EACH ROW
 EXECUTE FUNCTION v2_set_updated_at();
 
