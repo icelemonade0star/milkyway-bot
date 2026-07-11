@@ -30,7 +30,6 @@ services:
     environment:
     - TZ=Asia/Seoul
     depends_on:
-      - db
       - redis
     networks:
       - app-network
@@ -60,36 +59,6 @@ services:
     networks:
       - app-network
 
-  db:
-    image: postgres:13
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - TZ=Asia/Seoul
-      - PGTZ=Asia/Seoul
-    # 1GB 서버에 맞게 메모리 튜닝 (기본값: shared_buffers=128MB, max_connections=100)
-    command: >
-      postgres
-      -c shared_buffers=64MB
-      -c effective_cache_size=128MB
-      -c work_mem=2MB
-      -c maintenance_work_mem=32MB
-      -c max_connections=20
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   redis:
     image: redis:6
     command: redis-server --appendonly yes --maxmemory 50mb --maxmemory-policy allkeys-lru
@@ -113,5 +82,4 @@ networks:
     enable_ipv6: false
 
 volumes:
-  postgres_data:
   redis_data:

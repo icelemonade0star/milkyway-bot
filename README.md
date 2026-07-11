@@ -31,7 +31,7 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 - **오버레이 프리셋과 스킨**: 스타일 프리셋 저장/불러오기, 고급 CSS 편집, 이미지 스킨 적용을 위한 `.chat-frame`, `.chat-list`, `.chat-message` 구조 지원
 - **데이터베이스**: PostgreSQL (SQLAlchemy ORM 사용)
 - **디스코드 연동**: 치지직 방송 시작 시 실시간 채널 알림
-- **보안**: SSH 터널링을 통한 안전한 DB 연결 지원, 관리자 API 토큰 인증
+- **보안**: SSH 터널링을 통한 안전한 DB 연결 지원, 관리자 API 토큰 인증 (서버에서 DB 직접 접속/디버깅이 필요하면 [docs/db-access.md](docs/db-access.md) 참고)
 
 ## 🛠️ 기술 스택
 
