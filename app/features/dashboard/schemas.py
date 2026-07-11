@@ -10,8 +10,6 @@ def normalize_trigger(value: str, label: str) -> str:
     parts = [part.strip() for part in value.strip().split("|")]
     if not parts or any(not part for part in parts):
         raise ValueError(f"{label}을 입력해주세요.")
-    if any(len(part) < 2 for part in parts):
-        raise ValueError(f"{label}는 2글자 이상이어야 합니다.")
     if any(any(char.isspace() for char in part) for part in parts):
         raise ValueError(f"{label}에는 공백을 사용할 수 없습니다.")
     return "|".join(parts)

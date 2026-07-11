@@ -63,9 +63,6 @@ function normalizeTrigger(value, label) {
     if (!parts.length || parts.some((part) => !part)) {
         throw new Error(`${label}을 입력해주세요.`);
     }
-    if (parts.some((part) => part.length < 2)) {
-        throw new Error(`${label}는 2글자 이상이어야 합니다.`);
-    }
     if (parts.some((part) => /\s/.test(part))) {
         throw new Error(`${label}에는 공백을 사용할 수 없습니다.`);
     }
