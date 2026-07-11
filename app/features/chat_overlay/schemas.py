@@ -107,6 +107,8 @@ class ChatOverlayStyleOptions(BaseModel):
 
 class TimerOverlayStyleOptions(BaseModel):
     timer_autoplay: bool = True
+    timer_auto_delete: bool = False
+    timer_auto_delete_delay_seconds: int = Field(default=5, ge=0, le=3600)
     timer_display_mode: Literal["simple", "titled"] = "titled"
     timer_title_text: str = Field(default="타이머", max_length=40)
     timer_font_size: int = Field(default=72, ge=32, le=160)

@@ -92,12 +92,15 @@ async def timer_overlay_by_channel(
 
     channel, setting = row
 
+    options = safe_timer_overlay_options(setting.style_options)
+
     return templates.TemplateResponse(
         "timer_overlay.html",
         {
             "request": request,
             "channel": channel,
             "timer_css": setting.custom_css,
+            "timer_options": options.model_dump(),
             "overlay_websocket_path": f"/overlay/ws/timer/chzzk/{platform_channel_id}",
         },
     )

@@ -63,6 +63,8 @@ function getChatStyleOptions() {
 function getTimerStyleOptions() {
     return {
         timer_autoplay: form.elements.timer_autoplay.checked,
+        timer_auto_delete: form.elements.timer_auto_delete.checked,
+        timer_auto_delete_delay_seconds: Number(form.elements.timer_auto_delete_delay_seconds.value),
         timer_display_mode: form.elements.timer_display_mode.value,
         timer_title_text: form.elements.timer_title_text.value.trim() || "타이머",
         timer_font_size: Number(form.elements.timer_font_size.value),
@@ -237,6 +239,7 @@ function setControlValues(kind, options) {
         renderPalette();
     } else if (kind === "timer") {
         updateTimerTitleVisibility();
+        updateTimerAutoDeleteVisibility();
     }
 }
 
@@ -377,6 +380,13 @@ function getTimerDefaultTitle() {
     return form.elements.timer_title_text.value.trim() || "타이머";
 }
 
+function getSampleTimerRuntimeOptions() {
+    return {
+        timer_auto_delete: form.elements.timer_auto_delete.checked,
+        timer_auto_delete_delay_seconds: Number(form.elements.timer_auto_delete_delay_seconds.value),
+    };
+}
+
 function postSampleTimer(payload) {
     if (previewMode !== "sample" || activeOverlayKind !== "timer") {
         setStatus("샘플 모드에서만 테스트 타이머를 보낼 수 있습니다.");
@@ -384,7 +394,7 @@ function postSampleTimer(payload) {
     }
     preview.contentWindow?.postMessage({
         type: "milkyway-overlay-sample-timer",
-        payload,
+        payload: {...payload, options: getSampleTimerRuntimeOptions()},
     }, window.location.origin);
     return true;
 }
@@ -696,6 +706,10 @@ function updateTimerTitleVisibility() {
     document.getElementById("timerTitleControl").hidden = !isTitled;
 }
 
+function updateTimerAutoDeleteVisibility() {
+    document.getElementById("timerDeleteDelayControl").hidden = !form.elements.timer_auto_delete.checked;
+}
+
 form.querySelectorAll('input[type="range"]').forEach((input) => {
     input.addEventListener("input", () => updateRangeOutput(input));
 });
@@ -707,6 +721,8 @@ Array.from(form.elements.name_mode).forEach((radio) => {
 Array.from(form.elements.timer_display_mode).forEach((radio) => {
     radio.addEventListener("change", updateTimerTitleVisibility);
 });
+
+form.elements.timer_auto_delete.addEventListener("change", updateTimerAutoDeleteVisibility);
 
 document.getElementById("copyUrl").addEventListener("click", async () => {
     await navigator.clipboard.writeText(overlayUrl.value);

@@ -80,7 +80,7 @@
     </div>
 
     <script id="timerOverlayConfig" type="application/json">
-        {"websocket_path": {{ overlay_websocket_path|tojson }}}
+        {"websocket_path": {{ overlay_websocket_path|tojson }}, "options": {{ timer_options|tojson }}}
     </script>
     <script src="/static/js/timer_overlay.js"></script>
 </body>

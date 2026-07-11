@@ -5,8 +5,10 @@ const config = JSON.parse(document.getElementById("timerOverlayConfig").textCont
 const isPreview = new URLSearchParams(location.search).has("preview");
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
+let options = config.options || {};
 let timerState = null;
 let timerFrame = null;
+let autoDeleteTimeout = null;
 
 function formatTimerTime(ms) {
     const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -36,10 +38,30 @@ function stopTimerFrame() {
     }
 }
 
+function stopAutoDeleteTimer() {
+    if (autoDeleteTimeout) {
+        window.clearTimeout(autoDeleteTimeout);
+        autoDeleteTimeout = null;
+    }
+}
+
+function scheduleAutoDelete() {
+    if (!options.timer_auto_delete || autoDeleteTimeout) {
+        return;
+    }
+    const delaySeconds = Math.max(0, Number(options.timer_auto_delete_delay_seconds) || 0);
+    autoDeleteTimeout = window.setTimeout(() => {
+        autoDeleteTimeout = null;
+        timerState = null;
+        renderTimer();
+    }, delaySeconds * 1000);
+}
+
 function renderTimer() {
     if (!timerState) {
         timerOverlay.classList.remove("is-visible");
         stopTimerFrame();
+        stopAutoDeleteTimer();
         return;
     }
 
@@ -50,16 +72,26 @@ function renderTimer() {
     timerOverlay.classList.toggle("is-done", remaining <= 0);
 
     if (timerState.running && remaining > 0) {
+        stopAutoDeleteTimer();
         timerFrame = window.requestAnimationFrame(renderTimer);
     } else {
         timerState.running = false;
         stopTimerFrame();
+        if (remaining <= 0) {
+            scheduleAutoDelete();
+        } else {
+            stopAutoDeleteTimer();
+        }
     }
 }
 
 function handleTimerEvent(payload) {
+    if (payload.options) {
+        options = {...options, ...payload.options};
+    }
     if (payload.action === "delete") {
         timerState = null;
+        stopAutoDeleteTimer();
         renderTimer();
         return;
     }
@@ -68,6 +100,7 @@ function handleTimerEvent(payload) {
     }
     timerState = payload.timer;
     stopTimerFrame();
+    stopAutoDeleteTimer();
     renderTimer();
 }
 

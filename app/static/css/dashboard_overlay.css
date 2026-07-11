@@ -207,6 +207,17 @@ label {
     display: none;
 }
 
+.timer-check-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.timer-delete-delay-control[hidden] {
+    display: none;
+}
+
 .palette-control {
     grid-column: 1 / -1;
     display: grid;
