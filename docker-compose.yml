@@ -71,6 +71,9 @@ services:
       - /var/lib/postgresql/18/main:/var/lib/postgresql/18/main
       - /etc/postgresql/18/main:/etc/postgresql/18/main:ro
     environment:
+      # PGDATA를 명시하지 않으면 entrypoint가 마운트 경로 밖(/var/lib/postgresql/18/docker 등)에
+      # 자기 기본 경로를 만들려고 시도하다 권한 오류로 실패한다 — 반드시 마운트 경로와 동일하게 지정.
+      - PGDATA=/var/lib/postgresql/18/main
       # 이미 초기화된 클러스터를 그대로 마운트하므로 이 값들은 no-op(문서화 목적으로만 유지)
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
