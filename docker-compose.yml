@@ -67,6 +67,10 @@ services:
     # 호스트 postgres 유저(uid=112, gid=113)와 동일하게 실행 — root로 안 뜨므로
     # entrypoint의 재귀 chown/재초기화가 스킵되어 호스트 파일 소유권을 건드리지 않음(안전한 롤백 보장).
     user: "112:113"
+    # 호스트 루프백에만 게시(0.0.0.0 아님) — 예전 호스트 직접설치 postgres와 동일한 보안 수준으로,
+    # DBeaver 등 GUI 툴이 기존과 동일하게 서버로 SSH 터널 → 127.0.0.1:5432 방식을 그대로 쓸 수 있게 함.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - /var/lib/postgresql/18/main:/var/lib/postgresql/18/main
       - /etc/postgresql/18/main:/etc/postgresql/18/main:ro
