@@ -61,10 +61,17 @@ services:
       - app-network
 
   db:
-    image: postgres:13
+    # 호스트에 직접 설치돼 있던 PostgreSQL 18을 컨테이너로 이전(데이터 디렉토리 그대로 재사용,
+    # 덤프/복원 없음). 자세한 배경/컷오버 절차는 docs/db-access.md 참고.
+    image: postgres:18.1
+    # 호스트 postgres 유저(uid=112, gid=113)와 동일하게 실행 — root로 안 뜨므로
+    # entrypoint의 재귀 chown/재초기화가 스킵되어 호스트 파일 소유권을 건드리지 않음(안전한 롤백 보장).
+    user: "112:113"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - /var/lib/postgresql/18/main:/var/lib/postgresql/18/main
+      - /etc/postgresql/18/main:/etc/postgresql/18/main:ro
     environment:
+      # 이미 초기화된 클러스터를 그대로 마운트하므로 이 값들은 no-op(문서화 목적으로만 유지)
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -73,6 +80,11 @@ services:
     # 1GB 서버에 맞게 메모리 튜닝 (기본값: shared_buffers=128MB, max_connections=100)
     command: >
       postgres
+      -c config_file=/etc/postgresql/18/main/postgresql.conf
+      -c hba_file=/etc/postgresql/18/main/pg_hba.conf
+      -c listen_addresses=*
+      -c unix_socket_directories=''
+      -c ssl=off
       -c shared_buffers=64MB
       -c effective_cache_size=128MB
       -c work_mem=2MB
@@ -111,7 +123,12 @@ networks:
   app-network:
     driver: bridge
     enable_ipv6: false
+    # 기존에 자동 할당돼 있던 값을 그대로 고정(새로 정한 값 아님). pg_hba.conf의
+    # 도커 네트워크 허용 규칙이 이 대역을 참조하므로, 네트워크가 재생성돼도 서브넷이
+    # 안 바뀌도록 명시해둔다.
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
 
 volumes:
-  postgres_data:
   redis_data:
