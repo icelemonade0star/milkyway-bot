@@ -10,7 +10,8 @@ def setup_global_logging():
     logging.basicConfig(
         level=logging.INFO,
         format=LOG_FORMAT,
-        handlers=[logging.StreamHandler(sys.stdout)]
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True,
     )
 
 def get_logger(name: str):
