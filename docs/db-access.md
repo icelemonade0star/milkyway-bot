@@ -1,100 +1,68 @@
 # 서버 DB 접속 방법
 
-## 핵심 요약 (2026-07-11 기준, 이전 예정)
+## 핵심 요약 (2026-07-18 이관 완료)
 
-**운영 서버의 실제 PostgreSQL은 `docker-compose.yml`의 `db` 서비스가 아닙니다. 지금은요.**
-호스트에 직접 설치된 PostgreSQL(`127.0.0.1:5432`, IPv4 전용)이 현재 진짜 운영 DB이고, **SSH 터널을 거쳐야만 접속**됩니다.
+운영 PostgreSQL은 `docker-compose.yml`의 `db` 서비스(`postgres:18.1`, `milkywaybot-db-1`)입니다. 호스트에 직접 설치돼 있던 PostgreSQL을 데이터 디렉토리 그대로(`/var/lib/postgresql/18/main` bind mount) 컨테이너로 이전했고, 호스트 쪽 `postgresql@18-main` 서비스는 정지된 상태입니다.
 
-`docker-compose.yml`의 `db` 서비스(`postgres:13`, `milkywaybot-db-1`)는 과거 도커화를 시도했다가 실제 데이터 이전 없이 방치된 빈 컨테이너입니다(2026-07-11 기준 테이블 0개 확인). `docker compose exec db psql`로 확인하면 항상 잘못된(비어있는) 결과를 보게 되니 혼동하지 마세요.
+`api` 컨테이너는 도커 네트워크 안에서 서비스명 `db:5432`로 직접 접속합니다. **SSH 터널을 거치는 과거 구조는 완전히 폐기됐습니다** — `.env`의 `SSH_HOST`가 비어있으면 `app/core/tunnel.py`의 `ParamikoTunnel`이 터널을 만들지 않고 `config.DB_HOST`(`db`)로 바로 접속합니다.
 
-**다만 이 구조 자체가 정상이 아닙니다.** 같은 서버 안에서 컨테이너가 자기 서버에 SSH로 재접속해 DB에 붙는 건 불필요한 우회이고, 오늘 겪은 접속 문제(IPv4/IPv6 해석 혼동, 터널 타임아웃 등)의 근본 원인입니다. **호스트 PostgreSQL을 `db` 서비스 컨테이너로 정식 이전하기로 결정**했습니다(기존 데이터 디렉토리를 그대로 컨테이너에 마운트하는 방식 검토 중, 데이터 덤프/복원 불필요할 가능성 있음 — 상세 계획은 실제 이전 작업 시 별도 기록). 이관이 완료되면 이 문서도 그에 맞게 다시 갱신해야 합니다. 이관 전까지는 아래 SSH 터널 경로가 유일한 접근 방법입니다.
+## DB에 직접 접속하는 법
 
-## 왜 이렇게 되어 있는가
-
-- `app/core/tunnel.py`의 `ParamikoTunnel`이 `.env`의 `SSH_HOST`가 설정돼 있으면 앱 기동 시 자동으로 SSH 터널을 엽니다.
-  - SSH 접속 대상: `SSH_HOST:SSH_PORT`
-  - 터널이 포워딩하는 목적지: `config.DB_HOST:config.DB_PORT`(SSH 서버, 즉 이 서버 자신의 관점에서 본 주소)
-- `app/core/database.py`의 `create_db_engine(local_port)`이 이 터널의 로컬 포트로 접속합니다.
-- `app/lifespan.py`가 앱 기동 시 이 흐름(`ParamikoTunnel()` → `create_db_engine(tunnel.local_port)`)을 그대로 사용합니다.
-- 즉 운영 서버 안에서도 "자기 자신에게 SSH로 다시 접속해서, 그 세션을 통해 로컬 postgres로 포워딩"하는 방식으로 DB에 붙습니다. 로컬 개발 PC에서 원격 DB에 접근하려고 만든 경로를 서버 자신도 그대로 재사용하는 구조입니다.
-
-## 함정: `localhost` vs `127.0.0.1`
-
-서버의 PostgreSQL은 `127.0.0.1`(IPv4)에만 바인딩되어 있습니다:
+### 컨테이너 안에서 psql로 접속
 
 ```bash
-$ ss -tlnp | grep 5432
-LISTEN 0 200 127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=791,fd=6))
+docker compose exec db psql -h 127.0.0.1 -U api_user -d milkyway_db
 ```
 
-그런데 `.env`의 `DB_HOST` 값은 `localhost`(호스트명)입니다. SSH 터널이 이 호스트명을 SSH 서버 쪽에서 해석할 때 **IPv6(`::1`)로 먼저 풀리면**, 아무것도 안 듣고 있는 주소로 포워딩을 시도하다 다음과 같이 타임아웃이 납니다(연결 거부가 아니라 타임아웃인 게 특징입니다):
+`db` 서비스는 `user: "112:113"`(비-root)로 뜨기 때문에 유닉스 소켓(`peer` 인증)이 아니라 반드시 `-h 127.0.0.1`(TCP)로 접속해야 합니다.
 
-```
-ERROR | Could not establish connection from local (...) to remote ('localhost', 5432) side of the tunnel: open new channel ssh error: Timeout opening channel.
-```
+### 호스트에서 DBeaver 등 GUI 툴로 접속
 
-**해결책**: 컨테이너 안에서 앱 코드로 DB에 수동 접속할 때(마이그레이션 스크립트 등)는 `DB_HOST` 환경변수를 `127.0.0.1`로 명시적으로 덮어써서 실행해야 합니다. `app/core/config.py`가 `load_dotenv()`를 쓰는데, 이건 기본적으로 이미 설정된 환경변수를 덮어쓰지 않으므로 `docker compose exec -e DB_HOST=127.0.0.1`로 넘긴 값이 `.env`의 `localhost`보다 우선 적용됩니다.
+`db` 서비스에 `ports: ["127.0.0.1:5432:5432"]`가 게시돼 있어서, 서버에 SSH로 접속한 뒤(또는 로컬 SSH 터널로) `127.0.0.1:5432`로 그대로 붙으면 됩니다(예전 호스트 직접설치 postgres와 동일한 접속 방식이라 DBeaver 설정 변경 불필요).
 
-## 컨테이너 안에서 DB에 수동으로 접속/스크립트 실행하는 법
+### 컨테이너 안에서 앱 코드로 스크립트 실행
 
-앱과 완전히 같은 방식(SSH 터널)으로 붙어야 하므로, 반드시 **`api` 컨테이너 안에서** 실행해야 합니다(호스트에는 앱 의존성이 없고, `db` 컨테이너 안에서 직접 psql로 붙으면 위에서 설명한 이유로 빈 DB만 보입니다).
-
-### 0. 준비: 컨테이너 안 실제 경로 확인
-
-`Dockerfile`의 `WORKDIR`은 `/app`이지만, **배포된 이미지 버전에 따라 실제 컨테이너의 WORKDIR이 다를 수 있습니다**(2026-07-11 작업 중 한 번은 `/milkywayBot`이었다가, 재배포 후 `/app`으로 바뀐 걸 확인했습니다). 매번 가정하지 말고 먼저 확인하세요:
-
-```bash
-docker compose exec api pwd
-```
-
-또한 `Dockerfile`이 `scripts/` 디렉토리 전체가 아니라 `scripts/start.sh`만 이미지에 복사하므로, 일회성 스크립트는 컨테이너 재시작/재배포 때마다 다시 넣어줘야 합니다(영구 반영하려면 `Dockerfile`에 `COPY ./scripts /app/scripts` 추가 필요 — 별도 결정 사항).
-
-### 1. 스크립트를 컨테이너에 임시로 넣고 실행
+`api` 컨테이너 안에서 실행하면 `.env`에 설정된 `DB_HOST=db`를 그대로 써서 앱과 동일한 경로로 접속합니다. `SSH_HOST` 오버라이드나 별도 처리가 필요 없습니다.
 
 ```bash
 docker compose exec api mkdir -p /app/scripts
 docker compose cp scripts/<파일명>.py api:/app/scripts/<파일명>.py
-docker compose exec -e DB_HOST=127.0.0.1 api python scripts/<파일명>.py
+docker compose exec api python scripts/<파일명>.py
 ```
 
-(WORKDIR이 `/app`이 아니라면 `docker compose exec -w <pwd 결과>` 옵션을 추가로 붙이세요.)
+`Dockerfile`이 `scripts/start.sh`만 이미지에 복사하므로, 일회성 스크립트는 컨테이너 재배포 때마다 다시 넣어줘야 합니다.
 
-### 2. SQL을 직접 실행하고 싶을 때
+## `api` 컨테이너를 서버에서 수동으로 재기동할 때 (중요)
 
-`db` 컨테이너가 아니라 호스트의 실제 postgres에 붙어야 하므로, `api` 컨테이너 안에서 앱 코드를 통해 접속하는 것이 가장 확실합니다. 예시(파이썬 one-liner로 쿼리 실행):
+`docker-compose.yml`의 `api` 이미지 태그는 다음과 같이 정의돼 있습니다.
+
+```yaml
+image: ${DOCKERHUB_USERNAME}/milkyway_bot:${DEPLOY_SHA:-latest}
+```
+
+`DEPLOY_SHA` 셸 환경변수를 지정하지 않고 `docker compose up -d api` / `restart api` / `up -d --force-recreate api`를 실행하면 태그가 `:latest`로 해석됩니다. **로컬에 이미 `:latest` 태그의 이미지가 캐시돼 있으면 `docker compose up -d`는 pull을 생략하고 그 캐시를 그대로 씁니다** — CD가 배포 때마다 `${DEPLOY_SHA}` 태그로만 pull하고 `:latest` 태그 자체는 갱신하지 않기 때문에, 그 캐시된 `:latest`는 몇 주~몇 달 전의, 심하면 스키마 마이그레이션 이전의 아주 오래된 이미지일 수 있습니다.
+
+**2026-07-18에 이 문제로 두 번 실제 장애를 겪었습니다**: 낡은 이미지가 뜨면서 API 응답은 정상(200 OK)이지만 내부적으로는 완전히 다른(구버전) 코드와 스키마 매핑으로 동작해, 인증 목록 조회·채팅 세션 복구 등이 조용히 오작동했습니다. 에러 로그도 남지 않아 원인 파악이 매우 어려웠습니다.
+
+**규칙**: 서버에서 `api`를 수동으로 재기동/재생성할 때는 반드시 먼저 최신 SHA를 지정하세요.
 
 ```bash
-docker compose exec -e DB_HOST=127.0.0.1 api python -c "
-import asyncio
-from app.core.tunnel import ParamikoTunnel
-from app.core.database import create_db_engine
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-async def main():
-    tunnel = ParamikoTunnel()
-    engine = create_db_engine(tunnel.local_port)
-    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    async with session_factory() as db:
-        result = await db.execute(text('SELECT 1'))
-        print(result.all())
-    await engine.dispose()
-    tunnel.stop()
-
-asyncio.run(main())
-"
+git fetch origin
+export DEPLOY_SHA=$(git rev-parse origin/main)
+docker compose pull api
+docker compose up -d api
 ```
 
-### 자주 하는 실수
+재기동 후에는 이미지가 실제로 최신인지 확인하는 습관을 들이는 게 좋습니다(예: `docker compose exec api python3 -c "import app.db.models as m; print('V2Channel' in dir(m))"`가 `True`인지 등).
 
-- ❌ `docker compose exec db psql ...` — `db` 컨테이너는 앱이 안 쓰는 빈 DB입니다. 항상 잘못된 결과를 보게 됩니다.
-- ❌ `DB_HOST` 오버라이드 없이 스크립트 실행 — `localhost`가 IPv6로 풀려서 SSH 터널이 타임아웃 납니다.
-- ❌ 컨테이너 경로를 이전 작업 때 확인한 값으로 가정 — 재배포 후 WORKDIR이 바뀔 수 있으니 `pwd`로 매번 확인하세요.
-- ❌ DBeaver 등 GUI 툴 연결 정보를 별도로 관리하는 경우, 그게 실제로 이 서버의 postgres를 보고 있는지 확인 없이 신뢰하기 — 실제로 다른 DB를 보고 있었던 사례가 있었습니다(2026-07-11).
+## 자주 하는 실수
+
+- ❌ `DEPLOY_SHA` 없이 `api`를 수동 재기동 — 위 섹션 참고. 캐시된 낡은 `:latest` 이미지가 뜰 수 있습니다.
+- ❌ 컨테이너 경로를 이전 작업 때 확인한 값으로 가정 — 재배포 후 `WORKDIR`이 바뀔 수 있으니 `docker compose exec api pwd`로 매번 확인하세요.
+- ❌ DBeaver 등 GUI 툴 연결 정보를 별도로 관리하는 경우, 그게 실제로 이 서버의 `db` 컨테이너를 보고 있는지 확인 없이 신뢰하기.
 
 ## 관련 코드
 
-- `app/core/tunnel.py` — `ParamikoTunnel` (SSH 터널 생성)
-- `app/core/database.py` — `create_db_engine(local_port)` (터널 유무에 따라 접속 대상 결정)
+- `app/core/tunnel.py` — `ParamikoTunnel` (SSH_HOST가 설정된 경우에만 터널 생성, 현재는 비어있어 no-op)
+- `app/core/database.py` — `create_db_engine(local_port)` (터널 유무에 따라 접속 대상 결정, 현재는 `config.DB_HOST` 직접 사용)
 - `app/lifespan.py` — 앱 기동 시 위 두 개를 조합해 `app.state.SessionLocal` 초기화
-- `scripts/backfill_timer_overlay_css.py` — 위 패턴을 그대로 따르는 일회성 스크립트 예시
