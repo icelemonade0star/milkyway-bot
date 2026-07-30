@@ -7,6 +7,7 @@ from app.core.database import create_db_engine
 import app.core.database as db_module
 from app.core.tunnel import ParamikoTunnel
 from app.features.chat.session_manager import session_manager
+from app.features.chat.session_watchdog import SessionWatchdog
 from app.features.discord_bot.main import bot, discord_token, start_discord_bot
 from app.features.live_state_poller import LiveStatePoller
 from app.platforms.constants import PLATFORM_CHZZK
@@ -51,6 +52,10 @@ async def lifespan(app: FastAPI):
     live_state_poller = LiveStatePoller(session_factory)
     live_state_task = asyncio.create_task(live_state_poller.run())
 
+    # 채팅 세션 워치독 백그라운드 실행 (끊긴 세션 자동 재생성)
+    session_watchdog = SessionWatchdog()
+    session_watchdog_task = asyncio.create_task(session_watchdog.run())
+
     # 디스코드 봇 백그라운드 실행
     discord_task = None
     if discord_token:
@@ -67,6 +72,13 @@ async def lifespan(app: FastAPI):
     live_state_task.cancel()
     try:
         await live_state_task
+    except asyncio.CancelledError:
+        pass
+
+    session_watchdog.stop()
+    session_watchdog_task.cancel()
+    try:
+        await session_watchdog_task
     except asyncio.CancelledError:
         pass
 

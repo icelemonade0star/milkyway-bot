@@ -3,6 +3,7 @@ from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import STATIC_DIR
+from app.core.logger import setup_global_logging
 from app.lifespan import lifespan
 from app.exception_handlers import register_exception_handlers
 from app.features.auth import router as auth_router
@@ -12,6 +13,7 @@ from app.features.guide import router as guide_router
 from app.features.dashboard.router import dashboard_router
 from app.features.admin.router import admin_router
 
+setup_global_logging()
 
 app = FastAPI(
     lifespan=lifespan,

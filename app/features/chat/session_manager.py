@@ -59,32 +59,55 @@ class SessionManager:
 
         # 락을 사용하여 중복 생성 방지 (Critical Section)
         async with self._locks[channel_id]:
-            if channel_id in self.active_sessions:
-                if not force_recreate:
-                    return self.active_sessions[channel_id], False
-                
-                logger.info(f"♻️ [{channel_id}] 기존 세션 강제 종료 및 재생성")
-                await self._disconnect_session(channel_id)
+            existing_session = self.active_sessions.get(channel_id)
+            if existing_session and not force_recreate:
+                return existing_session, False
 
             logger.info(f"🆕 [{channel_id}] 새 세션 생성 및 초기화 시작")
-            
+
             # 현재 채팅 세션 구현체는 기본 플랫폼(chzzk)을 사용한다.
             new_session = ChzzkSessions(channel_id)
-            
+
             # 2. 실제 플랫폼 서버와 연결 및 구독 (비동기 작업)
-            await new_session.create_session()
+            # 새 세션이 완전히 준비되기 전까지는 기존 세션을 건드리지 않는다.
+            # (force_recreate로 기존 세션이 있던 경우) 여기서 실패하면 기존 세션이
+            # active_sessions에 그대로 남아있으므로, 워치독이 다음 주기에 다시 감지해 재시도한다.
+            # 단, 채널이 원래 active_sessions에 없던 최초 생성 실패의 경우는 워치독이
+            # active_sessions만 순회하기 때문에 대상에 안 잡히고, 자동 재시도되지 않는다.
+            try:
+                await new_session.create_session()
 
-            if not new_session.socket_url:
-                raise Exception("소켓 URL을 가져오지 못했습니다.")
+                if not new_session.socket_url:
+                    raise Exception("소켓 URL을 가져오지 못했습니다.")
 
-            if not new_session.session_key:
-                raise Exception("세션 키를 받지 못했습니다. (소켓 연결 타임아웃)")
+                if not new_session.session_key:
+                    raise Exception("세션 키를 받지 못했습니다. (소켓 연결 타임아웃)")
 
-            subscribed = await new_session.subscribe_chat()
-            if not subscribed:
-                raise Exception("채팅 구독에 실패했습니다.")
+                subscribed = await new_session.subscribe_chat()
+                if not subscribed:
+                    raise Exception("채팅 구독에 실패했습니다.")
+            except Exception:
+                # 생성 도중 실패한 새 세션의 소켓이 열려있으면 정리(연결 누수 방지)
+                # 정리 자체가 실패해도 원래 예외가 가려지지 않도록 별도로 삼킨다
+                if new_session.socket_client:
+                    try:
+                        await new_session.socket_client.disconnect()
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ [{channel_id}] 실패한 세션 정리 중 오류(무시): {cleanup_error}")
+                raise
 
+            # 새 세션을 먼저 등록해, 이후 기존 세션 종료가 실패하더라도
+            # 채널이 active_sessions에서 사라지지 않도록 한다(워치독 추적 대상 유지).
             self.active_sessions[channel_id] = new_session
+
+            # 기존 세션 종료는 별도로 시도하고, 실패해도 새 세션 등록은 되돌리지 않는다.
+            if existing_session and existing_session.socket_client:
+                logger.info(f"♻️ [{channel_id}] 기존 세션 종료")
+                try:
+                    await existing_session.socket_client.disconnect()
+                except Exception as e:
+                    logger.warning(f"⚠️ [{channel_id}] 기존 세션 종료 중 오류(무시하고 진행): {e}")
+
             return new_session, True
 
     async def _disconnect_session(self, channel_id: str):
