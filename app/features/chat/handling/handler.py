@@ -149,15 +149,18 @@ async def on_command(
     if result.type == "system" and result.command in ADMIN_SYSTEM_COMMANDS and role == 'common_user':
         return
 
+    # 출석 명령어는 handle_global_attendance에서 시청자별 쿨타임을 적용합니다.
+    # 일반 명령어의 채널 공통 쿨타임을 먼저 적용하면, 한 시청자의 출석 직후
+    # 다른 시청자의 출석 처리와 응답까지 차단됩니다.
+    if result.type == "attendance":
+        await handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service, command)
+        return
+
     if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds, CHAT_PLATFORM):
         return
 
     if result.type == "text":
         await handle_text_response(session, result, user_name)
-        return
-
-    if result.type == "attendance":
-        await handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service, command)
         return
 
     if result.type == "system":
