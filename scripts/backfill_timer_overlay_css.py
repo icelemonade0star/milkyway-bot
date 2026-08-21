@@ -65,7 +65,7 @@ async def main() -> None:
             except Exception as exc:
                 logger.warning("channel_id=%s 타이머 옵션 검증 실패, 기본값으로 대체: %s", setting.channel_id, exc)
                 options = TimerOverlayStyleOptions()
-            setting.custom_css = build_timer_overlay_css(options)
+            setting.custom_css = build_timer_overlay_css(options)  # type: ignore[assignment]  # 레거시 Column() 모델이라 정적 타입 체커가 오탐함
             updated += 1
 
         await db.commit()

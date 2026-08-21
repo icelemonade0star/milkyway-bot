@@ -1,5 +1,10 @@
 import asyncio
+import os
 from types import SimpleNamespace
+
+# handler import 시 생성되는 Chzzk HTTP 클라이언트에는 문자열 헤더가 필요합니다.
+# CI에는 운영 비밀값이 없으므로 외부 요청에 사용되지 않는 테스트 값을 지정합니다.
+os.environ.setdefault("CLIENT_SECRET", "test-client-secret")
 
 from app.features.chat.handling import handler
 
