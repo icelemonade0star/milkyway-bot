@@ -458,13 +458,16 @@ function runSampleTimerCommand(command) {
             setStatus("재생할 타이머가 없습니다.");
             return;
         }
-        const remainingMs = currentSampleTimerRemaining();
+        let remainingMs = currentSampleTimerRemaining();
+        if (remainingMs <= 0) {
+            remainingMs = sampleTimerState.duration_ms;
+        }
         sampleTimerState = {
             ...sampleTimerState,
             remaining_ms: remainingMs,
-            running: remainingMs > 0,
-            started_at_ms: remainingMs > 0 ? Date.now() : null,
-            ends_at_ms: remainingMs > 0 ? Date.now() + remainingMs : null,
+            running: true,
+            started_at_ms: Date.now(),
+            ends_at_ms: Date.now() + remainingMs,
         };
         if (postSampleTimer({action: "snapshot", timer: {...sampleTimerState}})) {
             setStatus("타이머 재생 명령을 실행했습니다.");
