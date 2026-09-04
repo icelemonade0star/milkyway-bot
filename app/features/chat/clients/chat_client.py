@@ -49,6 +49,8 @@ class ChzzkChatClient(BaseChatClient):
                 if self.session_key_future and not self.session_key_future.done():
                     self.session_key_future.set_result(self.session_key)
 
+        self.socketio.on('SYSTEM', handler=on_system)
+
         async def on_chat(data):
             raw_data = json.loads(data)
             channel_id = raw_data.get('channelId') or self.platform_channel_id
@@ -67,7 +69,6 @@ class ChzzkChatClient(BaseChatClient):
             # 핸들러로 메시지 전달
             await handler.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
 
-        self.socketio.on('SYSTEM', handler=on_system)
         self.socketio.on('CHAT', handler=on_chat)
 
     def get_session_key(self):
