@@ -25,7 +25,7 @@ _RECONNECT_DELAY = 5
 _CHAT_CMDS = {93101}
 
 # websockets 버전별 헤더 파라미터 분기 (11.x: extra_headers, 15/16.x: additional_headers)
-_CONNECT_PARAMS = inspect.signature(websockets.connect).parameters
+_CONNECT_PARAMS = inspect.signature(websockets.connect).parameters  # type: ignore[attr-defined]
 
 
 def _ws_connect_kwargs() -> dict:
@@ -87,7 +87,7 @@ class ChzzkRawChatClient:
                     ws_url = random.choice(_WS_SERVERS)
                     logger.info("[%s] 연결 시도: %s", self.platform_channel_id, ws_url)
 
-                    async with websockets.connect(ws_url, ping_interval=None, **_WS_CONNECT_KWARGS) as ws:
+                    async with websockets.connect(ws_url, ping_interval=None, **_WS_CONNECT_KWARGS) as ws:  # type: ignore[attr-defined]
                         auth_packet = json.dumps({
                             "bdy": {
                                 "accTkn": "",

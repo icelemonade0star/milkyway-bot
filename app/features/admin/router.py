@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_async_db
 from app.core.security import verify_admin_token
 from app.db import models
-from app.redis.redis_service import RedisChannelKey, redis_client, RedisConfigService
+from app.redis.redis_service import RedisChannelKey, redis_client, redis_hgetall, RedisConfigService
 from app.features.chat.service import ChatService
 from app.features.live_state_poller import LiveStatePoller
 from app.features.admin import schemas
@@ -185,7 +185,7 @@ async def _get_channel_greeting_cache_response(db: AsyncSession, platform: str, 
     redis_channel = _redis_channel_key(channel)
     cache_key = RedisConfigService.get_greetings_key(redis_channel)
     try:
-        raw = await redis_client.hgetall(cache_key)
+        raw = await redis_hgetall(cache_key)
         ttl = await redis_client.ttl(cache_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Redis 조회 실패: {e}")
@@ -253,7 +253,7 @@ async def get_all_greeting_cache():
             continue
         _, _, platform, platform_channel_id, channel_uuid = parts
         try:
-            raw = await redis_client.hgetall(key)
+            raw = await redis_hgetall(key)
             ttl = await redis_client.ttl(key)
         except Exception:
             continue

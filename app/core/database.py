@@ -1,8 +1,8 @@
 from fastapi import Request
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 import app.core.config as config
 
-AsyncSessionLocal = None
+AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 async def get_async_db(request: Request):
     async with request.app.state.SessionLocal() as db:

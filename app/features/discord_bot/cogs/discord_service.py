@@ -45,13 +45,18 @@ class DiscordService:
             # 3. 메시지 전송
             if channel:
                 # 텍스트 채널인지 확인 (send 메서드가 있는지)
-                if hasattr(channel, 'send'):
-                    await channel.send(content=message, embed=embed)
-                    self.logger.info(f"메시지 전송 성공: {channel.name} ({target_id})")
+                if isinstance(channel, discord.abc.Messageable):
+                    if embed is not None:
+                        await channel.send(content=message, embed=embed)
+                    else:
+                        await channel.send(content=message)
+                    self.logger.info(f"메시지 전송 성공: {getattr(channel, 'name', target_id)} ({target_id})")
                     return True
                 else:
                     self.logger.error(f"해당 채널({target_id})은 텍스트를 보낼 수 없는 유형입니다.")
                     return False
+
+            return False
 
         except ValueError:
             self.logger.error(f"유효하지 않은 채널 ID 형식입니다: {channel_id}")

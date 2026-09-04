@@ -55,14 +55,18 @@ async def callback_auth(
     if not await platform_auth.get_user_info():
         raise HTTPException(status_code=400, detail="유저 정보 조회 실패")
 
+    channel_id = platform_auth.channel_id
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="채널 정보를 확인할 수 없습니다.")
+
     auth_service = AuthService(db)
     state_payload = security.verify_oauth_state_token(state)
     if state_payload and state_payload.get("purpose") == security.OAUTH_STATE_PURPOSE_DASHBOARD:
-        registered_channel = await auth_service.get_auth_token_by_id(AUTH_PLATFORM, platform_auth.channel_id)
+        registered_channel = await auth_service.get_auth_token_by_id(AUTH_PLATFORM, channel_id)
         if not registered_channel:
             raise HTTPException(status_code=403, detail="등록된 채널만 대시보드에 접근할 수 있습니다.")
 
-        session_token = security.create_dashboard_session_token(platform_auth.channel_id, platform_auth.channel_name)
+        session_token = security.create_dashboard_session_token(channel_id, platform_auth.channel_name)
         response = RedirectResponse(url="/auth/dashboard", status_code=303)
         response.delete_cookie("oauth_state")
         response.set_cookie(
@@ -76,7 +80,7 @@ async def callback_auth(
         return response
 
     inserted_data = await auth_service.save_default_platform_auth(platform_auth)
-    background_tasks.add_task(session_manager.get_or_create_session, platform_auth.channel_id)
+    background_tasks.add_task(session_manager.get_or_create_session, channel_id)
 
     channel_name = getattr(inserted_data, "channel_name", platform_auth.channel_name)
     return templates.TemplateResponse(

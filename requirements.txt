@@ -30,3 +30,4 @@ sshtunnel
 redis>=4.5.0
 discord.py>=2.0.0
 jinja2
+pytest==9.1.1

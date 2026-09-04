@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable
+from typing import Callable, Generic, TypeVar, cast
 
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -323,11 +323,14 @@ def build_timer_overlay_css(options: TimerOverlayStyleOptions) -> str:
 """
 
 
+TOptions = TypeVar("TOptions", bound=BaseModel)
+
+
 @dataclass(frozen=True)
-class OverlayKindConfig:
-    style_options_cls: type[BaseModel]
-    default_options: BaseModel
-    build_css: Callable[[BaseModel], str]
+class OverlayKindConfig(Generic[TOptions]):
+    style_options_cls: type[TOptions]
+    default_options: TOptions
+    build_css: Callable[[TOptions], str]
 
 
 DEFAULT_CHAT_STYLE_OPTIONS = ChatOverlayStyleOptions()
@@ -536,13 +539,13 @@ class ChatOverlayService:
         if not channel:
             return PresetDeleteResult.CHANNEL_NOT_FOUND
 
-        result = await self.db.execute(
+        result = cast(CursorResult, await self.db.execute(
             delete(models.V2OverlayPreset).where(
                 models.V2OverlayPreset.id == preset_id,
                 models.V2OverlayPreset.channel_id == channel.id,
                 models.V2OverlayPreset.overlay_kind == overlay_kind,
             )
-        )
+        ))
         await self.db.commit()
         return PresetDeleteResult.DELETED if result.rowcount else PresetDeleteResult.PRESET_NOT_FOUND
 

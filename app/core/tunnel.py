@@ -1,6 +1,6 @@
 import paramiko
 if not hasattr(paramiko, 'DSSKey'):
-    paramiko.DSSKey = type('DSSKey', (paramiko.PKey,), {})
+    paramiko.DSSKey = type('DSSKey', (paramiko.PKey,), {})  # type: ignore[attr-defined]
 
 from sshtunnel import SSHTunnelForwarder
 import app.core.config as config

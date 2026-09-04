@@ -15,6 +15,13 @@ _http_client = httpx.AsyncClient(timeout=10.0)
 class ChzzkAuthProvider:
     platform = PLATFORM_CHZZK
 
+    channel_id: str | None
+    channel_name: str | None
+    access_token: str | None
+    refresh_token: str | None
+    expires_at: datetime | None
+    raw_token_response: dict | None
+
     def __init__(self, auth_service: AuthService):
         self.client_id = config.CLIENT_ID
         self.client_secret = config.CLIENT_SECRET
@@ -72,15 +79,19 @@ class ChzzkAuthProvider:
         content = res_json["content"]
         expires_in = content.get("expiresIn", 86400)
 
-        self.access_token = content["accessToken"]
-        self.refresh_token = content["refreshToken"]
-        self.expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        access_token: str = content["accessToken"]
+        refresh_token: str = content["refreshToken"]
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.expires_at = expires_at
         self.raw_token_response = res_json
 
         return TokenBundle(
-            access_token=self.access_token,
-            refresh_token=self.refresh_token,
-            expires_at=self.expires_at,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
             raw=res_json,
         )
 
@@ -106,13 +117,15 @@ class ChzzkAuthProvider:
 
         res_json = response.json()
         content = res_json["content"]
-        self.channel_id = content["channelId"]
-        self.channel_name = content["channelName"]
+        channel_id: str = content["channelId"]
+        channel_name: str = content["channelName"]
+        self.channel_id = channel_id
+        self.channel_name = channel_name
 
         return PlatformIdentity(
             platform=self.platform,
-            platform_channel_id=self.channel_id,
-            channel_name=self.channel_name,
+            platform_channel_id=channel_id,
+            channel_name=channel_name,
         )
 
     async def get_access_token(self, code, state):

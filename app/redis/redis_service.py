@@ -5,6 +5,7 @@ import logging
 import re
 import json
 from dataclasses import dataclass
+from typing import Awaitable, cast
 
 from app.core.database import get_session_factory
 from app.db import models
@@ -20,6 +21,11 @@ redis_client = redis.Redis(
     decode_responses=True,
     max_connections=10,  # 1GB 서버 환경: 기본 50개에서 축소
 )
+
+
+async def redis_hgetall(key: str) -> dict:
+    # redis-py의 hgetall 스텁이 동기/비동기 겸용이라 await 대상에 dict가 섞여 보이는 것을 보정
+    return await cast(Awaitable[dict], redis_client.hgetall(key))
 
 @dataclass(frozen=True)
 class RedisChannelKey:
@@ -274,7 +280,7 @@ class RedisConfigService:
 
         try:
             # 1. Redis에서 해당 채널의 모든 응답 키워드와 메시지 조회 (해시 전체 조회)
-            greetings = await redis_client.hgetall(cache_key)
+            greetings = await redis_hgetall(cache_key)
 
             # 2. 데이터가 없으면 DB 로드와 방송 상태 프리워밍을 병렬 실행
             if not greetings:
@@ -282,7 +288,7 @@ class RedisConfigService:
                     self.refresh_greetings_cache(channel_id, platform),
                     self._prefetch_live_status(channel_id, platform),
                 )
-                greetings = await redis_client.hgetall(cache_key)
+                greetings = await redis_hgetall(cache_key)
 
             # 3. 키워드 포함 여부 검사
             if greetings:

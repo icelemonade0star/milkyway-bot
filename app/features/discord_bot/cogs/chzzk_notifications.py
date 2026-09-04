@@ -73,7 +73,7 @@ class LiveNotification(commands.Cog):
         _active_cog = self
         self.check_live_notifications.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         global _active_cog
         self.check_live_notifications.cancel()
         _active_cog = None

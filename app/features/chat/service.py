@@ -245,7 +245,7 @@ class ChatService:
                     return "attendance_limit_exceeded", None
 
             count_stmt = select(func.count()).select_from(model).where(model.channel_id == channel_key)
-            count = (await self.db.execute(count_stmt)).scalar()
+            count = (await self.db.execute(count_stmt)).scalar_one()
             if count >= MAX_COMMANDS_PER_CHANNEL:
                 return "limit_exceeded", None
 
@@ -398,7 +398,7 @@ class ChatService:
             channel_key = v2_channel.id
 
             count_stmt = select(func.count()).select_from(model).where(model.channel_id == channel_key)
-            count = (await self.db.execute(count_stmt)).scalar()
+            count = (await self.db.execute(count_stmt)).scalar_one()
             if count >= MAX_GREETINGS_PER_CHANNEL:
                 return "limit_exceeded", None
 
@@ -572,7 +572,8 @@ class ChatService:
         if not isinstance(payload, dict):
             return None
 
-        raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else payload
+        raw_value = payload.get("raw")
+        raw = raw_value if isinstance(raw_value, dict) else payload
         opened_at = cls._parse_live_datetime(payload.get("opened_at") or raw.get("openDate"))
         closed_at = cls._parse_live_datetime(payload.get("closed_at") or raw.get("closeDate"))
         normalized_status = payload.get("status")

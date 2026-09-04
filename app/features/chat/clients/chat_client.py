@@ -9,7 +9,7 @@ from app.core.logger import get_channel_logger
 
 class ChzzkChatClient(BaseChatClient):
 
-    def __init__(self, channel_name, platform_channel_id: str, session_key_future: asyncio.Future = None):
+    def __init__(self, channel_name, platform_channel_id: str, session_key_future: asyncio.Future | None = None):
         # 각 인스턴스마다 고유한 식별자와 소켓 클라이언트를 가짐
         self.channel_name = channel_name  
         self.platform_channel_id = platform_channel_id
@@ -32,7 +32,6 @@ class ChzzkChatClient(BaseChatClient):
         async def connect():
             self.logger.info("서버에 연결되었습니다.")
 
-        @self.socketio.on('SYSTEM')
         async def on_system(data):
             # 로그 출력 시 식별자를 포함하여 구분
             self.logger.info(f"📡 SYSTEM 이벤트 수신")
@@ -50,7 +49,6 @@ class ChzzkChatClient(BaseChatClient):
                 if self.session_key_future and not self.session_key_future.done():
                     self.session_key_future.set_result(self.session_key)
 
-        @self.socketio.on('CHAT')
         async def on_chat(data):
             raw_data = json.loads(data)
             channel_id = raw_data.get('channelId') or self.platform_channel_id
@@ -68,6 +66,9 @@ class ChzzkChatClient(BaseChatClient):
 
             # 핸들러로 메시지 전달
             await handler.on_message(channel_id, message, role, user_id=user_id, user_name=nickname)
+
+        self.socketio.on('SYSTEM', handler=on_system)
+        self.socketio.on('CHAT', handler=on_chat)
 
     def get_session_key(self):
         return self.session_key
