@@ -7,8 +7,10 @@ const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
 let options = config.options || {};
 let timerState = null;
+let timerReceivedAt = 0;
 let timerFrame = null;
 let autoDeleteTimeout = null;
+const AUTO_DELETE_FADE_MS = 600;
 
 function formatTimerTime(ms) {
     const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -25,8 +27,8 @@ function currentTimerRemaining() {
     if (!timerState) {
         return 0;
     }
-    if (timerState.running && timerState.ends_at_ms) {
-        return Math.max(0, timerState.ends_at_ms - Date.now());
+    if (timerState.running) {
+        return Math.max(0, timerState.remaining_ms - (performance.now() - timerReceivedAt));
     }
     return Math.max(0, Number(timerState.remaining_ms) || 0);
 }
@@ -43,6 +45,7 @@ function stopAutoDeleteTimer() {
         window.clearTimeout(autoDeleteTimeout);
         autoDeleteTimeout = null;
     }
+    timerOverlay.classList.remove("is-fading");
 }
 
 function scheduleAutoDelete() {
@@ -51,9 +54,12 @@ function scheduleAutoDelete() {
     }
     const delaySeconds = Math.max(0, Number(options.timer_auto_delete_delay_seconds) || 0);
     autoDeleteTimeout = window.setTimeout(() => {
-        autoDeleteTimeout = null;
-        timerState = null;
-        renderTimer();
+        timerOverlay.classList.add("is-fading");
+        autoDeleteTimeout = window.setTimeout(() => {
+            autoDeleteTimeout = null;
+            timerState = null;
+            renderTimer();
+        }, AUTO_DELETE_FADE_MS);
     }, delaySeconds * 1000);
 }
 
@@ -75,6 +81,7 @@ function renderTimer() {
         stopAutoDeleteTimer();
         timerFrame = window.requestAnimationFrame(renderTimer);
     } else {
+        timerState.remaining_ms = remaining;
         timerState.running = false;
         stopTimerFrame();
         if (remaining <= 0) {
@@ -98,7 +105,11 @@ function handleTimerEvent(payload) {
     if (!payload.timer) {
         return;
     }
-    timerState = payload.timer;
+    timerState = {
+        ...payload.timer,
+        remaining_ms: Math.max(0, Number(payload.timer.remaining_ms) || 0),
+    };
+    timerReceivedAt = performance.now();
     stopTimerFrame();
     stopAutoDeleteTimer();
     renderTimer();

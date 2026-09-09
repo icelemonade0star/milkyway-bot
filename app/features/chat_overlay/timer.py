@@ -28,8 +28,6 @@ class TimerState:
             "duration_ms": self.duration_ms,
             "remaining_ms": remaining_ms,
             "running": self.running and remaining_ms > 0,
-            "started_at_ms": self.started_at_ms,
-            "ends_at_ms": self.ends_at_ms if remaining_ms > 0 else None,
         }
 
 

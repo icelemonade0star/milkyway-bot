@@ -284,12 +284,17 @@ def build_timer_overlay_css(options: TimerOverlayStyleOptions) -> str:
     border-radius: 8px;
     background: {timer_background};
     opacity: {options.timer_global_opacity / 100:.2f};
+    transition: opacity 0.6s ease;
     font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
 }}
 
 .timer-overlay.is-visible {{
     display: flex;
+}}
+
+.timer-overlay.is-fading {{
+    opacity: 0;
 }}
 
 .timer-title {{

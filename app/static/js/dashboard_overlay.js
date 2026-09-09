@@ -394,7 +394,16 @@ function postSampleTimer(payload) {
     }
     preview.contentWindow?.postMessage({
         type: "milkyway-overlay-sample-timer",
-        payload: {...payload, options: getSampleTimerRuntimeOptions()},
+        payload: {
+            ...payload,
+            ...(payload.timer ? {timer: {
+                title: payload.timer.title,
+                duration_ms: payload.timer.duration_ms,
+                remaining_ms: currentSampleTimerRemaining(),
+                running: payload.timer.running,
+            }} : {}),
+            options: getSampleTimerRuntimeOptions(),
+        },
     }, window.location.origin);
     return true;
 }
