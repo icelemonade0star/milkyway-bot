@@ -76,8 +76,8 @@
             50% { opacity: 0.5; }
         }
 
-        {{ timer_css|safe }}
     </style>
+    <style id="overlayCustomStyle">{{ timer_css|safe }}</style>
 </head>
 <body>
     <div class="timer-overlay" id="timerOverlay" aria-live="polite">
@@ -88,6 +88,7 @@
     <script id="timerOverlayConfig" type="application/json">
         {"websocket_path": {{ overlay_websocket_path|tojson }}, "options": {{ timer_options|tojson }}}
     </script>
+    <script src="/static/js/overlay_socket.js"></script>
     <script src="/static/js/timer_overlay.js"></script>
 </body>
 </html>

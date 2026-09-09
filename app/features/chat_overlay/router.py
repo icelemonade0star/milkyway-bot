@@ -128,18 +128,30 @@ async def chat_overlay_ws_by_channel(
         options = safe_chat_overlay_options(display_setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
-    await connect_overlay_websocket(websocket, platform_channel_id, options)
+    await connect_overlay_websocket(
+        websocket, platform_channel_id, options, display_setting.custom_css, preset,
+        uses_default_settings=display_setting is setting,
+    )
 
 
-async def connect_overlay_websocket(websocket: WebSocket, platform_channel_id: str, options: ChatOverlayStyleOptions):
+async def connect_overlay_websocket(
+    websocket: WebSocket, platform_channel_id: str, options: ChatOverlayStyleOptions,
+    custom_css: str, preset_name: str | None = None,
+    *, uses_default_settings: bool = False,
+):
     await overlay_manager.ensure_raw_client(platform_channel_id)
     await chat_overlay_broadcaster.connect(
         platform_channel_id,
         websocket,
         blocked_nicknames=options.blocked_nicknames,
         blocked_roles=options.blocked_roles,
+        preset_name=preset_name,
+        uses_default_settings=uses_default_settings,
     )
     try:
+        await websocket.send_json({
+            "type": "overlay-settings", "custom_css": custom_css, "options": options.model_dump(),
+        })
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
@@ -157,16 +169,25 @@ async def timer_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id:
         if not row:
             await websocket.close(code=1008)
             return
-        channel, _setting = row
+        channel, setting = row
+        options = safe_timer_overlay_options(setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
-    await connect_timer_overlay_websocket(websocket, platform_channel_id)
+    await connect_timer_overlay_websocket(websocket, platform_channel_id, options, setting.custom_css)
 
 
-async def connect_timer_overlay_websocket(websocket: WebSocket, platform_channel_id: str):
+async def connect_timer_overlay_websocket(
+    websocket: WebSocket, platform_channel_id: str, options: TimerOverlayStyleOptions, custom_css: str,
+):
     await timer_overlay_broadcaster.connect(platform_channel_id, websocket)
-    await overlay_timer_manager.publish_snapshot(platform_channel_id)
     try:
+        await websocket.send_json({
+            "type": "overlay-settings", "custom_css": custom_css, "options": options.model_dump(),
+        })
+        snapshot = overlay_timer_manager.get_snapshot(platform_channel_id)
+        await websocket.send_json({
+            "type": "timer", "action": "sync" if snapshot else "delete", "timer": snapshot,
+        })
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:

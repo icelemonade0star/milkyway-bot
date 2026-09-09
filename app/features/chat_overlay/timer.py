@@ -1,6 +1,7 @@
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4
 
 from app.features.chat_overlay.broadcaster import timer_overlay_broadcaster
 
@@ -18,12 +19,14 @@ class TimerState:
     running: bool
     started_at_ms: int | None = None
     ends_at_ms: int | None = None
+    timer_id: str = field(default_factory=lambda: uuid4().hex)
 
     def snapshot(self) -> dict:
         remaining_ms = self.remaining_ms
         if self.running and self.ends_at_ms is not None:
             remaining_ms = max(0, self.ends_at_ms - _now_ms())
         return {
+            "timer_id": self.timer_id,
             "title": self.title,
             "duration_ms": self.duration_ms,
             "remaining_ms": remaining_ms,
@@ -114,6 +117,7 @@ class OverlayTimerManager:
         remaining_ms = snapshot["remaining_ms"]
         if remaining_ms <= 0:
             remaining_ms = state.duration_ms
+            state.timer_id = uuid4().hex
         now = _now_ms()
         state.remaining_ms = remaining_ms
         state.running = True

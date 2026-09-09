@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Generic, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import PUBLIC_SITE_URL
 from app.db import models
+from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster, timer_overlay_broadcaster
 from app.features.chat_overlay.schemas import ChatOverlayStyleOptions, TimerOverlayStyleOptions
 
 
@@ -359,6 +360,20 @@ class ChatOverlayService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _publish_settings(
+        self, channel, setting, *, preset_name: str | None = None, uses_default_settings: bool = False,
+    ):
+        config = OVERLAY_KIND_CONFIG[setting.overlay_kind]
+        try:
+            options = config.style_options_cls.model_validate(setting.style_options or {})
+        except ValidationError:
+            options = config.default_options
+        broadcaster = timer_overlay_broadcaster if setting.overlay_kind == "timer" else chat_overlay_broadcaster
+        await broadcaster.publish_settings(
+            channel.platform_channel_id, setting.custom_css, options.model_dump(), preset_name=preset_name,
+            uses_default_settings=uses_default_settings,
+        )
+
     async def get_channel(self, platform: str, platform_channel_id: str):
         result = await self.db.execute(
             select(models.V2Channel).where(
@@ -453,6 +468,7 @@ class ChatOverlayService:
         setting.is_active = is_active
         await self.db.commit()
         await self.db.refresh(setting)
+        await self._publish_settings(channel, setting)
         return channel, setting
 
     async def list_presets(self, channel_id, overlay_kind: str = "chat"):
@@ -521,6 +537,7 @@ class ChatOverlayService:
             preset.custom_css = css
             await self.db.commit()
         await self.db.refresh(preset)
+        await self._publish_settings(channel, preset, preset_name=preset.name)
         return preset
 
     async def apply_preset(self, platform: str, platform_channel_id: str, overlay_kind: str, preset_id: int):
@@ -537,12 +554,16 @@ class ChatOverlayService:
         setting.style_options = preset.style_options
         await self.db.commit()
         await self.db.refresh(setting)
+        await self._publish_settings(channel, setting)
         return channel, setting, preset
 
     async def delete_preset(self, platform: str, platform_channel_id: str, overlay_kind: str, preset_id: int) -> PresetDeleteResult:
         channel = await self.get_channel(platform, platform_channel_id)
         if not channel:
             return PresetDeleteResult.CHANNEL_NOT_FOUND
+
+        preset = await self.db.get(models.V2OverlayPreset, preset_id)
+        preset_name = preset.name if preset and preset.channel_id == channel.id and preset.overlay_kind == overlay_kind else None
 
         result = cast(CursorResult, await self.db.execute(
             delete(models.V2OverlayPreset).where(
@@ -552,6 +573,9 @@ class ChatOverlayService:
             )
         ))
         await self.db.commit()
+        if result.rowcount and preset_name:
+            _channel, setting = await self.get_or_create_setting(platform, platform_channel_id, overlay_kind)
+            await self._publish_settings(channel, setting, preset_name=preset_name, uses_default_settings=True)
         return PresetDeleteResult.DELETED if result.rowcount else PresetDeleteResult.PRESET_NOT_FOUND
 
     @staticmethod

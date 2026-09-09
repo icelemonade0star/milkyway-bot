@@ -73,8 +73,9 @@
             word-break: break-word;
         }
 
-        {{ setting.custom_css|safe }}
     </style>
+    <style id="overlayRuntimeStyle"></style>
+    <style id="overlayCustomStyle">{{ setting.custom_css|safe }}</style>
 </head>
 <body>
     <main class="chat-overlay">
@@ -86,6 +87,7 @@
     <script id="chatOverlayConfig" type="application/json">
         {"websocket_path": {{ overlay_websocket_path|tojson }}}
     </script>
+    <script src="/static/js/overlay_socket.js"></script>
     <script src="/static/js/chat_overlay.js"></script>
 </body>
 </html>

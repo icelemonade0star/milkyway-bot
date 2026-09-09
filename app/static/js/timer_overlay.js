@@ -3,13 +3,12 @@ const timerTitle = document.getElementById("timerTitle");
 const timerTime = document.getElementById("timerTime");
 const config = JSON.parse(document.getElementById("timerOverlayConfig").textContent);
 const isPreview = new URLSearchParams(location.search).has("preview");
-const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
 let options = config.options || {};
 let timerState = null;
 let timerReceivedAt = 0;
 let timerFrame = null;
 let autoDeleteTimeout = null;
+let hiddenTimerId = null;
 const AUTO_DELETE_FADE_MS = 600;
 
 function formatTimerTime(ms) {
@@ -57,6 +56,7 @@ function scheduleAutoDelete() {
         timerOverlay.classList.add("is-fading");
         autoDeleteTimeout = window.setTimeout(() => {
             autoDeleteTimeout = null;
+            hiddenTimerId = timerState?.timer_id || null;
             timerState = null;
             renderTimer();
         }, AUTO_DELETE_FADE_MS);
@@ -105,6 +105,14 @@ function handleTimerEvent(payload) {
     if (!payload.timer) {
         return;
     }
+    if (payload.action === "sync" && payload.timer.timer_id && (
+        payload.timer.timer_id === hiddenTimerId ||
+        (payload.timer.timer_id === timerState?.timer_id && currentTimerRemaining() <= 0 &&
+            payload.timer.remaining_ms <= 0)
+    )) {
+        return;
+    }
+    hiddenTimerId = null;
     timerState = {
         ...payload.timer,
         remaining_ms: Math.max(0, Number(payload.timer.remaining_ms) || 0),
@@ -115,16 +123,25 @@ function handleTimerEvent(payload) {
     renderTimer();
 }
 
-socket.addEventListener("message", (event) => {
-    try {
-        const payload = JSON.parse(event.data);
+if (!isPreview) {
+    connectOverlaySocket(config.websocket_path, (payload) => {
+        if (payload.type === "overlay-settings") {
+            document.getElementById("overlayCustomStyle").textContent = payload.custom_css;
+            const changed = options.timer_auto_delete !== payload.options.timer_auto_delete ||
+                options.timer_auto_delete_delay_seconds !== payload.options.timer_auto_delete_delay_seconds;
+            options = {...options, ...payload.options};
+            if (changed) {
+                stopAutoDeleteTimer();
+                stopTimerFrame();
+                renderTimer();
+            }
+            return;
+        }
         if (payload.type === "timer") {
             handleTimerEvent(payload);
         }
-    } catch (error) {
-        console.error(error);
-    }
-});
+    });
+}
 
 window.addEventListener("message", (event) => {
     if (!isPreview || event.origin !== window.location.origin) {

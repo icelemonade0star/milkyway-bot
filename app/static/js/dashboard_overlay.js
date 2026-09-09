@@ -424,6 +424,10 @@ function sendSampleTimer() {
 }
 
 function runSampleTimerCommand(command) {
+    if (previewMode !== "sample" || activeOverlayKind !== "timer") {
+        setStatus("샘플 모드에서만 테스트 타이머를 보낼 수 있습니다.");
+        return;
+    }
     const normalized = command.trim().replace(/\s+/g, " ");
     if (!normalized.startsWith("!타이머")) {
         setStatus("!타이머 명령어를 입력해 주세요.");

@@ -5,17 +5,15 @@ const overlayStyle = getComputedStyle(overlayRoot);
 const HARD_MAX_MESSAGES = 300;
 const MAX_MESSAGE_TTL_MS = 3600000;
 const configuredMessageTtlMs = Number(overlayStyle.getPropertyValue("--overlay-message-ttl-ms")) || 60000;
-const messageTtlMs = Math.min(configuredMessageTtlMs, MAX_MESSAGE_TTL_MS);
-const nameColorMode = overlayStyle.getPropertyValue("--overlay-name-color-mode").trim();
-const nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-palette")
+let messageTtlMs = Math.min(configuredMessageTtlMs, MAX_MESSAGE_TTL_MS);
+let nameColorMode = overlayStyle.getPropertyValue("--overlay-name-color-mode").trim();
+let nameColorPalette = overlayStyle.getPropertyValue("--overlay-name-color-palette")
     .split(",")
     .map((color) => color.trim())
     .filter(Boolean);
-const streamerNameColor = overlayStyle.getPropertyValue("--overlay-streamer-name-color").trim() || "#FFD700";
-const managerNameColor = overlayStyle.getPropertyValue("--overlay-manager-name-color").trim() || "#FF6B6B";
+let streamerNameColor = overlayStyle.getPropertyValue("--overlay-streamer-name-color").trim() || "#FFD700";
+let managerNameColor = overlayStyle.getPropertyValue("--overlay-manager-name-color").trim() || "#FF6B6B";
 const isPreview = new URLSearchParams(location.search).has("preview");
-const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-const socket = new WebSocket(`${wsProtocol}//${location.host}${config.websocket_path}`);
 const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
 
 function randomNameColor() {
@@ -99,13 +97,28 @@ function addMessage(payload) {
     window.setTimeout(() => item.remove(), messageTtlMs);
 }
 
-socket.addEventListener("message", (event) => {
-    try {
-        addMessage(JSON.parse(event.data));
-    } catch (error) {
-        console.error(error);
-    }
-});
+if (!isPreview) {
+    connectOverlaySocket(config.websocket_path, (payload) => {
+        if (payload.type === "overlay-settings") {
+            document.getElementById("overlayRuntimeStyle").textContent = `:where(.chat-overlay) {
+                --overlay-message-ttl-ms: ${payload.options.message_ttl_seconds * 1000};
+                --overlay-name-color-mode: ${payload.options.name_color_mode};
+                --overlay-name-color-palette: ${payload.options.name_color_palette.join(",")};
+            }`;
+            document.getElementById("overlayCustomStyle").textContent = payload.custom_css;
+            const style = getComputedStyle(overlayRoot);
+            messageTtlMs = Math.min(Number(style.getPropertyValue("--overlay-message-ttl-ms")) ||
+                payload.options.message_ttl_seconds * 1000, MAX_MESSAGE_TTL_MS);
+            nameColorMode = style.getPropertyValue("--overlay-name-color-mode").trim();
+            nameColorPalette = style.getPropertyValue("--overlay-name-color-palette")
+                .split(",").map(color => color.trim()).filter(Boolean);
+            streamerNameColor = style.getPropertyValue("--overlay-streamer-name-color").trim() || "#FFD700";
+            managerNameColor = style.getPropertyValue("--overlay-manager-name-color").trim() || "#FF6B6B";
+            return;
+        }
+        addMessage(payload);
+    });
+}
 
 window.addEventListener("message", (event) => {
     if (!isPreview || event.origin !== window.location.origin) {
