@@ -59,12 +59,12 @@ async def on_message(channel_id: str, message_text: str, role: str, user_id: str
                 if greeting_resp and has_attendance_placeholders(greeting_resp):
                     attendance_attempted = True
                     attendance_result = await process_greeting_attendance_with_lock(channel_id, user_id, user_name)
-                    if attendance_result is None:
-                        attendance_result = {"total": 0, "streak": 0}
-
                     session = session_manager.get_existing_session(channel_id)
                     if session:
-                        await session.send_chat(render_placeholders(greeting_resp, user_name, attendance_result))
+                        if attendance_result and attendance_result.get("status") in {"checked", "already_checked"}:
+                            await session.send_chat(render_placeholders(greeting_resp, user_name, attendance_result))
+                        else:
+                            await session.send_chat(f"@{user_name}님 안녕하세요!")
                 elif greeting_resp:
                     session = session_manager.get_existing_session(channel_id)
                     if session:

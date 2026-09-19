@@ -3,8 +3,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from fastapi import HTTPException
+import asyncio
 import json
 import logging
+import httpx
+from redis.exceptions import RedisError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.db import models
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
@@ -13,6 +17,10 @@ from app.platforms.registry import get_live_provider
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("ChatService")
+
+class LiveStatusUnavailableError(Exception):
+    """방송 상태를 확인하지 못했으며 방송 종료로 판단할 수 없습니다."""
+
 
 class ChatService:
     def __init__(self, db: AsyncSession):
@@ -452,71 +460,87 @@ class ChatService:
     # --- 출석 체크 관련 메서드 ---
 
     async def process_attendance(self, channel_id: str, user_id: str, user_name: str, platform: str):
-        try:
-            latest_session = await self.sync_stream_session(channel_id, platform)
-            if not latest_session:
-                return {"status": "not_streaming"}
-
-            current_opened_at = latest_session.opened_at
-            v2_channel = await self._get_v2_channel(channel_id, platform)
-
-            if not v2_channel:
+        for attempt in range(3):
+            try:
+                return await self._process_attendance_once(
+                    channel_id, user_id, user_name, platform, force_refresh=attempt > 0,
+                )
+            except (LiveStatusUnavailableError, httpx.TransportError, DBAPIError, RedisError) as e:
+                await self.db.rollback()
+                if attempt == 2:
+                    logger.error("출석 체크 재시도 소진 [%s/%s]: %s", channel_id, user_id, e)
+                    return None
+                logger.warning("출석 체크 재시도 [%s/%s]: 시도=%s, 오류=%s", channel_id, user_id, attempt + 1, e)
+                if not isinstance(e, IntegrityError):
+                    await asyncio.sleep(0.5 * (attempt + 1))
+            except Exception as e:
+                await self.db.rollback()
+                logger.error("출석 체크 실패 [%s/%s]: %s", channel_id, user_id, e)
                 return None
 
-            previous_session = (await self.db.execute(
-                select(models.V2StreamSession).where(
-                    models.V2StreamSession.channel_id == v2_channel.id,
-                    models.V2StreamSession.opened_at < current_opened_at,
-                ).order_by(models.V2StreamSession.opened_at.desc()).limit(1)
-            )).scalar_one_or_none()
+    async def _process_attendance_once(self, channel_id, user_id, user_name, platform, *, force_refresh=False):
+        latest_session = await self.sync_stream_session(
+            channel_id, platform, raise_errors=True, force_refresh=force_refresh,
+        )
+        if not latest_session:
+            return {"status": "not_streaming"}
 
-            attendance = (await self.db.execute(
-                select(models.V2ViewerAttendance).where(
-                    models.V2ViewerAttendance.channel_id == v2_channel.id,
-                    models.V2ViewerAttendance.platform_user_id == user_id,
-                )
-            )).scalar_one_or_none()
+        current_opened_at = latest_session.opened_at
+        v2_channel = await self._get_v2_channel(channel_id, platform)
 
-            if not attendance:
-                attendance = models.V2ViewerAttendance(
-                    channel_id=v2_channel.id,
-                    platform_user_id=user_id,
-                    user_name=user_name,
-                    attendance_count=1,
-                    streak_count=1,
-                    last_attendance_at=current_opened_at,
-                )
-                self.db.add(attendance)
-                await self.db.commit()
-                return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
+        if not v2_channel:
+            return None
 
-            if attendance.last_attendance_at == current_opened_at:
-                return {
-                    "status": "already_checked",
-                    "streak": attendance.streak_count,
-                    "total": attendance.attendance_count,
-                    "is_new": False,
-                }
+        previous_session = (await self.db.execute(
+            select(models.V2StreamSession).where(
+                models.V2StreamSession.channel_id == v2_channel.id,
+                models.V2StreamSession.opened_at < current_opened_at,
+            ).order_by(models.V2StreamSession.opened_at.desc()).limit(1)
+        )).scalar_one_or_none()
 
-            if previous_session and attendance.last_attendance_at == previous_session.opened_at:
-                attendance.streak_count += 1
-            else:
-                attendance.streak_count = 1
+        attendance = (await self.db.execute(
+            select(models.V2ViewerAttendance).where(
+                models.V2ViewerAttendance.channel_id == v2_channel.id,
+                models.V2ViewerAttendance.platform_user_id == user_id,
+            ).with_for_update()
+        )).scalar_one_or_none()
 
-            attendance.attendance_count += 1
-            attendance.last_attendance_at = current_opened_at
-            attendance.user_name = user_name
+        if not attendance:
+            attendance = models.V2ViewerAttendance(
+                channel_id=v2_channel.id,
+                platform_user_id=user_id,
+                user_name=user_name,
+                attendance_count=1,
+                streak_count=1,
+                last_attendance_at=current_opened_at,
+            )
+            self.db.add(attendance)
             await self.db.commit()
+            return {"status": "checked", "streak": 1, "total": 1, "is_new": True}
+
+        if attendance.last_attendance_at == current_opened_at:
             return {
-                "status": "checked",
+                "status": "already_checked",
                 "streak": attendance.streak_count,
                 "total": attendance.attendance_count,
                 "is_new": False,
             }
-        except Exception as e:
-            await self.db.rollback()
-            logger.error("출석 체크 실패: %s", e)
-            return None
+
+        if previous_session and attendance.last_attendance_at == previous_session.opened_at:
+            attendance.streak_count += 1
+        else:
+            attendance.streak_count = 1
+
+        attendance.attendance_count += 1
+        attendance.last_attendance_at = current_opened_at
+        attendance.user_name = user_name
+        await self.db.commit()
+        return {
+            "status": "checked",
+            "streak": attendance.streak_count,
+            "total": attendance.attendance_count,
+            "is_new": False,
+        }
 
     async def _mark_stream_closed(self, channel_id: str, platform: str, raw_status: dict | None = None):
         now = datetime.now(timezone.utc)
@@ -601,12 +625,22 @@ class ChatService:
         }
 
 
+    @staticmethod
+    def _validate_live_payload(payload):
+        if not payload or payload["status"] not in {"OPEN", "CLOSE"}:
+            raise LiveStatusUnavailableError("방송 상태 조회 실패")
+        if payload["status"] == "OPEN" and not payload["opened_at"]:
+            raise LiveStatusUnavailableError("방송 시작 시각 누락")
+
     async def sync_stream_session(
         self,
         channel_id: str,
         platform: str,
         live_status_content: dict | None = None,
         notify_discord: bool = True,
+        *,
+        raise_errors: bool = False,
+        force_refresh: bool = False,
     ):
         """Sync the current live stream session through the platform live provider."""
         from app.redis.redis_service import RedisChannelKey, RedisConfigService, redis_client
@@ -614,18 +648,41 @@ class ChatService:
         try:
             v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
+                if raise_errors:
+                    raise LiveStatusUnavailableError("채널 정보를 찾을 수 없습니다")
                 return None
 
             redis_channel = RedisChannelKey(platform, channel_id, str(v2_channel.id))
             cache_key = RedisConfigService.get_live_status_key(redis_channel)
-            cached_status = None if live_status_content else await redis_client.get(cache_key)
-
+            cached_status = None if live_status_content or force_refresh else await redis_client.get(cache_key)
+            payload = None
+            should_cache = False
             if live_status_content:
                 payload = self._normalize_live_payload(live_status_content)
-                if not payload or payload["status"] != "OPEN" or not payload["opened_at"]:
-                    await self._mark_stream_closed(channel_id, platform, payload["raw"] if payload else live_status_content)
-                    await self.db.commit()
-                    return None
+                should_cache = True
+            elif cached_status and cached_status != "CLOSE":
+                try:
+                    payload = self._normalize_live_payload(json.loads(cached_status))
+                except (ValueError, TypeError):
+                    payload = None
+
+            if not live_status_content and (
+                not payload or payload["status"] not in {"OPEN", "CLOSE"}
+                or (payload["status"] == "OPEN" and not payload["opened_at"])
+            ):
+                provider = get_live_provider(platform)
+                live_status = await provider.get_live_status(channel_id)
+                payload = self._live_payload_from_status(live_status) if live_status else None
+                should_cache = True
+
+            self._validate_live_payload(payload)
+            if payload["status"] == "CLOSE":
+                await redis_client.set(cache_key, "CLOSE", ex=60)
+                await self._mark_stream_closed(channel_id, platform, payload["raw"])
+                await self.db.commit()
+                return None
+
+            if should_cache:
                 await redis_client.set(
                     cache_key,
                     json.dumps(RedisConfigService.serialize_live_payload(
@@ -641,55 +698,11 @@ class ChatService:
                     )),
                     ex=300,
                 )
-                content = payload["raw"]
-                current_opened_at = payload["opened_at"]
-                stream_title = payload["title"]
-                stream_category = payload["category"]
-                thumbnail_url = payload["thumbnail_url"]
-            elif cached_status:
-                if cached_status == "CLOSE":
-                    provider = get_live_provider(platform)
-                    live_status = await provider.get_live_status(channel_id)
-                    if not live_status or live_status.status != "OPEN" or not live_status.opened_at:
-                        await self._mark_stream_closed(channel_id, platform, live_status.raw if live_status else None)
-                        await self.db.commit()
-                        return None
-
-                    await redis_client.set(cache_key, json.dumps(RedisConfigService.serialize_live_status(live_status)), ex=300)
-                    payload = self._live_payload_from_status(live_status)
-                    content = payload["raw"]
-                    current_opened_at = payload["opened_at"]
-                    stream_title = payload["title"]
-                    stream_category = payload["category"]
-                    thumbnail_url = payload["thumbnail_url"]
-                else:
-                    payload = self._normalize_live_payload(json.loads(cached_status))
-                    if not payload or payload["status"] != "OPEN" or not payload["opened_at"]:
-                        await self._mark_stream_closed(channel_id, platform, payload["raw"] if payload else None)
-                        await self.db.commit()
-                        return None
-                    content = payload["raw"]
-                    current_opened_at = payload["opened_at"]
-                    stream_title = payload["title"]
-                    stream_category = payload["category"]
-                    thumbnail_url = payload["thumbnail_url"]
-            else:
-                provider = get_live_provider(platform)
-                live_status = await provider.get_live_status(channel_id)
-
-                if not live_status or live_status.status != "OPEN" or not live_status.opened_at:
-                    await redis_client.set(cache_key, "CLOSE", ex=60)
-                    await self._mark_stream_closed(channel_id, platform, live_status.raw if live_status else None)
-                    await self.db.commit()
-                    return None
-
-                await redis_client.set(cache_key, json.dumps(RedisConfigService.serialize_live_status(live_status)), ex=300)
-                payload = self._live_payload_from_status(live_status)
-                content = payload["raw"]
-                current_opened_at = payload["opened_at"]
-                stream_title = payload["title"]
-                stream_category = payload["category"]
-                thumbnail_url = payload["thumbnail_url"]
+            content = payload["raw"]
+            current_opened_at = payload["opened_at"]
+            stream_title = payload["title"]
+            stream_category = payload["category"]
+            thumbnail_url = payload["thumbnail_url"]
 
             live_state = await self.db.get(models.V2ChannelLiveState, v2_channel.id)
             previous_status = live_state.status if live_state else None
@@ -741,6 +754,8 @@ class ChatService:
 
             return v2_session
         except Exception as e:
+            if raise_errors:
+                raise
             await self.db.rollback()
             logger.error("스트림 세션 동기화 실패: %s", e)
             return None
