@@ -1,5 +1,7 @@
 import asyncio
 import os
+from typing import cast
+from sqlalchemy.ext.asyncio import AsyncSession
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 
@@ -35,7 +37,7 @@ def setup_route(monkeypatch, custom=None, global_command=None):
 
 
 async def invoke(session, redis, name, role="common_user", user="user"):
-    await handler.on_command(None, session, "channel", name, [], role, redis, "!", user, "name")
+    await handler.on_command(Mock(spec=AsyncSession), session, "channel", name, [], role, redis, "!", user, "name")
 
 
 @pytest.mark.parametrize("role,allowed", [(None, False), ("", False), ("unknown", False),
@@ -51,6 +53,7 @@ def test_admin_roles_are_explicit(monkeypatch, role, allowed, name):
     target = timer if name == "타이머" else dispatch
     assert target.await_count == int(allowed)
     if allowed and name != "타이머":
+        assert dispatch.await_args is not None
         assert dispatch.await_args.args[4] == "명령어등록"
 
 
@@ -97,13 +100,14 @@ def test_public_system_alias_executes_canonical_action(monkeypatch, name):
     dispatch = AsyncMock()
     monkeypatch.setattr(handler, "_dispatch_system_command", dispatch)
     asyncio.run(invoke(session, redis, "alias"))
+    assert dispatch.await_args is not None
     assert dispatch.await_args.args[4] == "명령어"
 
 
 def registration_service(rows=()):
     result = NS(scalars=lambda: NS(all=lambda: list(rows)), scalar_one=lambda: len(rows))
     db = NS(execute=AsyncMock(return_value=result), commit=AsyncMock(), rollback=AsyncMock(), add=Mock())
-    service = ChatService(db)
+    service = ChatService(cast(AsyncSession, db))
     service._get_v2_channel = AsyncMock(return_value=NS(id="channel-id"))
     service.get_global_commands = AsyncMock(return_value=None)
     service.update_chat_command = AsyncMock(return_value="updated")
@@ -119,6 +123,7 @@ def test_overlapping_alias_bundle_is_rejected(name, active):
     result = asyncio.run(service.add_chat_command("channel", name, "response", "chzzk"))
     assert result[0] == "reserved"
     db.add.assert_not_called()
+    assert isinstance(service.update_chat_command, AsyncMock)
     service.update_chat_command.assert_not_awaited()
 
 
@@ -129,6 +134,7 @@ def test_existing_command_can_still_be_updated_by_alias(name, active):
     existing.is_active = active
     service, db = registration_service([existing])
     assert asyncio.run(service.add_chat_command("channel", name, "new", "chzzk")) == ("updated", "hello|hi")
+    assert isinstance(service.update_chat_command, AsyncMock)
     service.update_chat_command.assert_awaited_once_with(
         "channel", "hello|hi", "new", "chzzk", None, None, None,
     )
@@ -137,6 +143,7 @@ def test_existing_command_can_still_be_updated_by_alias(name, active):
 @pytest.mark.parametrize("name", ["new|공지", "타이머|new", "new|reserved"])
 def test_reserved_alias_is_rejected(name):
     service, db = registration_service()
+    assert isinstance(service.get_global_commands, AsyncMock)
     service.get_global_commands.side_effect = lambda alias: command(alias) if alias == "reserved" else None
     assert asyncio.run(service.add_chat_command("channel", name, "response", "chzzk"))[0] == "reserved"
     db.add.assert_not_called()

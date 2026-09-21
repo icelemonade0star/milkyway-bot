@@ -70,6 +70,7 @@ def test_real_fade_and_server_replay(browser, viewport, opacity, delay, fallback
     try:
         run_server(manager.set_timer("test", "Countdown", 1, True))
         initial = manager.get_snapshot("test")
+        assert initial is not None
         samples = page.evaluate("""payload => new Promise(resolve => {
             const node = document.getElementById('timerOverlay');
             const samples = [];
@@ -94,6 +95,7 @@ def test_real_fade_and_server_replay(browser, viewport, opacity, delay, fallback
               f"fade {fading[0]['opacity']:.3f} -> {fading[-1]['opacity']:.3f}, hidden at {samples[-1]['time']:.0f}ms")
         run_server(manager.play("test"))
         replay = manager.get_snapshot("test")
+        assert replay is not None
         assert replay["timer_id"] != initial["timer_id"]
         page.evaluate("payload => window.deliverTimer(payload)", {"type": "timer", "action": "snapshot", "timer": replay})
         page.wait_for_function("getComputedStyle(document.getElementById('timerOverlay')).display === 'flex'")

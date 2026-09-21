@@ -1,9 +1,11 @@
 import asyncio
+from typing import cast
+from sqlalchemy.ext.asyncio import AsyncSession
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 
 from app.features.chat_overlay import router
 from app.features.chat_overlay.broadcaster import ChatOverlayBroadcaster
@@ -35,8 +37,8 @@ def test_timer_connect_sends_state_only_to_new_socket(monkeypatch):
     existing, new = FakeSocket(), FakeSocket()
 
     async def run():
-        await broadcaster.connect("channel", existing)
-        await router.connect_timer_overlay_websocket(new, "channel", TimerOverlayStyleOptions(), "css")
+        await broadcaster.connect("channel", cast(WebSocket, existing))
+        await router.connect_timer_overlay_websocket(cast(WebSocket, new), "channel", TimerOverlayStyleOptions(), "css")
 
     asyncio.run(run())
     assert existing.messages == []
@@ -50,7 +52,7 @@ def test_reconnect_clears_timer_deleted_while_offline(monkeypatch):
     monkeypatch.setattr(router, "timer_overlay_broadcaster", ChatOverlayBroadcaster())
     monkeypatch.setattr(router, "overlay_timer_manager", OverlayTimerManager())
     socket = FakeSocket()
-    asyncio.run(router.connect_timer_overlay_websocket(socket, "channel", TimerOverlayStyleOptions(), "css"))
+    asyncio.run(router.connect_timer_overlay_websocket(cast(WebSocket, socket), "channel", TimerOverlayStyleOptions(), "css"))
     assert socket.messages[-1] == {"type": "timer", "action": "delete", "timer": None}
 
 
@@ -60,7 +62,7 @@ def test_failed_initial_sync_unregisters_socket(monkeypatch):
     socket = FakeSocket()
     socket.send_json = AsyncMock(side_effect=RuntimeError("closed"))
     with pytest.raises(RuntimeError):
-        asyncio.run(router.connect_timer_overlay_websocket(socket, "channel", TimerOverlayStyleOptions(), "css"))
+        asyncio.run(router.connect_timer_overlay_websocket(cast(WebSocket, socket), "channel", TimerOverlayStyleOptions(), "css"))
     assert not broadcaster.has_connections("channel")
 
 
@@ -69,9 +71,9 @@ def test_settings_update_filters_without_changing_preset_connections():
     default, preset, other = FakeSocket(), FakeSocket(), FakeSocket()
 
     async def run():
-        await broadcaster.connect("channel", default)
-        await broadcaster.connect("channel", preset, preset_name="preset")
-        await broadcaster.connect("other", other)
+        await broadcaster.connect("channel", cast(WebSocket, default))
+        await broadcaster.connect("channel", cast(WebSocket, preset), preset_name="preset")
+        await broadcaster.connect("other", cast(WebSocket, other))
         await broadcaster.publish_settings("channel", "css", {"blocked_nicknames": [" blocked "]})
         await broadcaster.publish("channel", {"nickname": "BLOCKED", "message": "hidden"})
         assert len(default.messages) == 1
@@ -97,13 +99,17 @@ def test_replay_has_new_identity_and_no_absolute_time_fields(monkeypatch):
     async def run():
         await manager.set_timer("channel", "timer", 120, False)
         initial = manager.get_snapshot("channel")
+        assert initial is not None
         assert initial["remaining_ms"] == 120000
         assert not initial["running"]
         await manager.play("channel")
-        assert manager.get_snapshot("channel")["timer_id"] == initial["timer_id"]
+        snapshot = manager.get_snapshot("channel")
+        assert snapshot is not None
+        assert snapshot["timer_id"] == initial["timer_id"]
         manager._states["channel"].ends_at_ms = 1
         await manager.play("channel")
         replay = manager.get_snapshot("channel")
+        assert replay is not None
         assert replay["timer_id"] != initial["timer_id"]
         assert replay["remaining_ms"] == 120000
         assert "ends_at_ms" not in replay
@@ -117,7 +123,7 @@ def test_missing_or_deleted_preset_follows_defaults_until_recreated():
     socket = FakeSocket()
 
     async def run():
-        await broadcaster.connect("channel", socket, preset_name="preset", uses_default_settings=True)
+        await broadcaster.connect("channel", cast(WebSocket, socket), preset_name="preset", uses_default_settings=True)
         await broadcaster.publish_settings("channel", "default css", {})
         assert socket.messages[-1]["custom_css"] == "default css"
         await broadcaster.publish_settings("channel", "preset css", {}, preset_name="preset")
@@ -133,7 +139,7 @@ def test_missing_or_deleted_preset_follows_defaults_until_recreated():
 @pytest.mark.parametrize("kind,options", [("chat", ChatOverlayStyleOptions()), ("timer", TimerOverlayStyleOptions())])
 def test_save_publishes_committed_settings(kind, options):
     db = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
-    service = ChatOverlayService(db)
+    service = ChatOverlayService(cast(AsyncSession, db))
     channel = SimpleNamespace(platform_channel_id="channel")
     setting = SimpleNamespace(overlay_kind=kind)
     service.get_or_create_setting = AsyncMock(return_value=(channel, setting))

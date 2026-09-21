@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import websockets
+from websockets.legacy.client import connect
 
 
 LIVE_DETAIL_URL = "https://api.chzzk.naver.com/service/v3/channels/{channel_id}/live-detail"
@@ -18,7 +18,7 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
-CONNECT_PARAMETERS = inspect.signature(websockets.connect).parameters
+CONNECT_PARAMETERS = inspect.signature(connect).parameters
 
 # 실제 수집 확인된 채팅 cmd
 CHAT_CMDS = {93101}
@@ -239,7 +239,7 @@ async def connect_chat(
 ):
     target = ws_url or random.choice(WS_SERVERS)
     print(f"[{now()}] websocket connect {target}")
-    async with websockets.connect(target, ping_interval=None, **websocket_header_kwargs()) as ws:
+    async with connect(target, ping_interval=None, **websocket_header_kwargs()) as ws:
         print(f"[{now()}] websocket connected")
         await send_auth(ws, chat_channel_id, access_token)
 

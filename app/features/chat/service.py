@@ -650,11 +650,12 @@ class ChatService:
 
 
     @staticmethod
-    def _validate_live_payload(payload):
+    def _validate_live_payload(payload: dict | None) -> dict:
         if not payload or payload["status"] not in {"OPEN", "CLOSE"}:
             raise LiveStatusUnavailableError("방송 상태 조회 실패")
         if payload["status"] == "OPEN" and not payload["opened_at"]:
             raise LiveStatusUnavailableError("방송 시작 시각 누락")
+        return payload
 
     async def sync_stream_session(
         self,
@@ -699,7 +700,7 @@ class ChatService:
                 payload = self._live_payload_from_status(live_status) if live_status else None
                 should_cache = True
 
-            self._validate_live_payload(payload)
+            payload = self._validate_live_payload(payload)
             if payload["status"] == "CLOSE":
                 await redis_client.set(cache_key, "CLOSE", ex=60)
                 await self._mark_stream_closed(channel_id, platform, payload["raw"])

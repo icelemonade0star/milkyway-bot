@@ -1,5 +1,8 @@
 import asyncio
 import os
+from typing import cast
+from unittest.mock import Mock
+from sqlalchemy.ext.asyncio import AsyncSession
 from types import SimpleNamespace
 
 # handler import 시 생성되는 Chzzk HTTP 클라이언트에는 문자열 헤더가 필요합니다.
@@ -7,6 +10,7 @@ from types import SimpleNamespace
 os.environ.setdefault("CLIENT_SECRET", "test-client-secret")
 
 from app.features.chat.handling import handler
+from app.redis.redis_service import RedisConfigService
 
 
 class FakeChatService:
@@ -56,13 +60,13 @@ def test_global_attendance_cooldown_is_applied_per_user(monkeypatch):
     async def run_attendance():
         for user_id, user_name in (("user-a", "A"), ("user-b", "B")):
             await handler.on_command(
-                db=object(),
+                db=Mock(spec=AsyncSession),
                 session=session,
                 channel_id="channel-1",
                 command="출석",
                 args=[],
                 role="common_user",
-                redis_service=redis_service,
+                redis_service=cast(RedisConfigService, redis_service),
                 prefix="!",
                 user_id=user_id,
                 user_name=user_name,

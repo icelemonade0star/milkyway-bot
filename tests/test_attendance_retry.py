@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from typing import cast
+from sqlalchemy.ext.asyncio import AsyncSession
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -29,7 +31,7 @@ def setup_service(monkeypatch):
         execute=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock(),
         flush=AsyncMock(), get=AsyncMock(return_value=None), add=Mock(),
     )
-    service = ChatService(db)
+    service = ChatService(cast(AsyncSession, db))
     service._get_v2_channel = AsyncMock(return_value=SimpleNamespace(id="channel-id"))
     monkeypatch.setattr(service_module.asyncio, "sleep", AsyncMock())
     return service, db
@@ -48,11 +50,13 @@ def test_retry_rolls_back_and_rechecks_existing_attendance(monkeypatch, failure)
 
     result = asyncio.run(service.process_attendance("channel", "user", "name", "chzzk"))
 
+    assert result is not None
     assert result["status"] == "already_checked"
     assert result["total"] == 7
     db.rollback.assert_awaited_once()
     db.commit.assert_not_awaited()
     assert service.sync_stream_session.await_count == 2
+    assert service.sync_stream_session.await_args is not None
     assert service.sync_stream_session.await_args.kwargs["force_refresh"] is True
 
 
@@ -77,6 +81,8 @@ def test_new_broadcast_counts_once_and_preserves_streak_rules(monkeypatch, previ
     db.execute.side_effect = [scalar(SimpleNamespace(opened_at=previous)), scalar(attendance)] * 2
     first = asyncio.run(service.process_attendance("channel", "user", "name", "chzzk"))
     second = asyncio.run(service.process_attendance("channel", "user", "name", "chzzk"))
+    assert first is not None
+    assert second is not None
     assert first["status"] == "checked"
     assert second["status"] == "already_checked"
     assert attendance.attendance_count == 8
@@ -126,6 +132,7 @@ def test_session_creation_collision_is_recovered_by_requery(monkeypatch):
 
     result = asyncio.run(service.process_attendance("channel", "user", "name", "chzzk"))
 
+    assert result is not None
     assert result["status"] == "already_checked"
     db.rollback.assert_awaited_once()
     db.flush.assert_awaited_once()

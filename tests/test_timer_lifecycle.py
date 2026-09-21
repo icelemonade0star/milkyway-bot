@@ -30,22 +30,32 @@ def test_pause_resume_replay_delete_and_channel_isolation(monkeypatch):
         await manager.set_timer("one", "first", 120, True)
         await manager.set_timer("two", "second", 60, False)
         now += 20000
-        assert manager.get_snapshot("one")["remaining_ms"] == 100000
+        snapshot = manager.get_snapshot("one")
+        assert snapshot is not None
+        assert snapshot["remaining_ms"] == 100000
         assert await manager.pause("one")
         now += 30000
-        assert manager.get_snapshot("one")["remaining_ms"] == 100000
+        snapshot = manager.get_snapshot("one")
+        assert snapshot is not None
+        assert snapshot["remaining_ms"] == 100000
         assert await manager.play("one")
         now += 100000
-        assert manager.get_snapshot("one")["remaining_ms"] == 0
-        assert not manager.get_snapshot("one")["running"]
+        snapshot = manager.get_snapshot("one")
+        assert snapshot is not None
+        assert snapshot["remaining_ms"] == 0
+        assert not snapshot["running"]
         assert await manager.play("one")
-        assert manager.get_snapshot("one")["remaining_ms"] == 120000
+        snapshot = manager.get_snapshot("one")
+        assert snapshot is not None
+        assert snapshot["remaining_ms"] == 120000
         assert await manager.clear("one")
         assert manager.get_snapshot("one") is None
         assert not await manager.play("one")
         assert not await manager.pause("one")
-        assert manager.get_snapshot("two")["remaining_ms"] == 60000
-        assert not manager.get_snapshot("two")["running"]
+        snapshot = manager.get_snapshot("two")
+        assert snapshot is not None
+        assert snapshot["remaining_ms"] == 60000
+        assert not snapshot["running"]
 
     asyncio.run(run())
 
