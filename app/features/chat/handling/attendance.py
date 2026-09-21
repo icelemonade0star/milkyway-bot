@@ -61,9 +61,9 @@ def fire_attendance_task(channel_id: str, user_id: str, user_name: str) -> bool:
     return True
 
 
-async def handle_custom_attendance(session, chat_service, channel_id, custom_cmd, user_id, user_name, redis_service, command):
+async def handle_custom_attendance(session, chat_service, channel_id, custom_cmd, user_id, user_name, redis_service):
     """커스텀 attendance 타입 명령어를 처리합니다."""
-    cooldown_key = f"{command}:user:{user_id}"
+    cooldown_key = f"{custom_cmd.command}:user:{user_id}"
     if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
         return
 
@@ -84,9 +84,9 @@ async def handle_custom_attendance(session, chat_service, channel_id, custom_cmd
         _attendance_in_flight.discard(task_key)
 
 
-async def handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service, command):
+async def handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service):
     """글로벌 attendance 타입 명령어를 처리합니다."""
-    cooldown_key = f"{command}:user:{user_id}"
+    cooldown_key = f"{result.command}:user:{user_id}"
     if await redis_service.check_and_set_cooldown(channel_id, cooldown_key, result.cooldown_seconds, CHAT_PLATFORM):
         return
 

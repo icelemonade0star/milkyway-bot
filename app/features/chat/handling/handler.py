@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.redis.redis_service import RedisConfigService
 from app.features.chat.service import ChatService
-from app.features.chat.handling.helpers import CHAT_PLATFORM, ADMIN_SYSTEM_COMMANDS
+from app.features.chat.handling.helpers import CHAT_PLATFORM, ADMIN_SYSTEM_COMMANDS, ADMIN_ROLES, system_command_name
 from app.features.chat.handling.placeholders import has_attendance_placeholders, render_placeholders
 from app.features.chat.handling.attendance import (
     fire_attendance_task,
@@ -109,7 +109,7 @@ async def on_command(
     chat_service = ChatService(db)
 
     if command == "타이머":
-        if role == "common_user":
+        if role not in ADMIN_ROLES:
             return
         await handle_timer_command(session, chat_service, channel_id, args)
         return
@@ -123,22 +123,20 @@ async def on_command(
         result
         and result.is_active
         and result.type == "system"
-        and result.command in ADMIN_SYSTEM_COMMANDS
+        and system_command_name(result.command) in ADMIN_SYSTEM_COMMANDS | {"타이머"}
     )
 
     if custom_cmd and custom_cmd.is_active and not is_admin_system_command:
         if custom_cmd.type == 'global':
-            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
-                return
             command = custom_cmd.response
             result = await chat_service.get_global_commands(command)
 
         elif custom_cmd.type == "attendance":
-            await handle_custom_attendance(session, chat_service, channel_id, custom_cmd, user_id, user_name, redis_service, command)
+            await handle_custom_attendance(session, chat_service, channel_id, custom_cmd, user_id, user_name, redis_service)
             return
 
         else:
-            if await redis_service.check_and_set_cooldown(channel_id, command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
+            if await redis_service.check_and_set_cooldown(channel_id, custom_cmd.command, custom_cmd.cooldown_seconds, CHAT_PLATFORM):
                 return
             await handle_text_response(session, custom_cmd, user_name)
             return
@@ -146,17 +144,20 @@ async def on_command(
     if not (result and result.is_active):
         return
 
-    if result.type == "system" and result.command in ADMIN_SYSTEM_COMMANDS and role == 'common_user':
+    system_name = system_command_name(result.command) if result.type == "system" else None
+    if result.type == "system" and system_name is None:
+        return
+    if system_name in ADMIN_SYSTEM_COMMANDS | {"타이머"} and role not in ADMIN_ROLES:
         return
 
     # 출석 명령어는 handle_global_attendance에서 시청자별 쿨타임을 적용합니다.
     # 일반 명령어의 채널 공통 쿨타임을 먼저 적용하면, 한 시청자의 출석 직후
     # 다른 시청자의 출석 처리와 응답까지 차단됩니다.
     if result.type == "attendance":
-        await handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service, command)
+        await handle_global_attendance(session, chat_service, channel_id, result, user_id, user_name, redis_service)
         return
 
-    if await redis_service.check_and_set_cooldown(channel_id, command, result.cooldown_seconds, CHAT_PLATFORM):
+    if await redis_service.check_and_set_cooldown(channel_id, result.command, result.cooldown_seconds, CHAT_PLATFORM):
         return
 
     if result.type == "text":
@@ -164,7 +165,10 @@ async def on_command(
         return
 
     if result.type == "system":
-        await _dispatch_system_command(session, db, chat_service, channel_id, result.command, args, user_name, redis_service)
+        if system_name == "타이머":
+            await handle_timer_command(session, chat_service, channel_id, args)
+        else:
+            await _dispatch_system_command(session, db, chat_service, channel_id, system_name, args, user_name, redis_service)
 
 
 async def _dispatch_system_command(session, db, chat_service, channel_id, command_name, args, user_name, redis_service):

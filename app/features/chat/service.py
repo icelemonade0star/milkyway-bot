@@ -14,6 +14,7 @@ from app.db import models
 from app.core.config import MAX_CHAT_RESPONSE_CHARS, MAX_COMMAND_NAME_CHARS, MAX_COMMANDS_PER_CHANNEL, MAX_GREETINGS_PER_CHANNEL
 from app.core.database import get_async_db
 from app.platforms.registry import get_live_provider
+from app.features.chat.handling.helpers import SYSTEM_COMMANDS
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("ChatService")
@@ -214,7 +215,11 @@ class ChatService:
 
     async def add_chat_command(self, channel_id: str, command: str, response: str, platform: str, cooldown_seconds: int | None = None, is_active: bool | None = None, command_type: str | None = None):
         try:
-            command = command.strip()
+            aliases = [part.strip() for part in command.strip().split('|')]
+            if any(not part or any(char.isspace() for char in part) for part in aliases):
+                return "empty", None
+            command = '|'.join(dict.fromkeys(aliases))
+            alias_set = set(aliases)
             response = response.strip()
             if not command or not response:
                 return "empty", None
@@ -225,20 +230,39 @@ class ChatService:
             if command_type is not None and command_type not in {"text", "attendance"}:
                 return "invalid_type", None
 
-            existing = await self.get_chat_command(channel_id, command, platform)
-            if existing:
-                update_status = await self.update_chat_command(channel_id, command, response, platform, cooldown_seconds, is_active, command_type)
-                if update_status == "updated":
-                    return "updated", existing.command
-                return update_status, None
-
-            global_cmd = await self.get_global_commands(command)
-            if global_cmd:
-                return "reserved", None
-
             v2_channel = await self._get_v2_channel(channel_id, platform)
             if not v2_channel:
                 return None, None
+
+            # 채널별 등록을 직렬화하여 동시 요청의 별칭 중복도 막습니다.
+            await self.db.execute(select(models.V2Channel).where(
+                models.V2Channel.id == v2_channel.id,
+            ).with_for_update())
+
+            for alias in aliases:
+                if alias in SYSTEM_COMMANDS or await self.get_global_commands(alias):
+                    return "reserved", None
+
+            # 비활성 명령어도 별칭을 유지해 조회 및 재활성화 시 충돌을 방지합니다.
+            rows = (await self.db.execute(select(models.V2ChannelChatCommand).where(
+                models.V2ChannelChatCommand.channel_id == v2_channel.id,
+            ))).scalars().all()
+            overlapping = [row for row in rows if alias_set & {
+                part.strip() for part in row.command.split('|')
+            }]
+            existing = overlapping[0] if len(overlapping) == 1 else None
+            if overlapping and (
+                existing is None or (
+                    alias_set != {part.strip() for part in existing.command.split('|')}
+                    and len(alias_set) != 1
+                )
+            ):
+                return "reserved", None
+            if existing:
+                update_status = await self.update_chat_command(channel_id, existing.command, response, platform, cooldown_seconds, is_active, command_type)
+                if update_status == "updated":
+                    return "updated", existing.command
+                return update_status, None
 
             model = models.V2ChannelChatCommand
             channel_key = v2_channel.id

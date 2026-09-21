@@ -19,6 +19,14 @@ ADMIN_SYSTEM_COMMANDS = {
     "공지",
 }
 
+ADMIN_ROLES = {"streamer", "channel_manager", "manager", "streaming_chat_manager"}
+SYSTEM_COMMANDS = ADMIN_SYSTEM_COMMANDS | {"명령어", "채널명령어", "인사목록", "타이머"}
+
+
+def system_command_name(command: str) -> str | None:
+    names = {part.strip() for part in command.split('|')} & SYSTEM_COMMANDS
+    return next(iter(names)) if len(names) == 1 else None
+
 
 def strip_prefix(text: str) -> str:
     if text and text[0] in ALLOWED_PREFIXES:

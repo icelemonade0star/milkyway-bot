@@ -185,10 +185,10 @@ def test_exhausted_failure_sends_no_attendance_message(monkeypatch, custom):
     service = SimpleNamespace(process_attendance=AsyncMock(return_value=None))
     session = SimpleNamespace(send_chat=AsyncMock())
     redis = SimpleNamespace(check_and_set_cooldown=AsyncMock(return_value=False))
-    command = SimpleNamespace(cooldown_seconds=5)
+    command = SimpleNamespace(command="attendance", cooldown_seconds=5)
     handler = attendance.handle_custom_attendance if custom else attendance.handle_global_attendance
 
-    asyncio.run(handler(session, service, "channel", command, "user", "name", redis, "attendance"))
+    asyncio.run(handler(session, service, "channel", command, "user", "name", redis))
 
     session.send_chat.assert_not_awaited()
     assert "channel:user" not in attendance._attendance_in_flight
