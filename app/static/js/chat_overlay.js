@@ -70,14 +70,22 @@ function addMessage(payload) {
 
     const name = document.createElement("span");
     name.className = "chat-name";
+    const badges = document.createElement("span");
+    badges.className = "chat-badges";
     for (const url of payload.badges || []) {
         const badge = document.createElement("img");
         badge.className = "chat-badge";
         badge.src = url;
         badge.alt = "";
-        name.appendChild(badge);
+        badges.appendChild(badge);
     }
-    name.appendChild(document.createTextNode(payload.nickname || "익명"));
+    if (badges.children.length) {
+        name.appendChild(badges);
+    }
+    const nickname = document.createElement("span");
+    nickname.className = "chat-nickname";
+    nickname.textContent = payload.nickname || "익명";
+    name.appendChild(nickname);
     const nameColor = resolveNameColor(payload);
     if (nameColor) {
         name.style.color = nameColor;

@@ -165,7 +165,8 @@ html, body {{
 {f'''.chat-list {{
     display: grid;
     max-width: min({options.max_width}px, 100%);
-    grid-template-columns: auto 1fr;
+    /* 한글 6자와 배지 3개의 여유 공간을 확보하고 본문 시작점을 고정합니다. */
+    grid-template-columns: 10em minmax(0, 1fr);
     align-content: {grid_align};
     justify-content: {grid_justify};
     row-gap: {options.gap}px;
@@ -179,6 +180,10 @@ html, body {{
 }}
 
 .chat-name {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    min-width: 0;
     align-self: start;
     padding-top: {options.message_padding_y}px;
     color: {options.name_color};
@@ -187,6 +192,22 @@ html, body {{
     overflow-wrap: anywhere;
     word-break: break-word;
     animation: {animation};
+}}
+
+.chat-badges {{
+    display: flex;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+    max-width: 100%;
+}}
+
+.chat-nickname {{
+    /* 배지와 함께 들어가지 않으면 이름 전체를 다음 줄로 옮깁니다. */
+    flex: 0 1 auto;
+    width: max-content;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }}
 
 .chat-text {{
