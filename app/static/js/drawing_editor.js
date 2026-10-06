@@ -6,8 +6,9 @@
     const result = document.getElementById("drawingResult");
     const recording = {width: canvas.width, height: canvas.height, actions: []};
     let tool = "pen", current = null, pointer = null, started = null, pointCount = 0;
+    const undoStack = [];
     let saveKey = crypto.randomUUID(), saving = false;
-    DrawingCanvas.render(canvas, recording);
+    DrawingCanvas.render(canvas, recording, Infinity, true);
     function timestamp() { return Math.min(600000, Math.round(performance.now() - started)); }
     function changed() { saveKey = crypto.randomUUID(); result.hidden = true; status.textContent = ""; }
     function point(event) {
@@ -25,18 +26,26 @@
     canvas.addEventListener("pointerdown", event => {
         if (pointer !== null || (event.pointerType === "mouse" && event.button !== 0) || !canRecord()) return;
         if (started === null) started = performance.now();
-        changed(); pointer = event.pointerId; canvas.setPointerCapture(pointer);
-        current = {type: "stroke", tool, color: document.getElementById("penColor").value,
-            width: Number(document.getElementById("penWidth").value), points: [point(event)]};
+        changed();
+        const first = point(event), color = document.getElementById("penColor").value;
+        if (tool === "fill") {
+            const action = {type: "stroke", tool, color, width: 1, points: [first]};
+            recording.actions.push(action); undoStack.push({type: "stroke", action});
+            pointCount++; DrawingCanvas.fill(ctx, first.x, first.y, color); return;
+        }
+        pointer = event.pointerId; canvas.setPointerCapture(pointer);
+        current = {type: "stroke", tool, color,
+            width: Number(document.getElementById("penWidth").value), points: [first]};
         recording.actions.push(current); pointCount++;
-        DrawingCanvas.stroke(ctx, current);
+        undoStack.push({type: "stroke", action: current});
+        DrawingCanvas.stroke(ctx, current, true);
     });
     canvas.addEventListener("pointermove", event => {
         if (event.pointerId !== pointer || !current || !canRecord()) return;
         const next = point(event), previous = current.points.at(-1);
         if (next.t - previous.t < 12 && Math.hypot(next.x - previous.x, next.y - previous.y) < 3) return;
         current.points.push(next); pointCount++;
-        DrawingCanvas.stroke(ctx, {...current, points: [previous, next]});
+        DrawingCanvas.stroke(ctx, {...current, points: [previous, next]}, true);
     });
     function end(event) {
         if (event.pointerId !== pointer) return;
@@ -44,17 +53,47 @@
         current = null; pointer = null;
     }
     canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
-    document.querySelectorAll("[data-tool]").forEach(button => button.addEventListener("click", () => {
-        tool = button.dataset.tool;
-        document.querySelectorAll("[data-tool]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    function setTool(nextTool) {
+        tool = nextTool;
+        document.querySelectorAll("[data-tool]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.tool === tool)));
+    }
+    document.querySelectorAll("[data-tool]").forEach(button => button.addEventListener("click", () => setTool(button.dataset.tool)));
+    document.querySelectorAll("[data-color]").forEach(button => button.addEventListener("click", () => {
+        document.getElementById("penColor").value = button.dataset.color;
+        document.querySelectorAll("[data-color]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+        setTool("pen");
     }));
+    document.getElementById("penColor").addEventListener("input", () => {
+        document.querySelectorAll("[data-color]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.color === document.getElementById("penColor").value)));
+        setTool("pen");
+    });
     document.getElementById("penWidth").addEventListener("input", event => { document.getElementById("widthValue").value = event.target.value; });
+    function refreshPointCount() {
+        pointCount = recording.actions.reduce((count, action) => count + action.points.length, 0);
+    }
     function edit(type) {
-        if (started === null || current || !canRecord() || !DrawingCanvas.visibleStrokes(recording).length) return;
-        recording.actions.push({type, t: timestamp()}); pointCount++; changed(); DrawingCanvas.render(canvas, recording);
+        if (saving || started === null || current) return;
+        if (type === "undo") {
+            const operation = undoStack.pop();
+            if (!operation) return;
+            if (operation.type === "stroke" && recording.actions.at(-1) === operation.action) recording.actions.pop();
+            else if (operation.type === "clear") recording.actions.push(...operation.actions);
+            else return;
+        } else if (type === "clear") {
+            if (!recording.actions.length) return;
+            const actions = recording.actions.slice();
+            recording.actions.length = 0; undoStack.push({type: "clear", actions});
+        } else return;
+        refreshPointCount(); changed(); DrawingCanvas.render(canvas, recording, Infinity, true);
     }
     document.getElementById("undoDrawing").addEventListener("click", () => edit("undo"));
     document.getElementById("clearDrawing").addEventListener("click", () => edit("clear"));
+    window.addEventListener("keydown", event => {
+        const target = event.target;
+        if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== "z" || event.isComposing ||
+            (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+        event.preventDefault(); edit("undo");
+    });
     save.addEventListener("click", async () => {
         if (current || saving) return;
         if (!recording.actions.length) { status.textContent = "먼저 그림을 그려주세요."; return; }

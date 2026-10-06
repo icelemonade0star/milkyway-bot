@@ -27,7 +27,7 @@ from app.core import database
 from app.core.database import get_async_db
 from app.db.models import Base, V2Channel, V2DrawingDonationSetting, V2DonationDrawing, V2DrawingDonationQueue
 from app.features.drawing_donation.router import drawing_router
-from app.features.drawing_donation.schemas import MAX_FINAL_PNG_LENGTH, DrawingSaveRequest, Recording
+from app.features.drawing_donation.schemas import MAX_FINAL_PNG_LENGTH, DrawingSaveRequest, Recording, Stroke
 from app.features.drawing_donation.service import DrawingDonationService, drawing_tags
 from app.features.chat.handling import events
 from app.features.drawing_donation.cleanup import DrawingDonationCleanup
@@ -123,7 +123,7 @@ def test_saved_drawing_is_immutable_and_retry_returns_same_tag(db):
         assert first.id == second.id
         assert drawing_tags(first.hashtag) == [first.hashtag]
         assert first.recording == payload.recording.model_dump()
-        assert first.final_png == payload.final_png
+        assert first.final_png == ""
         assert len(db.session.scalars(select(V2DonationDrawing)).all()) == 1
     asyncio.run(run())
 
@@ -140,7 +140,7 @@ def test_configured_canvas_size_is_saved_and_replayed(db, width, height):
         assert await service.enqueue_donation("channel", donation(drawing.hashtag)) is not None
         playback = (await service.next_playback(setting.overlay_token))["playback"]
         assert (playback["recording"]["width"], playback["recording"]["height"]) == (width, height)
-        assert playback["final_png"] == data["final_png"]
+        assert "final_png" not in playback
     asyncio.run(run())
 
 
@@ -170,6 +170,10 @@ def test_canvas_changes_keep_saved_drawings_and_legacy_settings_usable(db):
 
 def test_canvas_limits_and_png_recording_size_mismatch_are_rejected():
     from app.features.drawing_donation.schemas import DrawingDonationOptions
+    fill_data = save_payload()
+    fill_data["recording"]["actions"][0].update(tool="fill", points=[{"x": 10, "y": 10, "t": 0}])
+    fill_action = DrawingSaveRequest.model_validate(fill_data).recording.actions[0]
+    assert isinstance(fill_action, Stroke) and fill_action.tool == "fill"
     for change in [{"canvas_width": 1921}, {"canvas_height": 1081}]:
         with pytest.raises(ValidationError):
             DrawingDonationOptions.model_validate(change)
@@ -329,7 +333,7 @@ def test_same_tag_replays_on_each_donation_in_fifo_order(db):
         assert first.id != second.id
         playback = await service.next_playback(setting.overlay_token)
         assert playback["playback"]["nickname"] == "첫 후원"
-        assert playback["playback"]["final_png"] == drawing.final_png
+        assert "final_png" not in playback["playback"]
         # A second OBS connection receives the same active picture, never consumes the next job.
         repeated = await service.next_playback(setting.overlay_token)
         assert repeated["playback"]["id"] == str(first.id)

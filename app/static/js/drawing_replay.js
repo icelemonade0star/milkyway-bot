@@ -21,6 +21,7 @@
         canvas.height = job.recording.height || 600;
         canvas.style.width = "";
         canvas.style.height = "";
+        const render = DrawingCanvas.createRenderer(canvas, job.recording, true);
         donor.hidden = !job.options.show_donor;
         donor.textContent = `${job.nickname}님 · ${Number(job.amount).toLocaleString("ko-KR")}원`;
         overlay.hidden = false;
@@ -32,14 +33,9 @@
                 overlay.hidden = true; animation = 0; return;
             }
             if (elapsed < replayMs) {
-                DrawingCanvas.render(canvas, job.recording, DrawingCanvas.duration(job.recording) * Math.max(0, elapsed / replayMs));
+                render(DrawingCanvas.duration(job.recording) * Math.max(0, elapsed / replayMs));
             } else if (!finalShown) {
-                finalShown = true; DrawingCanvas.render(canvas, job.recording);
-                if (job.final_png) {
-                    const image = new Image();
-                    image.onload = () => { if (active === job && finalShown) canvas.getContext("2d").drawImage(image, 0, 0); };
-                    image.src = job.final_png;
-                }
+                finalShown = true; render(Infinity);
             }
             animation = requestAnimationFrame(frame);
         }

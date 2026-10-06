@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import Environment, FileSystemLoader
 
-from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingSaveRequest
+from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingSaveRequest, Stroke
 
 pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import Route, sync_playwright
@@ -50,7 +50,7 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [37, 69, 60]
         page.locator('[data-tool="eraser"]').click()
         draw((180, 80), (260, 80))
-        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [255, 255, 255]
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
         page.locator("#undoDrawing").click()
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [37, 69, 60]
         page.locator("#clearDrawing").click()
@@ -61,7 +61,7 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
         assert len(saved) == 1
         payload = saved[0]
         assert (payload.recording.width, payload.recording.height) == size
-        assert [action.type for action in payload.recording.actions] == ["stroke", "stroke", "undo", "clear", "stroke"]
+        assert [action.type for action in payload.recording.actions] == ["stroke"]
         page.screenshot(path=str(tmp_path / "drawing-editor.png"), full_page=True)
 
         overlay = browser.new_page(viewport={"width": 700, "height": 600})
@@ -70,15 +70,94 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
             options=options.model_dump(), poll_path="/drawing/overlay/test/next", preview=False)
         overlay.route("**/drawing/overlay/test", lambda route: route.fulfill(body=overlay_html, content_type="text/html"))
         job = {"id": "1", "nickname": "<img src=x>", "amount": 1000, "recording": payload.recording.model_dump(),
-               "final_png": payload.final_png, "elapsed_ms": 0, "options": options.model_dump()}
+               "elapsed_ms": 0, "options": options.model_dump()}
         overlay.route("**/drawing/overlay/test/next*", lambda route: route.fulfill(json={
             "playback": None if "current=" in route.request.url else job, "current_id": "1", "options": options.model_dump()}))
         overlay.goto("http://localhost/drawing/overlay/test")
         overlay.wait_for_function("!document.getElementById('drawingOverlay').hidden")
         assert overlay.locator("#drawingDonor img").count() == 0
         assert "<img src=x>" in overlay.locator("#drawingDonor").inner_text()
-        overlay.wait_for_function("png => document.getElementById('replayCanvas').toDataURL('image/png') === png", arg=payload.final_png, timeout=6000)
+        overlay.wait_for_function("() => document.getElementById('replayCanvas').getContext('2d').getImageData(80, 140, 1, 1).data[3] > 0", timeout=6000)
         overlay.screenshot(path=str(tmp_path / "drawing-overlay.png"))
+        browser.close()
+
+
+def test_palette_fill_and_ctrl_z_are_editor_only():
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트 스트리머", platform_channel_id="channel"), options=options)
+    saved = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1000})
+        page.route("**/static/**", serve_assets)
+        def drawing_route(route):
+            if route.request.method == "GET":
+                route.fulfill(body=html, content_type="text/html")
+            else:
+                saved.append(DrawingSaveRequest.model_validate(route.request.post_data_json))
+                route.fulfill(json={"hashtag": "#mw-" + "b" * 24})
+        page.route("**/drawing/chzzk/channel", drawing_route)
+        page.goto("http://localhost/drawing/chzzk/channel")
+        canvas = page.locator("#drawingCanvas")
+        box = canvas.bounding_box()
+        assert box
+        scale_x, scale_y = box["width"] / options.canvas_width, box["height"] / options.canvas_height
+        def draw(start, end):
+            page.mouse.move(box["x"] + start[0] * scale_x, box["y"] + start[1] * scale_y)
+            page.mouse.down()
+            page.mouse.move(box["x"] + end[0] * scale_x, box["y"] + end[1] * scale_y, steps=12)
+            page.mouse.up()
+        page.locator('[data-color="#ef3b3f"]').click()
+        assert page.locator("#penColor").input_value() == "#ef3b3f"
+        draw((80, 80), (360, 80))
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 255
+        page.keyboard.press("Control+z")
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
+        draw((80, 80), (360, 80))
+        page.locator("#clearDrawing").click()
+        page.keyboard.press("Control+z")
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [239, 59, 63]
+        page.locator("#clearDrawing").click()
+        page.locator('[data-color="#2f6ee5"]').click()
+        page.locator('[data-tool="fill"]').click()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.locator("#saveDrawing").click()
+        page.wait_for_function("document.getElementById('drawingTag').value.startsWith('#mw-')")
+        assert len(saved) == 1
+        assert len(saved[0].recording.actions) == 1
+        action = saved[0].recording.actions[0]
+        assert isinstance(action, Stroke) and action.tool == "fill" and action.color == "#2f6ee5"
+        browser.close()
+
+
+def test_overlay_replays_fill_with_transparent_background():
+    options = DrawingDonationOptions(enabled=True, replay_seconds=3, hold_seconds=1,
+                                     canvas_width=400, canvas_height=300, show_donor=False)
+    html = templates.get_template("drawing_overlay.html").render(
+        options=options.model_dump(), poll_path="/drawing/overlay/test/next", preview=False)
+    job = {"id": "1", "nickname": "시청자", "amount": 1000, "elapsed_ms": 0, "options": options.model_dump(),
+           "recording": {"width": 400, "height": 300, "actions": [
+               {"type": "stroke", "tool": "pen", "color": "#ffffff", "width": 8,
+                "points": [{"x": 100, "y": 150, "t": 0}, {"x": 300, "y": 150, "t": 1000}]},
+               {"type": "stroke", "tool": "fill", "color": "#ef3b3f", "width": 1,
+                "points": [{"x": 200, "y": 100, "t": 1100}]}]}}
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": 800, "height": 600})
+        page.route("**/static/**", serve_assets)
+        page.route("**/drawing/overlay/test", lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.route("**/drawing/overlay/test/next*", lambda route: route.fulfill(json={
+            "playback": None if "current=" in route.request.url else job, "current_id": "1", "options": options.model_dump()}))
+        page.goto("http://localhost/drawing/overlay/test")
+        page.locator("#drawingOverlay").wait_for(state="visible")
+        page.wait_for_function("""() => {
+            const ctx = document.getElementById('replayCanvas').getContext('2d');
+            const filled = ctx.getImageData(200, 100, 1, 1).data;
+            const whiteStroke = ctx.getImageData(200, 150, 1, 1).data;
+            return filled[0] > 220 && filled[1] < 90 && filled[2] < 90 && filled[3] === 255 &&
+                whiteStroke[0] > 220 && whiteStroke[1] > 220 && whiteStroke[2] > 220 && whiteStroke[3] === 255;
+        }""", timeout=6000)
         browser.close()
 
 

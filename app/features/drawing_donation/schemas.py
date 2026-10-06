@@ -44,7 +44,7 @@ class Point(BaseModel):
 class Stroke(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     type: Literal["stroke"]
-    tool: Literal["pen", "eraser"] = "pen"
+    tool: Literal["pen", "eraser", "fill"] = "pen"
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
     width: float = Field(ge=1, le=60)
     points: list[Point] = Field(min_length=1, max_length=MAX_POINTS)

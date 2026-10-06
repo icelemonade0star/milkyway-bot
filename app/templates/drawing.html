@@ -19,7 +19,17 @@
             <div class="drawing-tools" aria-label="그리기 도구">
                 <button type="button" data-tool="pen" aria-pressed="true">펜</button>
                 <button type="button" data-tool="eraser" aria-pressed="false">지우개</button>
-                <label>색상 <input id="penColor" type="color" value="#25453c"></label>
+                <button type="button" data-tool="fill" aria-pressed="false">채우기</button>
+                <div class="drawing-palette" role="group" aria-label="색상 팔레트">
+                    <button type="button" class="palette-swatch" data-color="#171a18" aria-label="검정" aria-pressed="false" style="--swatch-color: #171a18"></button>
+                    <button type="button" class="palette-swatch" data-color="#18e94c" aria-label="초록" aria-pressed="false" style="--swatch-color: #18e94c"></button>
+                    <button type="button" class="palette-swatch" data-color="#ef3b3f" aria-label="빨강" aria-pressed="false" style="--swatch-color: #ef3b3f"></button>
+                    <button type="button" class="palette-swatch" data-color="#2f6ee5" aria-label="파랑" aria-pressed="false" style="--swatch-color: #2f6ee5"></button>
+                    <button type="button" class="palette-swatch" data-color="#f6a21a" aria-label="주황" aria-pressed="false" style="--swatch-color: #f6a21a"></button>
+                    <button type="button" class="palette-swatch" data-color="#8b4db0" aria-label="보라" aria-pressed="false" style="--swatch-color: #8b4db0"></button>
+                    <button type="button" class="palette-swatch" data-color="#ffffff" aria-label="흰색" aria-pressed="false" style="--swatch-color: #ffffff"></button>
+                    <label class="palette-custom"><input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
+                </div>
                 <label>굵기 <input id="penWidth" type="range" min="1" max="60" value="6"><output id="widthValue">6</output></label>
                 <button type="button" id="undoDrawing">되돌리기</button>
                 <button type="button" id="clearDrawing">모두 지우기</button>

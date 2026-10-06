@@ -82,7 +82,8 @@ class DrawingDonationService:
             raise HTTPException(409, "그림 크기 설정이 변경되었습니다. 페이지를 새로고침한 뒤 다시 그려주세요.")
         drawing = V2DonationDrawing(
             channel_id=channel.id, save_key=payload.save_key, hashtag="#mw-" + secrets.token_hex(12),
-            recording=payload.recording.model_dump(), final_png=payload.final_png,
+            # 새 오버레이는 recording을 투명 캔버스에 재생하므로 큰 완성 PNG를 새 행에 보관하지 않는다.
+            recording=payload.recording.model_dump(), final_png="",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=RETENTION_HOURS),
         )
         self.db.add(drawing)
@@ -169,7 +170,7 @@ class DrawingDonationService:
                 drawing = await self.db.get(V2DonationDrawing, job.drawing_id)
                 result = {
                     "id": str(job.id), "hashtag": drawing.hashtag, "nickname": job.nickname,
-                    "amount": job.amount, "recording": drawing.recording, "final_png": drawing.final_png,
+                    "amount": job.amount, "recording": drawing.recording,
                     "elapsed_ms": elapsed_ms, "options": playback.model_dump(),
                 }
                 break

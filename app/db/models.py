@@ -25,6 +25,7 @@ class V2DonationDrawing(Base):
     save_key: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True)
     hashtag: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     recording: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # 기존 행 호환용 컬럼. 새 그림은 recording으로 재생하므로 빈 문자열을 저장한다.
     final_png: Mapped[str] = mapped_column(Text, nullable=False)
     # 저장 후 1시간의 사용 만료 시각. 만료 데이터는 주기적 정리 작업에서 삭제한다.
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

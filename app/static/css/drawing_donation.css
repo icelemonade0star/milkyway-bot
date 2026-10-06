@@ -18,7 +18,11 @@ button:disabled { opacity: .55; cursor: wait; }
 button:focus-visible, input:focus-visible { outline: 3px solid #88bd96; outline-offset: 2px; }
 .drawing-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .drawing-tools label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
-input[type="color"] { width: 38px; height: 32px; border: none; background: transparent; cursor: pointer; }
+.drawing-palette { display: flex; align-items: center; gap: 8px; }
+.palette-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid #d4dfd7; border-radius: 50%; background: var(--swatch-color); }
+.palette-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #246544; }
+.palette-custom { display: flex !important; padding: 0; }
+input[type="color"] { width: 30px; height: 30px; padding: 0; border: 2px solid #d4dfd7; border-radius: 50%; background: transparent; cursor: pointer; }
 input[type="range"] { width: 85px; accent-color: #246544; }
 .canvas-wrap { background: #eef2ee; padding: 16px; border-radius: 12px; }
 #drawingCanvas { width: 100%; height: auto; display: block; margin: auto; background: white; touch-action: none; cursor: crosshair; box-shadow: 0 2px 9px #243c2410; }
@@ -31,7 +35,7 @@ input[type="range"] { width: 85px; accent-color: #246544; }
 .drawing-result p { font-size: 13px; }
 .tag-copy { display: flex; gap: 10px; margin: 20px 0; }
 .tag-copy input { flex: 1; min-width: 0; font-family: monospace; }
-.drawing-result img { max-width: 320px; width: 100%; border: 1px solid #d4dfd7; border-radius: 8px; }
+.drawing-result img { max-width: 320px; width: 100%; border: 1px solid #d4dfd7; border-radius: 8px; background: white; }
 .drawing-nav { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px; }
 .drawing-nav > a:last-child { font-size: 13px; color: #52755e; text-decoration: none; }
 .drawing-settings-grid { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -49,7 +53,7 @@ hr { border: 0; border-top: 1px solid #e0e8e1; margin: 26px 0; }
 .closed { padding: 40px; }
 body.drawing-overlay-page { background: transparent; margin: 0; overflow: hidden; font-family: Arial, "Malgun Gothic", sans-serif; }
 .drawing-overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; }
-.drawing-overlay canvas { display: block; flex: none; background: white; }
+.drawing-overlay canvas { display: block; flex: none; background: transparent; }
 .overlay-donor { flex: none; max-width: 100%; color: #2b4b36; font-size: clamp(12px, 2.5vw, 20px); padding: 8px 16px; background: white; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 740px) {
     .drawing-shell { padding: 24px 14px 40px; }
