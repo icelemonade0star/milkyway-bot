@@ -72,17 +72,20 @@
         pointCount = recording.actions.reduce((count, action) => count + action.points.length, 0);
     }
     function edit(type) {
-        if (saving || started === null || current) return;
+        if (saving || current) return;
         if (type === "undo") {
             const operation = undoStack.pop();
             if (!operation) return;
             if (operation.type === "stroke" && recording.actions.at(-1) === operation.action) recording.actions.pop();
-            else if (operation.type === "clear") recording.actions.push(...operation.actions);
+            else if (operation.type === "clear") {
+                recording.actions.push(...operation.actions); started = operation.started;
+            }
             else return;
         } else if (type === "clear") {
-            if (!recording.actions.length) return;
-            const actions = recording.actions.slice();
-            recording.actions.length = 0; undoStack.push({type: "clear", actions});
+            if (!recording.actions.length && started === null) return;
+            // 지우기 이전 기록과 시간은 로컬 되돌리기에만 보관하고, 새 기록은 다시 0부터 시작한다.
+            undoStack.push({type: "clear", actions: recording.actions.slice(), started});
+            recording.actions.length = 0; started = null;
         } else return;
         refreshPointCount(); changed(); DrawingCanvas.render(canvas, recording, Infinity, true);
     }

@@ -105,6 +105,10 @@ def test_palette_fill_and_ctrl_z_are_editor_only():
     with sync_playwright() as runtime:
         browser = runtime.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 1000})
+        page.add_init_script("""window.drawingTestTimeOffset = 0;
+            const realNow = performance.now.bind(performance);
+            performance.now = () => realNow() + window.drawingTestTimeOffset;
+        """)
         page.route("**/static/**", serve_assets)
         def drawing_route(route):
             if route.request.method == "GET":
@@ -130,9 +134,13 @@ def test_palette_fill_and_ctrl_z_are_editor_only():
         page.keyboard.press("Control+z")
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
         draw((80, 80), (360, 80))
+        page.evaluate("window.drawingTestTimeOffset += 600001")
         page.locator("#clearDrawing").click()
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
         page.keyboard.press("Control+z")
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [239, 59, 63]
+        draw((80, 160), (360, 160))
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,160,1,1).data)")[3] == 0
         page.locator("#clearDrawing").click()
         page.locator('[data-color="#2f6ee5"]').click()
         page.locator('[data-tool="fill"]').click()
@@ -143,6 +151,7 @@ def test_palette_fill_and_ctrl_z_are_editor_only():
         assert len(saved[0].recording.actions) == 1
         action = saved[0].recording.actions[0]
         assert isinstance(action, Stroke) and action.tool == "fill" and action.color == "#2f6ee5"
+        assert action.points[0].t < 1000
         browser.close()
 
 
