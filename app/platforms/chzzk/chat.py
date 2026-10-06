@@ -28,6 +28,7 @@ class ChzzkSessions:
         self.socket_url = None
         self.session_key = None
         self.socket_client = None
+        self._subscription_lock = asyncio.Lock()
 
     async def _ensure_auth(self, force_refresh=False):
 
@@ -128,7 +129,10 @@ class ChzzkSessions:
         session_key_future = asyncio.Future()
         
         # 클라이언트에 Future 전달
-        self.socket_client = chat_client.ChzzkChatClient(self.channel_name, self.channel_id, session_key_future)
+        self.socket_client = chat_client.ChzzkChatClient(
+            self.channel_name, self.channel_id, session_key_future,
+            on_reconnect=self._on_reconnect,
+        )
 
         # 소켓 연결
         await self.socket_client.connect(self.socket_url)
@@ -145,41 +149,77 @@ class ChzzkSessions:
             return None
     
     async def subscribe_chat(self):
+        return await self._subscribe_event("CHAT")
 
-        # 토큰 확인
+    async def subscribe_donation(self):
+        return await self._subscribe_event("DONATION")
+
+    async def subscribe_subscription(self):
+        return await self._subscribe_event("SUBSCRIPTION")
+
+    async def _subscribe_event(self, event: str) -> bool:
+        client = self.socket_client
+        if not self.session_key or not client:
+            logger.error("[%s] 이벤트 구독 실패: 세션 키 또는 소켓 없음, eventType=%s", self.channel_id, event)
+            return False
+        if event in client.denied_events:
+            return False
+        if event in client.subscribed_events:
+            return True
+
         await self._ensure_auth()
-        
-        # 인증 토큰이랑 데이터 형식을 헤더에 담기
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json'
         }
+        session_key = self.session_key
+        params = {"sessionKey": session_key}
+        uri = f"/open/v1/sessions/events/subscribe/{event.lower()}"
+        client.prepare_subscription(event)
 
-        if not self.session_key:
-            logger.error("⚠️ 구독 실패: 세션 키가 없습니다.")
-            return False
-        
-        # 서버에 보낼 파라미터(소켓 세션 키) 설정
-        params = {
-            "sessionKey": self.session_key
-        }
-        uri = "/open/v1/sessions/events/subscribe/chat"
-
-        response = await _client.post(uri, headers=headers, params=params)
-
-        # 401 Unauthorized 발생 시 토큰 갱신 후 재시도
-        if response.status_code == 401:
-            if await self._refresh_token():
+        try:
+            response = await _client.post(uri, headers=headers, params=params)
+            if response.status_code == 401 and await self._refresh_token():
                 headers['Authorization'] = f'Bearer {self.access_token}'
                 response = await _client.post(uri, headers=headers, params=params)
-        
-        # 요청 성공(200 OK)이면 결과값을 JSON으로 돌려줌
-        if response.status_code == 200:
-            logger.info(f"✅ [{self.channel_id}] 채팅 구독 성공")
-            return response.json()
-        else:
-            logger.error(f"❌ [{self.channel_id}] 채팅 구독 실패: {response.status_code} - {response.text}")
+        except httpx.HTTPError as exc:
+            logger.warning("[%s] 이벤트 구독 요청 오류: eventType=%s, 오류=%s", self.channel_id, event, exc)
             return False
+
+        if self.session_key != session_key or client.session_key != session_key:
+            return False
+        if response.status_code == 403:
+            client.denied_events.add(event)
+            client.subscribed_events.discard(event)
+            logger.warning(
+                "[%s] 이벤트 구독 권한 부족: eventType=%s, HTTP 403, 앱 권한 확인 및 재인증 필요",
+                self.channel_id, event,
+            )
+            return False
+        if response.status_code != 200:
+            logger.warning("[%s] 이벤트 구독 실패: eventType=%s, HTTP %s", self.channel_id, event, response.status_code)
+            return False
+        if not await client.wait_for_subscription(event):
+            logger.warning("[%s] 이벤트 구독 확인 실패: eventType=%s, SYSTEM 구독 완료 메시지 없음", self.channel_id, event)
+            return False
+        return self.session_key == session_key and client.session_key == session_key
+
+    async def subscribe_events(self) -> dict[str, bool]:
+        """채팅은 필수로, 후원과 구독은 각각 실패해도 다른 이벤트를 유지한다."""
+        async with self._subscription_lock:
+            results = {}
+            for event in chat_client.EVENT_TYPES:
+                try:
+                    results[event] = await self._subscribe_event(event)
+                except Exception as exc:
+                    logger.warning("[%s] 이벤트 구독 처리 오류: eventType=%s, 오류=%s", self.channel_id, event, exc)
+                    results[event] = False
+            return results
+
+    async def _on_reconnect(self, session_key: str):
+        self.session_key = session_key
+        logger.info("[%s] 재연결 후 이벤트 구독 복구 시작", self.channel_id)
+        await self.subscribe_events()
     
     async def send_notice(self, message: str):
         message = message.strip()

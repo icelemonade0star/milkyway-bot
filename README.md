@@ -17,6 +17,7 @@ FastAPI와 SQLAlchemy(Async)를 기반으로 구축되었으며, 확장 가능�
 ## ✨ 주요 기능
 
 - **치지직 연동**: OAuth 인증, 실시간 채팅 수신 및 전송
+- **후원·구독 이벤트 수신**: 채팅과 같은 세션에서 `DONATION`, `SUBSCRIPTION`을 수신하고 별도 핸들러에서 로그 기록
 - **비동기 처리**: `asyncio`와 `FastAPI`를 활용한 Non-blocking I/O
 - **출석 체크**: 방송 세션 기반의 출석, 연속 출석, 총 출석 횟수 관리
 - **명령어 시스템**:
@@ -139,6 +140,16 @@ ADMIN_TOKEN=your_secure_admin_token_here
 - `/auth/dashboard/login`에서 치지직 OAuth 인증
 - 치지직 redirect URI는 기존 `/auth/callback` 하나만 사용
 - callback에서 등록된 채널 여부 확인 후 대시보드 세션 발급
+
+**채팅·후원·구독 이벤트 수신:**
+
+- 서버 시작 및 세션 재생성 시 `CHAT`, `DONATION`, `SUBSCRIPTION`을 각각 구독합니다.
+- 치지직 애플리케이션과 사용자 인증에 `채팅 메시지 조회`, `후원 조회`, `구독 조회` 권한이 필요합니다. 기존 인증에 후원·구독 권한이 없다면 앱 권한과 사용자 동의 상태를 확인하고 재인증하세요.
+- 후원·구독 구독 실패는 채팅 세션을 중단하지 않습니다. 권한 부족(`HTTP 403`)이나 `SYSTEM.revoked`는 로그로 알리고 해당 세션에서 자동 재시도를 중지합니다. 권한을 다시 부여한 뒤 세션을 재생성해야 합니다.
+- `SYSTEM.subscribed`로 실제 구독 완료를 확인하고, 연결 복구 시 다시 구독합니다. 워치독은 일시적으로 실패하거나 취소된 구독도 재시도합니다.
+- 후원·구독 데이터는 `app/features/chat/handling/events.py`의 개별 핸들러로 전달합니다. 현재는 로그만 기록하며, DB 저장이나 그림 제출·표시는 아직 구현하지 않습니다.
+- 후원 금액 `payAmount`는 API가 전달한 문자열을 그대로 유지합니다.
+- 공식 가이드: https://chzzk.gitbook.io/chzzk/chzzk-api/session
 
 **대시보드에서 가능한 작업:**
 

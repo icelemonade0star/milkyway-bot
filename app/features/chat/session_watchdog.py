@@ -8,8 +8,7 @@ logger = logging.getLogger("SessionWatchdog")
 
 
 class SessionWatchdog:
-    """활성 채팅 세션의 소켓 연결 상태를 주기적으로 점검하고,
-    끊긴 세션(socketio 내장 재연결 5회를 전부 소진해 방치된 상태)을 자동으로 재생성합니다.
+    """연결이 끊긴 세션을 재생성하고, 연결된 세션의 누락된 이벤트 구독을 복구합니다.
     """
 
     def __init__(self, *, interval_seconds: int = config.SESSION_WATCHDOG_INTERVAL_SECONDS):
@@ -39,6 +38,10 @@ class SessionWatchdog:
             socket_client = session.socket_client
             connected = bool(socket_client and socket_client.socketio.connected)
             if connected:
+                try:
+                    await session.subscribe_events()
+                except Exception as e:
+                    logger.warning("[%s] 이벤트 구독 복구 실패: %s", channel_id, e)
                 continue
 
             logger.warning("⚠️ [%s] 세션 연결 끊김 감지. 자동 재생성 시도", channel_id)

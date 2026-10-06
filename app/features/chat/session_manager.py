@@ -69,7 +69,7 @@ class SessionManager:
             new_session = ChzzkSessions(channel_id)
 
             # 2. 실제 플랫폼 서버와 연결 및 구독 (비동기 작업)
-            # 새 세션이 완전히 준비되기 전까지는 기존 세션을 건드리지 않는다.
+            # 새 세션의 채팅 구독이 확인되기 전까지는 기존 세션을 건드리지 않는다.
             # (force_recreate로 기존 세션이 있던 경우) 여기서 실패하면 기존 세션이
             # active_sessions에 그대로 남아있으므로, 워치독이 다음 주기에 다시 감지해 재시도한다.
             # 단, 채널이 원래 active_sessions에 없던 최초 생성 실패의 경우는 워치독이
@@ -83,8 +83,7 @@ class SessionManager:
                 if not new_session.session_key:
                     raise Exception("세션 키를 받지 못했습니다. (소켓 연결 타임아웃)")
 
-                subscribed = await new_session.subscribe_chat()
-                if not subscribed:
+                if not await new_session.subscribe_chat():
                     raise Exception("채팅 구독에 실패했습니다.")
             except Exception:
                 # 생성 도중 실패한 새 세션의 소켓이 열려있으면 정리(연결 누수 방지)
@@ -107,6 +106,10 @@ class SessionManager:
                     await existing_session.socket_client.disconnect()
                 except Exception as e:
                     logger.warning(f"⚠️ [{channel_id}] 기존 세션 종료 중 오류(무시하고 진행): {e}")
+
+            # 후원·구독 요청 중 수신되는 채팅도 즉시 명령어/인사말 처리에 사용할 수 있게
+            # 채팅 세션을 먼저 등록한다. 후원·구독 실패로 등록을 되돌리지 않는다.
+            await new_session.subscribe_events()
 
             return new_session, True
 
