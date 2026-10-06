@@ -77,8 +77,23 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
         overlay.wait_for_function("!document.getElementById('drawingOverlay').hidden")
         assert overlay.locator("#drawingDonor img").count() == 0
         assert "<img src=x>" in overlay.locator("#drawingDonor").inner_text()
-        overlay.wait_for_function("() => document.getElementById('replayCanvas').getContext('2d').getImageData(80, 140, 1, 1).data[3] > 0", timeout=6000)
+        overlay.wait_for_function("png => document.getElementById('replayCanvas').toDataURL('image/png') === png",
+                                  arg=payload.final_png, timeout=6000)
         overlay.screenshot(path=str(tmp_path / "drawing-overlay.png"))
+        browser.close()
+
+
+def test_drawing_strokes_match_incremental_editing_and_cached_playback():
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.add_script_tag(path=str(ROOT / "app/static/js/drawing_canvas.js"))
+        result = page.evaluate((ROOT / "tests/drawing_canvas_regression.js").read_text(encoding="utf-8"))
+        assert all(case["differences"] == 0 for case in result["editing"]), result["editing"]
+        assert result["wrongColor"] == 0
+        assert all(case["differences"] == 0 for case in result["playback"]), result["playback"]
+        assert result["finalDifferences"] == 0
+        assert result["repeatedReads"] == result["repeatedStrokes"] == 0
         browser.close()
 
 
@@ -150,6 +165,52 @@ def test_overlay_replays_fill_with_transparent_background():
         page.route("**/drawing/overlay/test/next*", lambda route: route.fulfill(json={
             "playback": None if "current=" in route.request.url else job, "current_id": "1", "options": options.model_dump()}))
         page.goto("http://localhost/drawing/overlay/test")
+        boundary = page.evaluate("""() => {
+            const probe = document.createElement('canvas');
+            probe.width = 400; probe.height = 300;
+            const ctx = probe.getContext('2d');
+            const ring = width => {
+                const points = [];
+                for (let i = 0; i <= 72; i++) {
+                    const angle = i / 72 * Math.PI * 2;
+                    points.push({x: 200 + Math.cos(angle) * 110, y: 150 + Math.sin(angle) * 90, t: i * 10});
+                }
+                return {width: 400, height: 300,
+                    actions: [{type: 'stroke', tool: 'pen', color: '#8b4db0', width, points}]};
+            };
+            // 굵은 폐곡선 안쪽을 같은 색으로 채우면 경계에 빈 틈이 남지 않아야 한다.
+            DrawingCanvas.render(probe, ring(20), Infinity, true);
+            DrawingCanvas.fill(ctx, 200, 150, '#8b4db0');
+            const pixels = ctx.getImageData(0, 0, 400, 300).data;
+            let unfilled = 0;
+            for (let y = 0; y < 300; y++) for (let x = 0; x < 400; x++) {
+                if (Math.hypot((x - 200) / 110, (y - 150) / 90) > 0.95) continue;
+                if (pixels[(y * 400 + x) * 4 + 3] < 255) unfilled++;
+            }
+            // 가장 가는 선도 끊기지 않아 바깥 채우기가 안쪽으로 새지 않아야 한다.
+            DrawingCanvas.render(probe, ring(1), Infinity, true);
+            DrawingCanvas.fill(ctx, 5, 5, '#ef3b3f');
+            const leaked = ctx.getImageData(200, 150, 1, 1).data[3] > 0;
+            // 지우개가 지운 가장자리는 되살아나지 않고, 캔버스에 반투명 픽셀이 남지 않아야 한다.
+            const from = {x: 150, y: 60}, to = {x: 250, y: 240}, half = 15;
+            DrawingCanvas.render(probe, {width: 400, height: 300, actions: [
+                {type: 'stroke', tool: 'pen', color: '#8b4db0', width: 60,
+                 points: [{x: 60, y: 150, t: 0}, {x: 340, y: 150, t: 100}]},
+                {type: 'stroke', tool: 'eraser', color: '#ffffff', width: 30,
+                 points: [{...from, t: 200}, {...to, t: 300}]}]}, Infinity, true);
+            const erased = ctx.getImageData(0, 0, 400, 300).data;
+            let survived = 0, translucent = 0;
+            const dx = to.x - from.x, dy = to.y - from.y, span = dx * dx + dy * dy;
+            for (let y = 0; y < 300; y++) for (let x = 0; x < 400; x++) {
+                const alpha = erased[(y * 400 + x) * 4 + 3];
+                if (alpha !== 0 && alpha !== 255) translucent++;
+                const along = Math.max(0, Math.min(1, ((x - from.x) * dx + (y - from.y) * dy) / span));
+                if (Math.hypot(x - from.x - along * dx, y - from.y - along * dy) >= half) continue;
+                if (alpha !== 0) survived++;   // 지우개가 덮은 반경 안은 완전히 지워져야 한다
+            }
+            return {unfilled, leaked, survived, translucent};
+        }""")
+        assert boundary == {"unfilled": 0, "leaked": False, "survived": 0, "translucent": 0}
         page.locator("#drawingOverlay").wait_for(state="visible")
         page.wait_for_function("""() => {
             const ctx = document.getElementById('replayCanvas').getContext('2d');
