@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
+MAX_CANVAS_WIDTH = 1920
+MAX_CANVAS_HEIGHT = 1080
+MAX_FINAL_PNG_LENGTH = 8_000_000
 MAX_POINTS = 25000
 MAX_DURATION_MS = 600000
 
@@ -18,14 +21,23 @@ class DrawingDonationOptions(BaseModel):
     minimum_amount: int = Field(default=1000, ge=0, le=100000000)
     replay_seconds: int = Field(default=20, ge=3, le=120)
     hold_seconds: int = Field(default=5, ge=1, le=30)
-    display_width: int = Field(default=600, ge=240, le=1920)
+    canvas_width: int = Field(default=CANVAS_WIDTH, ge=320, le=MAX_CANVAS_WIDTH)
+    canvas_height: int = Field(default=CANVAS_HEIGHT, ge=180, le=MAX_CANVAS_HEIGHT)
     show_donor: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_legacy_display_width(cls, value: object) -> object:
+        # 기존 DB 설정과 재생 항목의 표시 너비는 전체 화면 재생에서 사용하지 않는다.
+        if isinstance(value, dict) and "display_width" in value:
+            return {key: item for key, item in value.items() if key != "display_width"}
+        return value
 
 
 class Point(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    x: float = Field(ge=0, le=CANVAS_WIDTH)
-    y: float = Field(ge=0, le=CANVAS_HEIGHT)
+    x: float = Field(ge=0, le=MAX_CANVAS_WIDTH)
+    y: float = Field(ge=0, le=MAX_CANVAS_HEIGHT)
     t: int = Field(ge=0, le=MAX_DURATION_MS)
 
 
@@ -46,14 +58,16 @@ class Edit(BaseModel):
 
 class Recording(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    width: Literal[800] = 800
-    height: Literal[600] = 600
+    width: int = Field(default=CANVAS_WIDTH, ge=320, le=MAX_CANVAS_WIDTH)
+    height: int = Field(default=CANVAS_HEIGHT, ge=180, le=MAX_CANVAS_HEIGHT)
     actions: list[Annotated[Stroke | Edit, Field(discriminator="type")]] = Field(min_length=1, max_length=2000)
 
     @model_validator(mode="after")
     def validate_timeline(self):
         previous, count = -1, 0
         for action in self.actions:
+            if isinstance(action, Stroke) and any(point.x > self.width or point.y > self.height for point in action.points):
+                raise ValueError("그리기 좌표가 캔버스 크기를 벗어났습니다.")
             times = [point.t for point in action.points] if isinstance(action, Stroke) else [action.t]
             count += len(times)
             for timestamp in times:
@@ -69,7 +83,8 @@ class DrawingSaveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     save_key: UUID
     recording: Recording
-    final_png: str = Field(max_length=2800000)
+    # 전체 10MB 요청에서 기록 JSON과 메타데이터가 들어갈 공간을 남긴다.
+    final_png: str = Field(max_length=MAX_FINAL_PNG_LENGTH)
 
     @model_validator(mode="after")
     def validate_png(self):
@@ -82,8 +97,8 @@ class DrawingSaveRequest(BaseModel):
             raise ValueError("완성본 이미지가 올바르지 않습니다.") from exc
         if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
             raise ValueError("완성본 PNG 헤더가 올바르지 않습니다.")
-        if struct.unpack(">II", data[16:24]) != (CANVAS_WIDTH, CANVAS_HEIGHT):
-            raise ValueError("완성본 크기는 800 × 600이어야 합니다.")
+        if struct.unpack(">II", data[16:24]) != (self.recording.width, self.recording.height):
+            raise ValueError("완성본 크기는 그리기 캔버스 크기와 같아야 합니다.")
         # 헤더만 위조한 이미지나 압축 데이터 손상을 저장 전에 확인한다.
         offset, compressed, ended, color_type = 8, bytearray(), False, None
         try:
@@ -108,7 +123,7 @@ class DrawingSaveRequest(BaseModel):
                         raise ValueError("PNG 종료 청크 오류")
                     ended = True
                 offset = end
-            expected = (CANVAS_WIDTH * (4 if color_type == 6 else 3) + 1) * CANVAS_HEIGHT
+            expected = (self.recording.width * (4 if color_type == 6 else 3) + 1) * self.recording.height
             decoder = zlib.decompressobj()
             pixels = decoder.decompress(bytes(compressed), expected + 1)
             if not ended or color_type is None or not decoder.eof or decoder.unused_data or len(pixels) != expected:

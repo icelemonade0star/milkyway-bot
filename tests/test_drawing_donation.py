@@ -27,7 +27,7 @@ from app.core import database
 from app.core.database import get_async_db
 from app.db.models import Base, V2Channel, V2DrawingDonationSetting, V2DonationDrawing, V2DrawingDonationQueue
 from app.features.drawing_donation.router import drawing_router
-from app.features.drawing_donation.schemas import DrawingSaveRequest, Recording
+from app.features.drawing_donation.schemas import MAX_FINAL_PNG_LENGTH, DrawingSaveRequest, Recording
 from app.features.drawing_donation.service import DrawingDonationService, drawing_tags
 from app.features.chat.handling import events
 from app.features.drawing_donation.cleanup import DrawingDonationCleanup
@@ -66,11 +66,11 @@ class LocalDB:
         self.session.rollback()
 
 
-def png():
+def png(width=800, height=600):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
-    raw = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 800, 600, 8, 2, 0, 0, 0))
-    raw += chunk(b"IDAT", zlib.compress((b"\0" + b"\xff" * 2400) * 600)) + chunk(b"IEND", b"")
+    raw = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    raw += chunk(b"IDAT", zlib.compress((b"\0" + b"\xff" * (width * 3)) * height)) + chunk(b"IEND", b"")
     return "data:image/png;base64," + base64.b64encode(raw).decode()
 
 
@@ -126,6 +126,63 @@ def test_saved_drawing_is_immutable_and_retry_returns_same_tag(db):
         assert first.final_png == payload.final_png
         assert len(db.session.scalars(select(V2DonationDrawing)).all()) == 1
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("width,height", [(400, 300), (1280, 720), (1920, 1080)])
+def test_configured_canvas_size_is_saved_and_replayed(db, width, height):
+    async def run():
+        service, setting = await enabled(db)
+        setting.options = {**setting.options, "canvas_width": width, "canvas_height": height}
+        await db.commit()
+        data = save_payload(final_png=png(width, height))
+        data["recording"].update(width=width, height=height)
+        drawing = await service.save_drawing("channel", DrawingSaveRequest.model_validate(data))
+        assert await service.enqueue_donation("channel", donation(drawing.hashtag)) is not None
+        playback = (await service.next_playback(setting.overlay_token))["playback"]
+        assert (playback["recording"]["width"], playback["recording"]["height"]) == (width, height)
+        assert playback["final_png"] == data["final_png"]
+    asyncio.run(run())
+
+
+def test_canvas_changes_keep_saved_drawings_and_legacy_settings_usable(db):
+    async def run():
+        service, setting = await enabled(db)
+        setting.options = {**setting.options, "display_width": 600, "show_donor": False}
+        await db.commit()
+        payload = DrawingSaveRequest.model_validate(save_payload())
+        old = await service.save_drawing("channel", payload)
+        job = await service.enqueue_donation("channel", donation(old.hashtag))
+        assert job is not None
+        assert (await service.next_playback(setting.overlay_token))["playback"]["options"]["show_donor"] is False
+        assert job.playback is not None
+        job.playback = {**job.playback, "display_width": 600}
+        setting.options = {**setting.options, "canvas_width": 1280, "canvas_height": 720}
+        await db.commit()
+        assert (await service.save_drawing("channel", payload)).hashtag == old.hashtag
+        with pytest.raises(HTTPException) as exc:
+            await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        assert exc.value.status_code == 409
+        resumed = (await service.next_playback(setting.overlay_token))["playback"]
+        assert resumed["recording"]["width"] == 800 and resumed["recording"]["height"] == 600
+        assert "display_width" not in resumed["options"]
+    asyncio.run(run())
+
+
+def test_canvas_limits_and_png_recording_size_mismatch_are_rejected():
+    from app.features.drawing_donation.schemas import DrawingDonationOptions
+    for change in [{"canvas_width": 1921}, {"canvas_height": 1081}]:
+        with pytest.raises(ValidationError):
+            DrawingDonationOptions.model_validate(change)
+    data = save_payload(final_png=png(1280, 720))
+    with pytest.raises(ValidationError):
+        DrawingSaveRequest.model_validate(data)
+    data["recording"].update(width=1280, height=720)
+    data["recording"]["actions"][0]["points"][0]["x"] = 1281
+    with pytest.raises(ValidationError):
+        DrawingSaveRequest.model_validate(data)
+    oversized = save_payload(final_png="x" * (MAX_FINAL_PNG_LENGTH + 1))
+    with pytest.raises(ValidationError):
+        DrawingSaveRequest.model_validate(oversized)
 
 
 def test_donation_event_handler_registers_drawing_each_time(db, monkeypatch):

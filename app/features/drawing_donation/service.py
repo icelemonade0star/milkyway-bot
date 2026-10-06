@@ -66,7 +66,8 @@ class DrawingDonationService:
 
     async def save_drawing(self, channel_id, payload: DrawingSaveRequest):
         channel, setting = await self.setting(channel_id)
-        if setting is None or not DrawingDonationOptions.model_validate(setting.options).enabled:
+        options = DrawingDonationOptions.model_validate(setting.options) if setting else DrawingDonationOptions()
+        if not options.enabled:
             raise HTTPException(403, "현재 그림 도네이션을 받지 않는 채널입니다.")
         existing = (await self.db.execute(select(V2DonationDrawing).where(
             V2DonationDrawing.save_key == payload.save_key,
@@ -77,6 +78,8 @@ class DrawingDonationService:
             if utc(existing.expires_at) <= datetime.now(timezone.utc):
                 raise HTTPException(410, "그림 사용 시간이 지났습니다. 페이지를 새로고침해 다시 저장해주세요.")
             return existing
+        if (payload.recording.width, payload.recording.height) != (options.canvas_width, options.canvas_height):
+            raise HTTPException(409, "그림 크기 설정이 변경되었습니다. 페이지를 새로고침한 뒤 다시 그려주세요.")
         drawing = V2DonationDrawing(
             channel_id=channel.id, save_key=payload.save_key, hashtag="#mw-" + secrets.token_hex(12),
             recording=payload.recording.model_dump(), final_png=payload.final_png,

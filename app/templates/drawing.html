@@ -24,8 +24,8 @@
                 <button type="button" id="undoDrawing">되돌리기</button>
                 <button type="button" id="clearDrawing">모두 지우기</button>
             </div>
-            <div class="canvas-wrap"><canvas id="drawingCanvas" width="800" height="600" aria-label="그림 그리는 영역"></canvas></div>
-            <div class="drawing-footer"><span>마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
+            <div class="canvas-wrap"><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div>
+            <div class="drawing-footer"><span>{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스 · 마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
             <p class="status" id="drawingStatus" role="status" aria-live="polite"></p>
         </section>
         <section class="drawing-result" id="drawingResult" hidden>

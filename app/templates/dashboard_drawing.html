@@ -16,13 +16,14 @@
                     <label class="check-row"><input type="checkbox" name="enabled" {% if options.enabled %}checked{% endif %}> 그림 도네이션 받기</label>
                     <label>최소 후원 금액 (원)<input type="number" name="minimum_amount" min="0" max="100000000" value="{{ options.minimum_amount }}" required></label>
                     <div class="field-pair"><label>그리기 재생 시간 (초)<input type="number" name="replay_seconds" min="3" max="120" value="{{ options.replay_seconds }}" required></label><label>완성본 표시 시간 (초)<input type="number" name="hold_seconds" min="1" max="30" value="{{ options.hold_seconds }}" required></label></div>
-                    <label>오버레이 너비 (px)<input type="number" name="display_width" min="240" max="1920" value="{{ options.display_width }}" required></label>
+                    <div class="field-pair"><label>그림 가로 크기 (px)<input type="number" name="canvas_width" min="320" max="1920" value="{{ options.canvas_width }}" required></label><label>그림 세로 크기 (px)<input type="number" name="canvas_height" min="180" max="1080" value="{{ options.canvas_height }}" required></label></div>
+                    <p class="help">시청자가 그리는 캔버스 크기입니다. 방송에서는 그림 비율을 유지하며 OBS 화면에 맞춰 표시합니다. 16:9 그림은 1280 × 720 또는 1920 × 1080으로 설정하세요.</p>
                     <label class="check-row"><input type="checkbox" name="show_donor" {% if options.show_donor %}checked{% endif %}> 후원자와 금액 표시</label>
                     <button class="primary" type="submit">설정 저장</button><p class="status" id="settingsStatus" role="status"></p>
                 </form>
                 <hr><label>시청자에게 공유할 그림 페이지<input readonly value="{{ drawing_url }}" id="drawingPageLink"></label><button type="button" data-copy="drawingPageLink">그림 페이지 링크 복사</button>
                 <label>OBS 브라우저 소스 URL<input readonly value="{{ overlay_url }}" id="drawingOverlayLink"></label><button type="button" data-copy="drawingOverlayLink">OBS 링크 복사</button>
-                <p class="help">OBS 소스 크기는 1920 × 1080을 권장합니다. 오버레이 URL은 방송용으로만 사용하세요.</p>
+                <p class="help">OBS 브라우저 소스의 가로·세로를 방송 해상도와 같게 설정하세요. 오버레이 URL은 방송용으로만 사용하세요.</p>
             </section>
             <section class="drawing-card preview-card">
                 <div class="preview-heading"><h2>오버레이 미리보기</h2><button id="testDrawing" type="button">테스트 그림 재생</button></div>

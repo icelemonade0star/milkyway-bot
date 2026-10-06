@@ -4,7 +4,7 @@
     const canvas = document.getElementById("drawingCanvas"), ctx = canvas.getContext("2d");
     const status = document.getElementById("drawingStatus"), save = document.getElementById("saveDrawing");
     const result = document.getElementById("drawingResult");
-    const recording = {width: 800, height: 600, actions: []};
+    const recording = {width: canvas.width, height: canvas.height, actions: []};
     let tool = "pen", current = null, pointer = null, started = null, pointCount = 0;
     let saveKey = crypto.randomUUID(), saving = false;
     DrawingCanvas.render(canvas, recording);
@@ -12,8 +12,8 @@
     function changed() { saveKey = crypto.randomUUID(); result.hidden = true; status.textContent = ""; }
     function point(event) {
         const rect = canvas.getBoundingClientRect();
-        return {x: Math.max(0, Math.min(800, (event.clientX - rect.left) * 800 / rect.width)),
-            y: Math.max(0, Math.min(600, (event.clientY - rect.top) * 600 / rect.height)), t: timestamp()};
+        return {x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)),
+            y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)), t: timestamp()};
     }
     function canRecord() {
         if (saving) return false;

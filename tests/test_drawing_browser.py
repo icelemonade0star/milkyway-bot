@@ -17,8 +17,10 @@ def serve_assets(route: Route):
     route.fulfill(path=str(ROOT / "app/static" / relative))
 
 
-def test_draw_save_and_replay_in_browser(tmp_path):
-    options = DrawingDonationOptions(enabled=True, replay_seconds=3, hold_seconds=2)
+@pytest.mark.parametrize("size", [(800, 600), (1280, 720)])
+def test_draw_save_and_replay_in_browser(tmp_path, size):
+    options = DrawingDonationOptions(enabled=True, replay_seconds=3, hold_seconds=2,
+                                     canvas_width=size[0], canvas_height=size[1])
     html = templates.get_template("drawing.html").render(
         channel=SimpleNamespace(channel_name="테스트 스트리머", platform_channel_id="channel"), options=options)
     saved = []
@@ -38,9 +40,10 @@ def test_draw_save_and_replay_in_browser(tmp_path):
         box = canvas.bounding_box()
         assert box
         def draw(start, end):
-            page.mouse.move(box["x"] + start[0], box["y"] + start[1])
+            scale_x, scale_y = box["width"] / options.canvas_width, box["height"] / options.canvas_height
+            page.mouse.move(box["x"] + start[0] * scale_x, box["y"] + start[1] * scale_y)
             page.mouse.down()
-            page.mouse.move(box["x"] + end[0], box["y"] + end[1], steps=12)
+            page.mouse.move(box["x"] + end[0] * scale_x, box["y"] + end[1] * scale_y, steps=12)
             page.mouse.up()
         page.locator("#penWidth").fill("20")
         draw((80, 80), (360, 80))
@@ -57,6 +60,7 @@ def test_draw_save_and_replay_in_browser(tmp_path):
         page.wait_for_function("document.getElementById('drawingTag').value.startsWith('#mw-')")
         assert len(saved) == 1
         payload = saved[0]
+        assert (payload.recording.width, payload.recording.height) == size
         assert [action.type for action in payload.recording.actions] == ["stroke", "stroke", "undo", "clear", "stroke"]
         page.screenshot(path=str(tmp_path / "drawing-editor.png"), full_page=True)
 
@@ -101,9 +105,58 @@ def test_drawing_pages_fit_mobile_and_dashboard_preview_does_not_consume_queue(w
         frame.locator("#drawingOverlay").wait_for(state="visible")
         bounds = frame.locator("#drawingOverlay").evaluate("element => ({bottom: element.getBoundingClientRect().bottom, height: innerHeight, width: element.getBoundingClientRect().width, donorHeight: document.getElementById('drawingDonor').getBoundingClientRect().height})")
         assert bounds["bottom"] <= bounds["height"], bounds
+        assert page.locator('[name="display_width"]').count() == 0
+        page.locator('[name="canvas_width"]').fill("1280")
+        page.locator('[name="canvas_height"]').fill("720")
+        page.locator('[name="show_donor"]').uncheck()
+        page.locator("#testDrawing").click()
+        frame.locator("#drawingDonor").wait_for(state="hidden")
+        assert frame.locator("#replayCanvas").evaluate("canvas => [canvas.width, canvas.height]") == [1280, 720]
         assert not any("/next" in url for url in requests)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(tmp_path / f"drawing-dashboard-{width}.png"), full_page=True)
+        browser.close()
+
+
+@pytest.mark.parametrize("size,show_donor", [((1280, 720), False), ((800, 600), True), ((600, 900), False)])
+def test_overlay_uses_full_viewport_preserves_picture_ratio_and_resizes(size, show_donor):
+    options = DrawingDonationOptions(enabled=True, canvas_width=size[0], canvas_height=size[1], show_donor=show_donor)
+    html = templates.get_template("drawing_overlay.html").render(
+        options=options.model_dump(), poll_path="/drawing/overlay/test/next", preview=False)
+    job = {"id": "1", "nickname": "후원자", "amount": 1000, "elapsed_ms": 0, "options": options.model_dump(),
+           "recording": {"width": size[0], "height": size[1], "actions": [
+               {"type": "stroke", "tool": "pen", "color": "#246544", "width": 6, "points": [{"x": 10, "y": 10, "t": 0}]}]}}
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.route("**/static/**", serve_assets)
+        page.route("**/drawing/overlay/test", lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.route("**/drawing/overlay/test/next*", lambda route: route.fulfill(json={
+            "playback": None if "current=" in route.request.url else job, "current_id": "1", "options": options.model_dump()}))
+        page.goto("http://localhost/drawing/overlay/test")
+        page.locator("#drawingOverlay").wait_for(state="visible")
+        measure = """() => {
+            const overlay = document.getElementById('drawingOverlay').getBoundingClientRect();
+            const canvas = document.getElementById('replayCanvas').getBoundingClientRect();
+            return {overlayWidth: overlay.width, overlayHeight: overlay.height, width: canvas.width, height: canvas.height,
+                top: canvas.top, bottom: canvas.bottom, left: canvas.left, right: canvas.right};
+        }"""
+        def check(width, height):
+            bounds = page.evaluate(measure)
+            assert (bounds["overlayWidth"], bounds["overlayHeight"]) == (width, height)
+            assert abs(bounds["width"] / bounds["height"] - size[0] / size[1]) < 0.01
+            assert bounds["left"] >= -1 and bounds["top"] >= -1
+            assert bounds["right"] <= width + 1 and bounds["bottom"] <= height + 1
+            if not show_donor:
+                assert abs(bounds["width"] - width) < 1 or abs(bounds["height"] - height) < 1
+        check(1280, 720)
+        assert page.locator("#drawingDonor").is_visible() == show_donor
+        page.set_viewport_size({"width": 900, "height": 600})
+        page.wait_for_function("""() => {
+            const bounds = document.getElementById('replayCanvas').getBoundingClientRect();
+            return bounds.top >= -1 && bounds.left >= -1 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight + 1;
+        }""")
+        check(900, 600)
         browser.close()
 
 
