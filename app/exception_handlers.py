@@ -9,6 +9,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": exc.detail, "status_code": exc.status_code},
+            headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)

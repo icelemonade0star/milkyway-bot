@@ -49,6 +49,11 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+tests/.drawing_test_tmp*/
+artifacts/drawing-donation/
+tests/.guide_test_tmp*/
+artifacts/guide/
+nginx-runtime/
 cover/
 
 # Translations

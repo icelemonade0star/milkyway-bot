@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>그림 도네이션 오버레이</title>
+    <link rel="stylesheet" href="/static/css/drawing_donation.css">
+</head>
+<body class="drawing-overlay-page{% if preview %} drawing-overlay-preview{% endif %}">
+    <section id="drawingOverlay" class="drawing-overlay" hidden>
+        <div class="overlay-donor" id="drawingDonor"></div>
+        <canvas id="replayCanvas" width="800" height="600"></canvas>
+    </section>
+    <script id="replayConfig" type="application/json">{{ {"options": options, "poll_path": poll_path, "preview": preview}|tojson }}</script>
+    <script src="/static/js/drawing_canvas.js"></script><script src="/static/js/drawing_replay.js"></script>
+</body>
+</html>

@@ -9,6 +9,26 @@ async def on_donation(channel_id: str, payload: dict):
         payload.get("donationType"), payload.get("donatorChannelId"),
         payload.get("donatorNickname"), payload.get("payAmount"), payload.get("donationText"),
     )
+    await _enqueue_drawing_donation(channel_id, payload, logger)
+
+
+async def _enqueue_drawing_donation(channel_id: str, payload: dict, logger):
+    """그림 전용 조기 반환을 분리해 다른 후원 처리에 영향을 주지 않는다."""
+    from app.features.drawing_donation.service import DrawingDonationService, drawing_tags
+    if not drawing_tags(payload.get("donationText")):
+        return
+    from app.core.database import get_session_factory
+    factory = get_session_factory()
+    if factory is None:
+        logger.warning("그림 도네이션 처리 실패: DB 세션 팩토리 없음")
+        return
+    try:
+        async with factory() as db:
+            queue = await DrawingDonationService(db).enqueue_donation(channel_id, payload)
+            if queue:
+                logger.info("그림 도네이션 대기열 추가: id=%s", queue.id)
+    except Exception as exc:
+        logger.error("그림 도네이션 처리 실패: %s", exc)
 
 
 async def on_subscription(channel_id: str, payload: dict):

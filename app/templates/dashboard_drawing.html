@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>그림 도네이션 설정 · Milkyway Bot</title>
+    <link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/drawing_donation.css">
+</head>
+<body class="drawing-page">
+    <main class="drawing-shell dashboard-drawing">
+        <nav class="drawing-nav"><a class="brand" href="/auth/dashboard">MILKYWAY BOT</a><a href="/guide/drawing-donation">사용 방법</a><a href="/auth/dashboard">대시보드로 돌아가기</a></nav>
+        <header class="drawing-intro"><p class="eyebrow">{{ channel.channel_name }}</p><h1>그림 도네이션</h1><p>시청자의 한 획 한 획을 방송에 담아보세요.</p></header>
+        <div class="drawing-settings-grid">
+            <section class="drawing-card">
+                <h2>수신 및 재생 설정</h2>
+                <form id="drawingSettings">
+                    <label class="check-row"><input type="checkbox" name="enabled" {% if options.enabled %}checked{% endif %}> 그림 도네이션 받기</label>
+                    <label>최소 후원 금액 (원)<input type="number" name="minimum_amount" min="0" max="100000000" value="{{ options.minimum_amount }}" required></label>
+                    <div class="field-pair"><label>그리기 재생 시간 (초)<input type="number" name="replay_seconds" min="3" max="120" value="{{ options.replay_seconds }}" required></label><label>완성본 표시 시간 (초)<input type="number" name="hold_seconds" min="1" max="30" value="{{ options.hold_seconds }}" required></label></div>
+                    <label>오버레이 너비 (px)<input type="number" name="display_width" min="240" max="1920" value="{{ options.display_width }}" required></label>
+                    <label class="check-row"><input type="checkbox" name="show_donor" {% if options.show_donor %}checked{% endif %}> 후원자와 금액 표시</label>
+                    <button class="primary" type="submit">설정 저장</button><p class="status" id="settingsStatus" role="status"></p>
+                </form>
+                <hr><label>시청자에게 공유할 그림 페이지<input readonly value="{{ drawing_url }}" id="drawingPageLink"></label><button type="button" data-copy="drawingPageLink">그림 페이지 링크 복사</button>
+                <label>OBS 브라우저 소스 URL<input readonly value="{{ overlay_url }}" id="drawingOverlayLink"></label><button type="button" data-copy="drawingOverlayLink">OBS 링크 복사</button>
+                <p class="help">OBS 소스 크기는 1920 × 1080을 권장합니다. 오버레이 URL은 방송용으로만 사용하세요.</p>
+            </section>
+            <section class="drawing-card preview-card">
+                <div class="preview-heading"><h2>오버레이 미리보기</h2><button id="testDrawing" type="button">테스트 그림 재생</button></div>
+                <div class="drawing-preview"><iframe id="drawingPreview" title="그림 도네이션 미리보기" src="{{ preview_path }}"></iframe></div>
+                <p class="help">테스트는 미리보기에서만 재생됩니다. 실제 후원 그림은 OBS 연결 시 접수 순서대로 재생됩니다.</p>
+                <ol class="drawing-steps"><li>그림 페이지 링크를 시청자에게 공유하세요.</li><li>시청자가 그림을 저장하고 해시태그를 발급받습니다.</li><li>해시태그를 포함한 후원을 받으면 OBS에서 그리는 과정이 재생됩니다.</li></ol>
+            </section>
+        </div>
+    </main>
+    <script src="/static/js/dashboard_drawing.js"></script>
+</body>
+</html>

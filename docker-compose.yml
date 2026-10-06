@@ -5,7 +5,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./fastapi.conf:/etc/nginx/conf.d/fastapi.conf:ro
+      # Git이 원본 파일을 교체해도 새 설정을 읽도록 배포용 디렉터리를 마운트한다.
+      - ./nginx-runtime:/etc/nginx/conf.d:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro  # 호스트 실제 경로 직접 마운트
       - ./certbot/www:/var/www/certbot
     depends_on:
@@ -29,6 +30,8 @@ services:
       - .env
     environment:
     - TZ=Asia/Seoul
+    # API 포트는 내부에만 노출하며 Nginx가 X-Real-IP를 덮어쓴다.
+    - DRAWING_DONATION_TRUST_PROXY_HEADERS=true
     depends_on:
       - db
       - redis

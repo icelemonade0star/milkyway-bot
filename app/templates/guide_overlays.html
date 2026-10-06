@@ -1,0 +1,62 @@
+{% extends "guide_base.html" %}
+{% block content %}
+<section id="connect">
+    <h2>OBS에 연결하기</h2>
+    <ol class="guide-steps">
+        <li><strong>대시보드에서 오버레이를 엽니다.</strong><p><a href="/auth/dashboard/overlay" rel="nofollow">대시보드 → 채팅 오버레이</a>로 이동하고 <b>채팅</b> 또는 <b>타이머</b> 탭을 선택하세요.</p></li>
+        <li><strong>디자인을 확인하고 적용합니다.</strong><p>원하는 옵션을 설정한 뒤 <b>적용</b>을 눌러 저장하세요. 미리보기로 표시 상태를 확인할 수 있습니다.</p></li>
+        <li><strong>복사한 링크를 OBS에 등록합니다.</strong><p>OBS의 소스 목록에서 <b>브라우저</b>를 추가하고, 선택한 오버레이의 OBS 링크를 URL에 넣으세요. 소스 크기와 위치는 방송 화면에 맞게 조정하세요.</p></li>
+    </ol>
+    <div class="note">채팅과 타이머는 각각의 OBS 링크를 사용합니다. 그림 도네이션 오버레이는 <a href="/guide/drawing-donation">그림 도네이션 가이드</a>에서 안내합니다.</div>
+</section>
+<h2 id="chat">채팅 오버레이</h2>
+        <p>대시보드에서 OBS 브라우저 소스용 채팅 오버레이 링크를 만들고, 방송 화면에 표시될 채팅창 디자인을 직접 조정할 수 있습니다.</p>
+
+        <div class="command">
+            <div class="usage">대시보드 &gt; 채팅 오버레이</div>
+            <div class="desc">
+                글자 크기, 채팅창 폭, 여백, 말풍선 모양, 색상, 애니메이션, 메시지 유지시간을 옵션으로 설정할 수 있습니다.
+                CSS를 몰라도 기본 옵션만으로 바로 사용할 수 있으며, 설정 후 <strong>적용</strong>을 누르면 미리보기와 실제 오버레이에 반영됩니다.
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">미리보기와 OBS 링크</div>
+            <div class="desc">
+                샘플 모드에서는 닉네임과 채팅 내용을 직접 입력해 디자인을 확인할 수 있습니다.
+                현재 채팅 모드에서는 실제 채팅 표시 상태를 확인할 수 있으며, 복사한 오버레이 링크를 OBS의 브라우저 소스 URL에 넣으면 방송 화면에 채팅이 표시됩니다.
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">프리셋과 고급 CSS</div>
+            <div class="desc">
+                마음에 드는 설정은 프리셋으로 저장하고 다시 불러올 수 있습니다.
+                이미지 스킨이나 세부 디자인을 직접 다듬고 싶다면 고급 CSS 모드를 사용할 수 있습니다.
+                스킨이 없어도 기본 CSS로 정상 동작합니다.
+                <div class="note">
+                    <strong>스킨용 주요 클래스:</strong><br>
+                    <code>.chat-frame</code>: 채팅창 프레임/배경 이미지<br>
+                    <code>.chat-list</code>: 메시지 영역 여백/클리핑<br>
+                    <code>.chat-message</code>: 말풍선 이미지와 개별 메시지<br>
+                    <code>.chat-name</code>, <code>.chat-text</code>: 닉네임과 채팅 본문
+                </div>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">필터와 링크 관리</div>
+            <div class="desc">
+                특정 닉네임을 오버레이에서 숨기거나, 스트리머/관리자 역할의 채팅을 필터링할 수 있습니다.
+                오버레이 링크는 채널 기준 고정 주소이므로 OBS에 한 번 등록하면 계속 사용할 수 있습니다.
+            </div>
+        </div>
+<section id="timer">
+    <h2>타이머 오버레이</h2>
+    <p>오버레이 편집기의 <b>타이머</b> 탭에서 글자 크기, 색상, 투명도와 완료 후 표시 동작을 설정할 수 있습니다. 타이머 링크를 OBS에 등록한 뒤 스트리머 또는 매니저가 채팅 명령어로 제어합니다.</p>
+    <div class="command"><div class="usage">!타이머 [시간] / !타이머 [제목] [시간] <span class="admin-only">관리자용</span></div><div class="desc"><code>!타이머 10</code> → 10분 타이머<br><code>!타이머 쉬는 시간 01:30</code> → 제목이 있는 1분 30초 타이머<br>시간은 <code>10분</code>, <code>90초</code>, <code>01:30</code>, <code>1:00:00</code> 형식으로도 입력할 수 있습니다.</div></div>
+    <div class="guide-table-wrap"><table><thead><tr><th>명령어</th><th>동작</th></tr></thead><tbody><tr><td><code>!타이머 재생</code></td><td>정지한 타이머를 이어서 재생합니다. 완료된 타이머는 처음부터 재생합니다.</td></tr><tr><td><code>!타이머 정지</code></td><td>남은 시간을 유지하며 타이머를 일시 정지합니다.</td></tr><tr><td><code>!타이머 삭제</code></td><td>현재 타이머를 화면에서 제거합니다.</td></tr></tbody></table></div>
+    <div class="note">설정의 <b>자동 시작</b>을 끄면 생성한 타이머는 대기 상태로 표시됩니다. <code>!타이머 재생</code>으로 시작하세요. 명령어 접두사를 바꿨다면 <code>!</code> 대신 설정한 접두사를 사용합니다.</div>
+</section>
+<a class="guide-cta" href="/auth/dashboard/overlay" rel="nofollow">오버레이 설정하기 ↗</a>
+{% endblock %}

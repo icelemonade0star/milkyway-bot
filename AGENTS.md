@@ -23,3 +23,6 @@
 ## Verification
 
 - Run `python scripts/check_utf8.py` after changing text files that may contain Korean.
+- After creating or modifying Python files, including tests, run Pyright on the changed files with the project's virtual environment: `.venv/Scripts/python.exe -m pyright <changed-python-files> --pythonpath .venv/Scripts/python.exe`.
+- Resolve newly introduced type errors before reporting completion. Passing runtime tests alone does not replace type checking.
+- Handle optional values explicitly. When a third-party library has inaccurate synchronous/asynchronous type declarations, verify the actual client and return type before using a narrowly scoped `cast`; do not hide errors with blanket type-checking suppression.

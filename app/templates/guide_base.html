@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title }} | Milkyway Bot 사용 가이드</title>
+    <meta name="description" content="{{ page.description }}"><meta name="robots" content="index, follow">
+    <link rel="canonical" href="{{ public_site_url }}{{ page.path }}">
+    <meta property="og:type" content="website"><meta property="og:site_name" content="Milkyway Bot">
+    <meta property="og:title" content="{{ page.title }} | Milkyway Bot 사용 가이드">
+    <meta property="og:description" content="{{ page.description }}"><meta property="og:url" content="{{ public_site_url }}{{ page.path }}">
+    <meta name="twitter:card" content="summary">
+    <script type="application/ld+json">{{ {"@context": "https://schema.org", "@type": "WebPage", "name": page.title + " | Milkyway Bot 사용 가이드", "url": public_site_url + page.path, "description": page.description, "inLanguage": "ko"}|tojson }}</script>
+    <link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/base.css"><link rel="stylesheet" href="/static/css/guide.css">
+</head>
+<body>
+    <a class="skip-link" href="#guideContent">본문 바로가기</a>
+    <header class="guide-topbar">
+        <a class="guide-brand" href="/guide">MILKYWAY BOT <span>사용 가이드</span></a>
+        <a class="dashboard-link" href="/auth/dashboard" rel="nofollow">대시보드 ↗</a>
+    </header>
+    <div class="guide-layout">
+        <aside class="guide-sidebar">
+            <nav aria-label="가이드 페이지">
+                <p class="nav-label">사용 가이드</p>
+                {% for item in guide_pages %}<a href="{{ item.path }}" {% if item.path == page.path %}aria-current="page"{% endif %}>{{ item.title }}</a>{% endfor %}
+            </nav>
+            <nav class="page-toc" aria-label="이 페이지의 목차">
+                <p class="nav-label">이 페이지에서</p>
+                {% for anchor, label in page.toc %}<a href="#{{ anchor }}">{{ label }}</a>{% endfor %}
+            </nav>
+        </aside>
+        <div class="guide-main">
+            <details class="guide-mobile-nav">
+                <summary>{{ page.title }} <span>안내 메뉴</span></summary>
+                <nav aria-label="모바일 가이드 페이지">
+                    {% for item in guide_pages %}<a href="{{ item.path }}" {% if item.path == page.path %}aria-current="page"{% endif %}>{{ item.title }}</a>{% endfor %}
+                    <p class="nav-label">이 페이지에서</p>
+                    {% for anchor, label in page.toc %}<a href="#{{ anchor }}">{{ label }}</a>{% endfor %}
+                </nav>
+            </details>
+            <main class="guide-content" id="guideContent" tabindex="-1">
+                <header class="guide-page-head"><p class="guide-eyebrow">MILKYWAY BOT GUIDE</p><h1>{{ page.title }}</h1><p>{{ page.description }}</p></header>
+                {% block content %}{% endblock %}
+            </main>
+            <footer class="guide-footer"><a href="/guide">가이드 처음으로</a><span>제작자 · 별아레</span></footer>
+        </div>
+    </div>
+</body>
+</html>

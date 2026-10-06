@@ -41,6 +41,8 @@ jobs:
       run: |
         pip install -r requirements.txt
         pip install pytest pytest-anyio requests flake8
+        pip install -r requirements-test.txt
+        python -m playwright install --with-deps chromium
 
     - name: Lint with flake8
       run: |
@@ -50,5 +52,16 @@ jobs:
     - name: Check UTF-8 text files
       run: python scripts/check_utf8.py
 
+    - name: Check drawing donation and guide types
+      run: >-
+        python -m pyright
+        app/core/config.py app/db/models.py app/exception_handlers.py
+        app/features/chat/handling/events.py app/features/guide/router.py
+        app/features/drawing_donation app/lifespan.py app/main.py
+        tests/test_drawing_donation.py tests/test_drawing_browser.py tests/test_guide_pages.py
+
     - name: Run tests
       run: pytest tests/
+
+    - name: Run overlay JavaScript tests
+      run: node --test tests/overlay_runtime.test.js

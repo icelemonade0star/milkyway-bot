@@ -1,0 +1,103 @@
+{% extends "guide_base.html" %}
+{% block content %}
+<p>기본 접두사는 <code>!</code>입니다. 접두사를 변경했다면 명령어 앞의 <code>!</code>를 설정한 문자로 바꿔 입력하세요.</p>
+<h2 id="basic">기본 명령어 (모든 사용자)</h2>
+        
+        <div class="command">
+            <div class="usage">!출석</div>
+            <div class="desc">현재 진행 중인 방송에 출석 체크를 합니다. 연속 출석과 총 출석 횟수가 기록됩니다.</div>
+        </div>
+        
+        <div class="command">
+            <div class="usage">!명령어</div>
+            <div class="desc">봇에 등록된 모든 기본 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!채널명령어</div>
+            <div class="desc">현재 채널에 스트리머가 직접 등록한 명령어 목록을 보여줍니다.</div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사목록</div>
+            <div class="desc">현재 채널에 등록된 모든 인사말 키워드를 보여줍니다.</div>
+        </div>
+
+        <h2 id="admin">관리자 명령어 (스트리머/매니저)</h2>
+
+        <h3 id="rules">공통 규칙</h3>
+        <div class="command">
+            <div class="usage"><code><span class="placeholder-token">|</span></code>, <code><span class="placeholder-token">[닉네임]</span></code></div>
+            <div class="desc">
+                <strong>입력 별칭:</strong> 명령어 또는 인사말 키워드에 <code><span class="placeholder-token">|</span></code>를 넣으면 여러 입력을 하나로 묶을 수 있습니다.<br>
+                &nbsp;&nbsp;<code>!명령어등록 규칙<span class="placeholder-token">|</span>룰 채널 규칙입니다.</code> → <code>!규칙</code>, <code>!룰</code> 모두 동일하게 응답<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕<span class="placeholder-token">|</span>하이<span class="placeholder-token">|</span>ㅎㅇ 어서오세요!</code> → '안녕', '하이', 'ㅎㅇ' 중 하나라도 포함되면 반응<br>
+                <strong>랜덤 응답:</strong> 명령어 또는 인사말 응답에 <code><span class="placeholder-token">|</span></code>를 넣으면 그 중 하나를 랜덤으로 출력합니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요!<span class="placeholder-token">|</span>반갑습니다!<span class="placeholder-token">|</span>환영합니다!</code><br>
+                <strong>닉네임 치환:</strong> 응답에 <code><span class="placeholder-token">[닉네임]</span></code>을 넣으면 채팅을 입력한 시청자 닉네임으로 바뀝니다.<br>
+                &nbsp;&nbsp;<code>!인사등록 안녕 어서오세요 <span class="placeholder-token">[닉네임]</span>님!</code><br>
+                <strong>추가 치환자:</strong> 일부 대시보드 입력란에서는 출석 관련 치환자 등 더 많은 치환자를 사용할 수 있습니다. 사용할 수 있는 치환자는 대시보드의 각 설명란에서 확인해주세요.
+            </div>
+        </div>
+
+        <h3 id="commands">명령어 관리</h3>
+        <div class="command">
+            <div class="usage">!명령어등록 [명령어] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                새로운 채널 명령어를 등록합니다. 이미 등록된 명령어를 다시 등록하면 응답이 수정됩니다.
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!명령어삭제 [명령어] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 채널 명령어를 삭제합니다.</div>
+        </div>
+
+        <h3 id="greetings">인사말 관리</h3>
+        <div class="command">
+            <div class="usage">!인사등록 [키워드] [응답] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                채팅에 특정 키워드가 포함되면 봇이 자동으로 응답합니다. 이미 등록된 키워드를 다시 등록하면 응답이 수정됩니다.<br>
+                치지직 이모티콘은 인사말 키워드에 등록할 수 있지만, 응답 내용에는 포함할 수 없습니다.<br>
+                <small style="color:#888;">※ 동일 키워드는 10초 쿨타임이 적용됩니다. 채널당 최대 30개까지 등록할 수 있습니다.</small>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!인사삭제 [키워드] <span class="admin-only">관리자용</span></div>
+            <div class="desc">등록된 인사말 키워드를 삭제합니다.</div>
+        </div>
+
+        <h3 id="settings">봇 설정</h3>
+        <div class="command">
+            <div class="usage">!접두사수정 [새 접두사] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                명령어 접두사를 변경합니다. 허용되는 접두사는 <code>!</code>, <code>@</code>, <code>#</code>, <code>$</code>, <code>%</code>, <code>^</code>, <code>&</code>, <code>*</code> 입니다.
+            </div>
+        </div>
+
+        <h3 id="notice">채팅 공지</h3>
+        <div class="command">
+            <div class="usage">!공지 [내용] <span class="admin-only">관리자용</span></div>
+            <div class="desc">채팅창에 공지사항을 등록합니다. 내용에 해당하는 메시지가 치지직 채팅 공지로 설정됩니다.</div>
+        </div>
+
+        <h3 id="discord">디스코드 알림</h3>
+        <div class="command">
+            <div class="usage">!알림설정 [디스코드채널ID] <span class="admin-only">관리자용</span></div>
+            <div class="desc">
+                방송 시작 알림을 받을 디스코드 채널을 설정합니다.
+                <div class="note">
+                    <strong>설정 방법:</strong><br>
+                    1. <a href="https://discord.com/oauth2/authorize?client_id=1480744234029158410&permissions=8&integration_type=0&scope=bot" target="_blank" rel="noopener noreferrer"><strong>[디스코드 봇 초대 링크 바로가기]</strong></a>를 클릭하여 봇을 디스코드 서버에 초대해주세요.<br>
+                    2. 알림을 받을 채널에 마우스 우클릭 후 'ID 복사하기'를 눌러 채널 ID를 확인합니다.<br>
+                    3. 치지직 채팅창에 <code>!알림설정 [복사한 ID]</code>를 입력합니다.
+                </div>
+            </div>
+        </div>
+
+        <div class="command">
+            <div class="usage">!알림삭제 <span class="admin-only">관리자용</span></div>
+            <div class="desc">설정된 디스코드 방송 알림을 해제합니다.</div>
+        </div>
+{% endblock %}

@@ -8,6 +8,47 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
+
+class V2DrawingDonationSetting(Base):
+    __tablename__ = "v2_drawing_donation_settings"
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), primary_key=True)
+    overlay_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    options: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class V2DonationDrawing(Base):
+    __tablename__ = "v2_donation_drawings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    save_key: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True)
+    hashtag: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    recording: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    final_png: Mapped[str] = mapped_column(Text, nullable=False)
+    # 저장 후 1시간의 사용 만료 시각. 만료 데이터는 주기적 정리 작업에서 삭제한다.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class V2DrawingDonationQueue(Base):
+    __tablename__ = "v2_drawing_donation_queue"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("v2_channels.id", ondelete="CASCADE"), nullable=False)
+    drawing_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("v2_donation_drawings.id", ondelete="CASCADE"), nullable=False)
+    nickname: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    playback: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("status IN ('queued', 'playing', 'done')", name="check_drawing_donation_queue_status"),
+        Index("idx_drawing_donation_queue_channel_status", "channel_id", "status", "created_at"),
+    )
+
 class V2Channel(Base):
     __tablename__ = "v2_channels"
 

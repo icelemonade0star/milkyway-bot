@@ -10,6 +10,7 @@ from app.features.chat.session_manager import session_manager
 from app.features.chat.session_watchdog import SessionWatchdog
 from app.features.discord_bot.main import bot, discord_token, start_discord_bot
 from app.features.live_state_poller import LiveStatePoller
+from app.features.drawing_donation.cleanup import DrawingDonationCleanup
 from app.platforms.constants import PLATFORM_CHZZK
 
 STARTUP_CLEANUP_PLATFORM = PLATFORM_CHZZK
@@ -56,6 +57,10 @@ async def lifespan(app: FastAPI):
     session_watchdog = SessionWatchdog()
     session_watchdog_task = asyncio.create_task(session_watchdog.run())
 
+    # 만료된 그림과 연결된 재생 대기열 정리 (즉시 한 번 실행한 뒤 주기적으로 반복)
+    drawing_cleanup = DrawingDonationCleanup(session_factory)
+    drawing_cleanup_task = asyncio.create_task(drawing_cleanup.run())
+
     # 디스코드 봇 백그라운드 실행
     discord_task = None
     if discord_token:
@@ -68,6 +73,12 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN ---
     print("🔒 리소스 정리 시작")
+    drawing_cleanup.stop()
+    drawing_cleanup_task.cancel()
+    try:
+        await drawing_cleanup_task
+    except asyncio.CancelledError:
+        pass
     live_state_poller.stop()
     live_state_task.cancel()
     try:

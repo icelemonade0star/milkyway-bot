@@ -60,6 +60,7 @@ jobs:
         port: 22
         envs: DEPLOY_SHA
         script: |
+            set -eu
             cd /app/milkywayBot
 
             cp .env .env.bak
@@ -67,6 +68,12 @@ jobs:
             git reset --hard $DEPLOY_SHA
             mv .env.bak .env
 
+            # 디렉터리 마운트를 유지하며 이번 배포의 설정을 전달한다.
+            mkdir -p nginx-runtime
+            cp fastapi.conf nginx-runtime/fastapi.conf
+
             DEPLOY_SHA=$DEPLOY_SHA docker compose pull api
             DEPLOY_SHA=$DEPLOY_SHA docker compose up -d --remove-orphans --wait --wait-timeout 120
+            DEPLOY_SHA=$DEPLOY_SHA docker compose exec -T nginx nginx -t
+            DEPLOY_SHA=$DEPLOY_SHA docker compose exec -T nginx nginx -s reload
             docker image prune -f

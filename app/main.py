@@ -12,6 +12,7 @@ from app.features.chat_overlay.router import overlay_router
 from app.features.guide import router as guide_router
 from app.features.dashboard.router import dashboard_router
 from app.features.admin.router import admin_router
+from app.features.drawing_donation.router import drawing_router
 
 setup_global_logging()
 
@@ -30,6 +31,7 @@ app.include_router(overlay_router)
 app.include_router(guide_router.guide_router)
 app.include_router(dashboard_router)
 app.include_router(admin_router)
+app.include_router(drawing_router)
 
 
 @app.middleware("http")
