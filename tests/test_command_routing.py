@@ -94,17 +94,6 @@ def test_admin_alias_cannot_be_shadowed_by_custom_command(monkeypatch):
     dispatch.assert_not_awaited()
 
 
-@pytest.mark.parametrize("role,allowed", [("common_user", False), ("streamer", True)])
-def test_clear_notice_is_admin_only_and_separate_from_notice(monkeypatch, role, allowed):
-    service, session, redis = setup_route(monkeypatch, global_command=command("공지삭제", "system"))
-    clear, notice = AsyncMock(), AsyncMock()
-    monkeypatch.setattr(handler, "handle_clear_notice", clear)
-    monkeypatch.setattr(handler, "handle_notice", notice)
-    asyncio.run(invoke(session, redis, "공지삭제", role))
-    assert clear.await_count == int(allowed)
-    notice.assert_not_awaited()
-
-
 @pytest.mark.parametrize("name", ["alias|명령어", "명령어|alias"])
 def test_public_system_alias_executes_canonical_action(monkeypatch, name):
     service, session, redis = setup_route(monkeypatch, global_command=command(name, "system"))

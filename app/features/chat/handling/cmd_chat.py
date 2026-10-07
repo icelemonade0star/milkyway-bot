@@ -118,19 +118,5 @@ async def handle_notice(session, args):
         await session.send_chat("공지 등록에 실패했습니다.")
 
 
-async def handle_clear_notice(session):
-    success, applied = await session.clear_notice()
-    if not success:
-        await session.send_chat("공지 삭제에 실패했습니다.")
-        return
-
-    # 빈 문자열이 적용됐다면 공지 자체가 사라지고, 공백 문자가 적용됐다면
-    # 내용만 비어 있는 공지가 남습니다.
-    if applied:
-        await session.send_chat("공지를 비웠습니다. 치지직은 공지 삭제를 지원하지 않아 빈 공지로 남습니다.")
-    else:
-        await session.send_chat("공지를 삭제했습니다.")
-
-
 async def handle_text_response(session, cmd, user_name):
     await session.send_chat(render_placeholders(cmd.response, user_name))
