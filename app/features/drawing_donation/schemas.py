@@ -19,7 +19,7 @@ class DrawingDonationOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = False
     minimum_amount: int = Field(default=1000, ge=0, le=100000000)
-    replay_seconds: int = Field(default=20, ge=3, le=120)
+    replay_seconds: int = Field(default=5, ge=3, le=120)
     hold_seconds: int = Field(default=5, ge=1, le=30)
     canvas_width: int = Field(default=CANVAS_WIDTH, ge=320, le=MAX_CANVAS_WIDTH)
     canvas_height: int = Field(default=CANVAS_HEIGHT, ge=180, le=MAX_CANVAS_HEIGHT)

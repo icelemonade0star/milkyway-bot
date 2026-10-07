@@ -17,6 +17,7 @@ ADMIN_SYSTEM_COMMANDS = {
     "알림설정",
     "알림삭제",
     "공지",
+    "공지삭제",
 }
 
 ADMIN_ROLES = {"streamer", "channel_manager", "manager", "streaming_chat_manager"}

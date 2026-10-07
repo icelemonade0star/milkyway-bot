@@ -13,6 +13,7 @@ from app.features.chat.handling.attendance import (
     process_greeting_attendance_with_lock,
 )
 from app.features.chat.handling.cmd_chat import (
+    handle_clear_notice,
     handle_delete_command,
     handle_list_channel_commands,
     handle_list_commands,
@@ -204,3 +205,6 @@ async def _dispatch_system_command(session, db, chat_service, channel_id, comman
 
     elif command_name == "공지":
         await handle_notice(session, args)
+
+    elif command_name == "공지삭제":
+        await handle_clear_notice(session)

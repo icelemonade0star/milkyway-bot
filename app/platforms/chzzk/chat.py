@@ -15,6 +15,13 @@ logger = get_logger("ChzzkSessions")
 # base_url은 모든 인스턴스가 동일한 config.OPENAPI_BASE를 사용하므로 공유 가능
 _client = httpx.AsyncClient(base_url=config.OPENAPI_BASE, timeout=10.0)
 
+# 공지를 비울 때 시도하는 값들. 치지직 Open API는 공지 삭제를 지원하지 않아
+# 공지 등록 API로 덮어쓰는 방식만 가능하며, 어떤 값까지 허용하는지 문서화돼
+# 있지 않습니다. 빈 문자열 → 제로폭 공백(U+200B) → 한글 채움 문자(U+3164) 순으로
+# 시도합니다. 한글 채움 문자는 공백류로 취급되지 않아 서버가 값을 잘라내더라도
+# 남고, 화면에는 빈 공지처럼 보입니다.
+NOTICE_CLEAR_CANDIDATES = ("", "\u200b", "\u3164")
+
 class ChzzkSessions:
     platform = PLATFORM_CHZZK
 
@@ -221,11 +228,8 @@ class ChzzkSessions:
         logger.info("[%s] 재연결 후 이벤트 구독 복구 시작", self.channel_id)
         await self.subscribe_events()
     
-    async def send_notice(self, message: str):
-        message = message.strip()
-        if not message:
-            return False
-
+    async def _request_notice(self, message: str) -> httpx.Response:
+        """공지 등록 API를 호출합니다. 빈 문자열 검증은 호출하는 쪽에서 처리합니다."""
         await self._ensure_auth()
 
         headers = {
@@ -241,12 +245,44 @@ class ChzzkSessions:
                 headers['Authorization'] = f'Bearer {self.access_token}'
                 response = await _client.post(uri, headers=headers, json={"message": message})
 
+        return response
+
+    async def send_notice(self, message: str):
+        message = message.strip()
+        if not message:
+            return False
+
+        response = await self._request_notice(message)
+
         if response.status_code == 200:
             logger.info(f"✅ [{self.channel_id}] 채팅 공지 등록 성공: {message}")
             return True
         else:
             logger.error(f"❌ [{self.channel_id}] 채팅 공지 등록 실패: {response.status_code} - {response.text}")
             return False
+
+    async def clear_notice(self) -> tuple[bool, str]:
+        """공지 내용을 비웁니다.
+
+        치지직 Open API에는 공지 삭제 엔드포인트가 없어, 공지 등록 API로 내용을
+        덮어쓰는 방식으로 처리합니다. 빈 문자열이 거부될 수 있으므로
+        NOTICE_CLEAR_CANDIDATES를 순서대로 시도하고, 성공 여부와 실제로 적용된
+        값을 함께 반환합니다.
+        """
+        for candidate in NOTICE_CLEAR_CANDIDATES:
+            response = await self._request_notice(candidate)
+
+            if response.status_code == 200:
+                logger.info("[%s] 채팅 공지 비우기 성공: 적용값=%r", self.channel_id, candidate)
+                return True, candidate
+
+            logger.warning(
+                "[%s] 채팅 공지 비우기 시도 거부: 적용값=%r, HTTP %s - %s",
+                self.channel_id, candidate, response.status_code, response.text,
+            )
+
+        logger.error("[%s] 채팅 공지 비우기 실패: 모든 후보값이 거부됐습니다", self.channel_id)
+        return False, ""
 
     async def send_chat(self, message: str):
         message = message.strip()
