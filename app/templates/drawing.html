@@ -31,6 +31,10 @@
                     <label class="palette-custom"><input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
                 </div>
                 <label>굵기 <input id="penWidth" type="range" min="1" max="60" value="6"><output id="widthValue">6</output></label>
+                <button type="button" id="undoDrawing">되돌리기</button>
+                <button type="button" id="clearDrawing">모두 지우기</button>
+            </div>
+            <div class="drawing-tools drawing-background-tools" role="group" aria-label="배경 설정">
                 <label>배경 <select id="canvasBackgroundMode" aria-describedby="drawingBackgroundHint"><option value="color">배경색</option><option value="transparent">투명</option><option value="live">방송 이미지</option></select></label>
                 <div class="drawing-palette" id="backgroundColorControl" role="group" aria-label="배경 색상 팔레트">
                     <button type="button" class="palette-swatch" data-background-color="#171a18" aria-label="배경 검정" aria-pressed="false" style="--swatch-color: #171a18"></button>
@@ -42,15 +46,12 @@
                     <button type="button" class="palette-swatch" data-background-color="#ffffff" aria-label="배경 흰색" aria-pressed="true" style="--swatch-color: #ffffff"></button>
                     <label class="palette-custom"><input id="canvasBackgroundColor" type="color" value="#ffffff" aria-label="직접 배경색 선택" aria-describedby="drawingBackgroundHint"></label>
                 </div>
-                <button type="button" id="undoDrawing">되돌리기</button>
-                <button type="button" id="clearDrawing">모두 지우기</button>
             </div>
             <div class="drawing-tools" id="liveBackgroundControls" role="group" aria-label="방송 배경 설정" hidden>
                 <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50" aria-describedby="drawingBackgroundHint"><output id="liveBackgroundTransparencyValue">50%</output></label>
                 <button type="button" id="refreshLiveBackground">방송 이미지 새로고침</button>
                 <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
             </div>
-            <p class="help" id="drawingBackgroundHint">배경은 그림을 그릴 때만 보이며, 저장한 그림과 방송 오버레이에는 포함되지 않습니다. 투명 배경은 격자무늬로 표시합니다. 방송 배경 투명도 100%는 방송 이미지를 숨깁니다.</p>
             <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage"><img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div></div>
             <div class="drawing-footer"><span>{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스 · 마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
             <p class="status" id="drawingStatus" role="status" aria-live="polite"></p>

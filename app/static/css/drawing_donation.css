@@ -17,6 +17,7 @@ button[aria-pressed="true"], button.primary { color: white; background: #246544;
 button:disabled { opacity: .55; cursor: wait; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #88bd96; outline-offset: 2px; }
 .drawing-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+.drawing-background-tools { border-top: 1px solid #e0e8e1; padding-top: 18px; }
 .drawing-tools label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .drawing-tools select { border: 1px solid #d4dfd7; border-radius: 8px; padding: 8px; background: white; color: #2a4937; }
 .drawing-palette { display: flex; align-items: center; gap: 8px; }
@@ -27,7 +28,7 @@ input[type="color"] { width: 30px; height: 30px; padding: 0; border: 2px solid #
 input[type="range"] { width: 85px; accent-color: #246544; }
 .canvas-wrap { background: #eef2ee; padding: 16px; border-radius: 12px; }
 .canvas-stage { position: relative; background: var(--drawing-background, #ffffff); box-shadow: 0 2px 9px #243c2410; }
-.canvas-stage[data-background-mode="transparent"] { background-color: #fff; background-image: conic-gradient(#e1e5e1 25%, transparent 0 50%, #e1e5e1 0 75%, transparent 0); background-size: 20px 20px; }
+.canvas-stage[data-background-mode="transparent"], .canvas-stage[data-background-mode="live"] { background-color: #fff; background-image: conic-gradient(#e1e5e1 25%, transparent 0 50%, #e1e5e1 0 75%, transparent 0); background-size: 20px 20px; }
 #liveBackgroundImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: var(--live-background-opacity, .5); pointer-events: none; }
 #drawingCanvas { position: relative; width: 100%; height: auto; display: block; margin: auto; background: transparent; touch-action: none; cursor: crosshair; }
 .drawing-footer { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-top: 20px; }

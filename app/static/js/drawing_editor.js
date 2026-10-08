@@ -49,7 +49,7 @@
     });
     liveImage.addEventListener("error", () => {
         liveImage.hidden = true;
-        backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 배경색으로 계속 그릴 수 있어요.";
+        backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 계속 그림을 그릴 수 있어요.";
         finishBackgroundLoading();
     });
     async function loadLiveBackground() {
@@ -87,7 +87,7 @@
             liveImage.src = imageUrl.href;
         } catch {
             liveImage.hidden = true;
-            backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 배경색으로 계속 그릴 수 있어요.";
+            backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 계속 그림을 그릴 수 있어요.";
             finishBackgroundLoading();
         }
     }

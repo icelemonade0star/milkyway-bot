@@ -414,6 +414,7 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         assert canvas.evaluate("c => c.toDataURL()") == blank
         assert not backgrounds
         mode.select_option("live")
+        assert "conic-gradient" in page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundImage")
         image.wait_for(state="visible")
         assert refresh.is_disabled()
         refresh.dispatch_event("click")
