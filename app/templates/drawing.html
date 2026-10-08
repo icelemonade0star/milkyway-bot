@@ -31,19 +31,36 @@
                     <label class="palette-custom"><input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
                 </div>
                 <label>굵기 <input id="penWidth" type="range" min="1" max="60" value="6"><output id="widthValue">6</output></label>
+                <label>배경 <select id="canvasBackgroundMode" aria-describedby="drawingBackgroundHint"><option value="color">배경색</option><option value="transparent">투명</option><option value="live">방송 이미지</option></select></label>
+                <div class="drawing-palette" id="backgroundColorControl" role="group" aria-label="배경 색상 팔레트">
+                    <button type="button" class="palette-swatch" data-background-color="#171a18" aria-label="배경 검정" aria-pressed="false" style="--swatch-color: #171a18"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#18e94c" aria-label="배경 초록" aria-pressed="false" style="--swatch-color: #18e94c"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#ef3b3f" aria-label="배경 빨강" aria-pressed="false" style="--swatch-color: #ef3b3f"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#2f6ee5" aria-label="배경 파랑" aria-pressed="false" style="--swatch-color: #2f6ee5"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#f6a21a" aria-label="배경 주황" aria-pressed="false" style="--swatch-color: #f6a21a"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#8b4db0" aria-label="배경 보라" aria-pressed="false" style="--swatch-color: #8b4db0"></button>
+                    <button type="button" class="palette-swatch" data-background-color="#ffffff" aria-label="배경 흰색" aria-pressed="true" style="--swatch-color: #ffffff"></button>
+                    <label class="palette-custom"><input id="canvasBackgroundColor" type="color" value="#ffffff" aria-label="직접 배경색 선택" aria-describedby="drawingBackgroundHint"></label>
+                </div>
                 <button type="button" id="undoDrawing">되돌리기</button>
                 <button type="button" id="clearDrawing">모두 지우기</button>
             </div>
-            <div class="canvas-wrap"><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div>
+            <div class="drawing-tools" id="liveBackgroundControls" role="group" aria-label="방송 배경 설정" hidden>
+                <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50" aria-describedby="drawingBackgroundHint"><output id="liveBackgroundTransparencyValue">50%</output></label>
+                <button type="button" id="refreshLiveBackground">방송 이미지 새로고침</button>
+                <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
+            </div>
+            <p class="help" id="drawingBackgroundHint">배경은 그림을 그릴 때만 보이며, 저장한 그림과 방송 오버레이에는 포함되지 않습니다. 투명 배경은 격자무늬로 표시합니다. 방송 배경 투명도 100%는 방송 이미지를 숨깁니다.</p>
+            <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage"><img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div></div>
             <div class="drawing-footer"><span>{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스 · 마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
             <p class="status" id="drawingStatus" role="status" aria-live="polite"></p>
         </section>
         <section class="drawing-result" id="drawingResult" hidden>
-            <div><p class="eyebrow">그림을 저장했어요</p><h2>이 해시태그를 후원 메시지에 넣어주세요.</h2><p>최소 {{ "{:,}".format(options.minimum_amount) }}원 · 저장 후 1시간 이내 사용 · 같은 그림도 유효기간 내 후원할 때마다 다시 재생됩니다. 만료된 그림은 30분마다 정리합니다.</p></div>
+            <div><p class="eyebrow">그림을 저장했어요</p><h2>이 해시태그를 후원 메시지에 넣어주세요.</h2><p>최소 {{ "{:,}".format(options.minimum_amount) }}원 · 유효시간 1시간 · 같은 그림도 유효기간 내 후원할 때마다 다시 재생됩니다.</p></div>
             <div class="tag-copy"><input id="drawingTag" readonly aria-label="그림 해시태그"><button type="button" id="copyDrawingTag">복사</button></div>
             <img id="savedDrawingPreview" alt="저장한 그림 완성본">
         </section>
-        <script id="drawingConfig" type="application/json">{{ {"save_path": "/drawing/chzzk/" + channel.platform_channel_id}|tojson }}</script>
+        <script id="drawingConfig" type="application/json">{{ {"save_path": "/drawing/chzzk/" + channel.platform_channel_id, "background_path": "/drawing/chzzk/" + channel.platform_channel_id + "/background"}|tojson }}</script>
         <script src="/static/js/drawing_canvas.js"></script>
         <script src="/static/js/drawing_editor.js"></script>
         {% else %}

@@ -50,9 +50,9 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 tests/.drawing_test_tmp*/
-artifacts/drawing-donation/
+# Local test screenshots and verification artifacts
+/artifacts/
 tests/.guide_test_tmp*/
-artifacts/guide/
 nginx-runtime/
 cover/
 

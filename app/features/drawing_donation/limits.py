@@ -49,7 +49,8 @@ def client_address(request: Request) -> str:
     return address
 
 
-async def consume_limits(limits: Sequence[tuple[str, int, int, int]], message: str) -> None:
+async def consume_limits(limits: Sequence[tuple[str, int, int, int]], message: str,
+                         unavailable_message: str = "지금은 그림을 저장할 수 없습니다. 잠시 후 다시 시도해주세요.") -> None:
     keys = [key for key, _, _, _ in limits]
     arguments = [value for _, cost, limit, seconds in limits for value in (cost, limit, seconds)]
     try:
@@ -57,8 +58,8 @@ async def consume_limits(limits: Sequence[tuple[str, int, int, int]], message: s
         result = cast(Awaitable[int], redis_client.eval(LIMIT_SCRIPT, len(keys), *keys, *arguments))
         retry = int(await result)
     except RedisError as exc:
-        logger.error("그림 저장 제한 확인 실패: %s", exc)
-        raise HTTPException(503, "지금은 그림을 저장할 수 없습니다. 잠시 후 다시 시도해주세요.",
+        logger.error("그림 도네이션 요청 제한 확인 실패: %s", exc)
+        raise HTTPException(503, unavailable_message,
                             headers={"Retry-After": "30"}) from exc
     if retry:
         raise HTTPException(429, message, headers={"Retry-After": str(retry)})
@@ -77,3 +78,11 @@ async def limit_save_bytes(size: int) -> None:
     await consume_limits([
         ("drawing:save:bytes", size, config.DRAWING_DONATION_SAVE_BYTE_BUDGET, 5400),
     ], "그림 저장 공간이 잠시 혼잡합니다. 잠시 후 다시 시도해주세요.")
+
+
+async def limit_live_background_requests(request: Request) -> None:
+    identity = hashlib.sha256(client_address(request).encode()).hexdigest()
+    await consume_limits([
+        (f"drawing:background:ip:{identity}", 1, 1, 5),
+    ], "방송 이미지 요청이 너무 빠릅니다. 5초에 한 번씩 새로고침해주세요.",
+       "지금은 방송 이미지를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.")

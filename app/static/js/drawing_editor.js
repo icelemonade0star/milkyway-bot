@@ -4,6 +4,108 @@
     const canvas = document.getElementById("drawingCanvas"), ctx = canvas.getContext("2d");
     const status = document.getElementById("drawingStatus"), save = document.getElementById("saveDrawing");
     const result = document.getElementById("drawingResult");
+    const canvasStage = document.getElementById("drawingCanvasStage");
+    const backgroundColor = document.getElementById("canvasBackgroundColor");
+    function updateBackgroundColor() {
+        canvasStage.style.setProperty("--drawing-background", backgroundColor.value);
+        document.querySelectorAll("[data-background-color]").forEach(item =>
+            item.setAttribute("aria-pressed", String(item.dataset.backgroundColor === backgroundColor.value)));
+    }
+    document.querySelectorAll("[data-background-color]").forEach(button => button.addEventListener("click", () => {
+        backgroundColor.value = button.dataset.backgroundColor;
+        updateBackgroundColor();
+    }));
+    backgroundColor.addEventListener("input", updateBackgroundColor);
+    updateBackgroundColor();
+    const liveImage = document.getElementById("liveBackgroundImage");
+    const backgroundMode = document.getElementById("canvasBackgroundMode");
+    const transparency = document.getElementById("liveBackgroundTransparency");
+    const refreshBackground = document.getElementById("refreshLiveBackground");
+    const backgroundStatus = document.getElementById("liveBackgroundStatus");
+    let backgroundLoading = false, backgroundRetryAt = 0, backgroundRetryTimer = 0;
+    function updateBackgroundRefreshState() {
+        clearTimeout(backgroundRetryTimer);
+        const remaining = backgroundRetryAt - Date.now();
+        refreshBackground.disabled = backgroundLoading || remaining > 0;
+        if (remaining > 0) backgroundRetryTimer = setTimeout(updateBackgroundRefreshState, remaining + 20);
+    }
+    function startBackgroundCooldown(seconds) {
+        backgroundRetryAt = Date.now() + seconds * 1000;
+        updateBackgroundRefreshState();
+    }
+    function finishBackgroundLoading() {
+        backgroundLoading = false;
+        updateBackgroundRefreshState();
+    }
+    function updateBackgroundTransparency() {
+        canvasStage.style.setProperty("--live-background-opacity", String(1 - Number(transparency.value) / 100));
+        document.getElementById("liveBackgroundTransparencyValue").value = `${transparency.value}%`;
+    }
+    transparency.addEventListener("input", updateBackgroundTransparency);
+    updateBackgroundTransparency();
+    liveImage.addEventListener("load", () => {
+        liveImage.hidden = backgroundMode.value !== "live"; backgroundStatus.textContent = "";
+        finishBackgroundLoading();
+    });
+    liveImage.addEventListener("error", () => {
+        liveImage.hidden = true;
+        backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 배경색으로 계속 그릴 수 있어요.";
+        finishBackgroundLoading();
+    });
+    async function loadLiveBackground() {
+        if (backgroundLoading || backgroundMode.value !== "live") return;
+        if (Date.now() < backgroundRetryAt) {
+            backgroundStatus.textContent = `${Math.ceil((backgroundRetryAt - Date.now()) / 1000)}초 후 다시 시도해주세요.`;
+            return;
+        }
+        backgroundLoading = true;
+        refreshBackground.disabled = true;
+        backgroundStatus.textContent = "방송 이미지를 불러오고 있어요…";
+        try {
+            const response = await fetch(config.background_path, {cache: "no-store"});
+            const retry = Number(response.headers.get("Retry-After"));
+            const retrySeconds = !response.ok && Number.isFinite(retry) && retry > 0 ? Math.min(300, Math.ceil(retry)) : 0;
+            if (response.ok) startBackgroundCooldown(5);
+            else if (retrySeconds) startBackgroundCooldown(retrySeconds);
+            let data = null;
+            try { data = await response.json(); }
+            catch { if (response.ok) throw new Error("방송 이미지 응답 형식 오류"); }
+            if (!response.ok) {
+                const message = typeof data?.error === "string" ? data.error :
+                    typeof data?.detail === "string" ? data.detail : "방송 이미지 조회에 실패했어요.";
+                backgroundStatus.textContent = message + (retrySeconds ? ` ${retrySeconds}초 후 다시 시도해주세요.` : "");
+                finishBackgroundLoading(); return;
+            }
+            if (typeof data?.image_url !== "string" || !data.image_url) {
+                liveImage.hidden = true; liveImage.removeAttribute("src");
+                backgroundStatus.textContent = "현재 사용할 수 있는 방송 이미지가 없어요.";
+                finishBackgroundLoading(); return;
+            }
+            // 외부 이미지는 캔버스 아래에서만 표시하여 PNG와 재생 기록에 섞이지 않게 한다.
+            const imageUrl = new URL(data.image_url);
+            imageUrl.searchParams.set("_mw", String(Date.now()));
+            liveImage.src = imageUrl.href;
+        } catch {
+            liveImage.hidden = true;
+            backgroundStatus.textContent = "방송 이미지를 불러오지 못했어요. 배경색으로 계속 그릴 수 있어요.";
+            finishBackgroundLoading();
+        }
+    }
+    refreshBackground.addEventListener("click", loadLiveBackground);
+    function updateBackgroundMode() {
+        const live = backgroundMode.value === "live";
+        canvasStage.dataset.backgroundMode = backgroundMode.value;
+        document.getElementById("liveBackgroundControls").hidden = !live;
+        document.getElementById("backgroundColorControl").hidden = backgroundMode.value !== "color";
+        liveImage.hidden = !live || !liveImage.complete || !liveImage.naturalWidth;
+        if (live && !liveImage.getAttribute("src")) loadLiveBackground();
+    }
+    backgroundMode.addEventListener("change", updateBackgroundMode);
+    updateBackgroundMode();
+    window.addEventListener("pageshow", () => {
+        updateBackgroundColor(); updateBackgroundTransparency(); updateBackgroundMode();
+        updateBackgroundRefreshState();
+    });
     const recording = {width: canvas.width, height: canvas.height, actions: []};
     let tool = "pen", current = null, pointer = null, started = null, pointCount = 0;
     const undoStack = [];

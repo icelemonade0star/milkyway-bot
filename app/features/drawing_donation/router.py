@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +8,8 @@ from app.core.database import get_async_db
 from app.features.dashboard.router import get_dashboard_session
 from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingSaveRequest
 from app.features.drawing_donation.service import DrawingDonationService
-from app.features.drawing_donation.limits import limit_save_requests, limit_save_bytes
+from app.features.drawing_donation.limits import limit_save_requests, limit_save_bytes, limit_live_background_requests
+from app.features.drawing_donation.live_background import get_live_background_url
 
 drawing_router = APIRouter(tags=["drawing-donation"])
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
@@ -38,6 +39,17 @@ async def drawing_page(channel_id: str, request: Request, db: AsyncSession = Dep
     channel, setting = await DrawingDonationService(db).setting(channel_id)
     options = DrawingDonationOptions.model_validate(setting.options) if setting else DrawingDonationOptions()
     return templates.TemplateResponse(request=request, name="drawing.html", context={"request": request, "channel": channel, "options": options})
+
+
+@drawing_router.get("/drawing/chzzk/{channel_id}/background")
+async def drawing_background(channel_id: str, request: Request, db: AsyncSession = Depends(get_async_db)):
+    channel, setting = await DrawingDonationService(db).setting(channel_id)
+    options = DrawingDonationOptions.model_validate(setting.options) if setting else DrawingDonationOptions()
+    if not options.enabled:
+        raise HTTPException(403, "현재 그림 도네이션을 받지 않는 채널입니다.")
+    await limit_live_background_requests(request)
+    image_url = await get_live_background_url(channel.platform_channel_id)
+    return JSONResponse({"image_url": image_url}, headers={"Cache-Control": "no-store"})
 
 
 @drawing_router.post("/drawing/chzzk/{channel_id}")

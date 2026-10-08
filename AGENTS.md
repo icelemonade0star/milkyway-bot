@@ -26,3 +26,10 @@
 - After creating or modifying Python files, including tests, run Pyright on the changed files with the project's virtual environment: `.venv/Scripts/python.exe -m pyright <changed-python-files> --pythonpath .venv/Scripts/python.exe`.
 - Resolve newly introduced type errors before reporting completion. Passing runtime tests alone does not replace type checking.
 - Handle optional values explicitly. When a third-party library has inaccurate synchronous/asynchronous type declarations, verify the actual client and return type before using a narrowly scoped `cast`; do not hide errors with blanket type-checking suppression.
+
+## Temporary artifacts
+
+- Keep temporary test and verification output in Git-ignored locations such as `artifacts/` or the system temporary directory.
+- Before reporting completion, delete temporary artifacts created during the task, including screenshots, test output directories, logs, and one-off verification scripts, unless the user explicitly asks to keep them. Adding files to `.gitignore` does not replace cleanup.
+- Delete only files and directories verified to be temporary artifacts. Preserve source files, test fixtures, user files, and requested deliverables; do not delete pre-existing files solely because they are untracked or ignored by Git.
+- If cleanup fails, report the remaining paths and the reason instead of claiming that cleanup is complete.

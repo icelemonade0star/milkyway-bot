@@ -354,3 +354,232 @@ def test_save_errors_from_application_handler_are_shown_and_can_be_retried(mode)
             page.wait_for_function("document.getElementById('settingsStatus').textContent === '설정을 저장했어요.'")
         assert len(attempts) == 2
         browser.close()
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverable(width, tmp_path):
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트 스트리머", platform_channel_id="channel"), options=options)
+    backgrounds = []
+    saved = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.clock.install()
+        page.route("**/static/**", serve_assets)
+        def editor(route: Route):
+            if route.request.method == "GET":
+                route.fulfill(body=html, content_type="text/html")
+            else:
+                saved.append(DrawingSaveRequest.model_validate(route.request.post_data_json))
+                route.fulfill(json={"hashtag": "#mw-" + "d" * 24})
+        def background(route: Route):
+            backgrounds.append(route.request.url)
+            if len(backgrounds) == 2:
+                route.fulfill(status=429, json={"error": "방송 이미지 요청이 너무 빠릅니다."}, headers={"Retry-After": "1"})
+            else:
+                route.fulfill(json={"image_url": None if len(backgrounds) == 3 else
+                                    "https://thumbnail.example/image_720.jpg" if len(backgrounds) != 4 else
+                                    "https://thumbnail.example/broken.jpg"})
+        page.route("**/drawing/chzzk/channel", editor)
+        page.route("**/drawing/chzzk/channel/background", background)
+        # CORS 헤더가 없는 외부 이미지도 HTML 배경으로만 표시되어 캔버스 저장을 방해하지 않는다.
+        page.route("https://thumbnail.example/**", lambda route: route.fulfill(
+            status=404 if "broken" in route.request.url else 200, content_type="image/svg+xml",
+            body='invalid-image' if "broken" in route.request.url else
+                 '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#698bb2"/></svg>'))
+        page.goto("http://localhost/drawing/chzzk/channel")
+        canvas = page.locator("#drawingCanvas")
+        mode = page.locator("#canvasBackgroundMode")
+        image = page.locator("#liveBackgroundImage")
+        refresh = page.locator("#refreshLiveBackground")
+        status = page.locator("#liveBackgroundStatus")
+        blank = canvas.evaluate("c => c.toDataURL()")
+        assert mode.input_value() == "color" and not backgrounds
+        assert page.locator("#liveBackgroundControls").is_hidden()
+        page.locator('[data-tool="eraser"]').click()
+        page.get_by_role("button", name="배경 파랑", exact=True).click()
+        assert page.locator("#canvasBackgroundColor").input_value() == "#2f6ee5"
+        assert page.locator('[data-tool="eraser"]').get_attribute("aria-pressed") == "true"
+        assert page.locator("#penColor").input_value() == "#25453c"
+        assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(47, 110, 229)"
+        page.locator("#canvasBackgroundColor").fill("#20362e")
+        assert page.locator('[data-background-color][aria-pressed="true"]').count() == 0
+        mode.select_option("transparent")
+        assert "conic-gradient" in page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundImage")
+        assert page.locator("#backgroundColorControl").is_hidden()
+        assert canvas.evaluate("c => c.toDataURL()") == blank
+        assert not backgrounds
+        mode.select_option("live")
+        image.wait_for(state="visible")
+        assert refresh.is_disabled()
+        refresh.dispatch_event("click")
+        assert len(backgrounds) == 1
+        assert image.evaluate("i => i.naturalWidth") == 1280
+        assert "image_720.jpg" in (image.get_attribute("src") or "")
+        assert image.evaluate("i => getComputedStyle(i).opacity") == "0.5"
+        assert canvas.evaluate("c => c.toDataURL()") == blank
+        page.locator('[data-color="#ffffff"]').click()
+        canvas.click(position={"x": 30, "y": 30})
+        picture = canvas.evaluate("c => c.toDataURL()")
+        page.locator("#liveBackgroundTransparency").fill("100")
+        assert image.evaluate("i => getComputedStyle(i).opacity") == "0"
+        assert page.locator("#liveBackgroundTransparencyValue").text_content() == "100%"
+        page.locator("#liveBackgroundTransparency").fill("0")
+        assert image.evaluate("i => getComputedStyle(i).opacity") == "1"
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        mode.select_option("color")
+        assert image.is_hidden()
+        assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(32, 54, 46)"
+        mode.select_option("live")
+        assert image.is_visible() and len(backgrounds) == 1
+        page.locator("#liveBackgroundTransparency").fill("50")
+        page.locator("#saveDrawing").click()
+        page.wait_for_function("document.getElementById('drawingTag').value.startsWith('#mw-')")
+        assert saved[0].final_png == picture
+        assert len(saved[0].recording.actions) == 1
+        assert canvas.evaluate("c => c.getContext('2d').getImageData(700,500,1,1).data[3]") == 0
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.screenshot(path=str(tmp_path / f"live-background-{width}.png"), full_page=True)
+        mode.select_option("transparent")
+        assert image.is_hidden()
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        assert page.locator("#drawingResult").is_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.screenshot(path=str(tmp_path / f"transparent-background-{width}.png"), full_page=True)
+        mode.select_option("live")
+        page.clock.fast_forward(5100)
+        assert refresh.is_enabled()
+        refresh.click()
+        page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('1초 후')")
+        assert "요청이 너무 빠릅니다" in status.inner_text()
+        assert refresh.is_disabled() and image.is_visible()
+        page.clock.fast_forward(1100)
+        page.wait_for_function("!document.getElementById('refreshLiveBackground').disabled")
+        refresh.click()
+        page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('이미지가 없어요')")
+        assert image.is_hidden() and refresh.is_disabled()
+        page.clock.fast_forward(5100)
+        refresh.click()
+        page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('불러오지 못했어요')")
+        assert refresh.is_disabled() and image.is_hidden()
+        page.clock.fast_forward(5100)
+        refresh.click()
+        image.wait_for(state="visible")
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        assert page.locator("#drawingResult").is_visible()
+        assert refresh.is_disabled()
+        assert not errors
+        browser.close()
+
+
+def test_live_background_loaded_after_switching_to_color_stays_hidden():
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트", platform_channel_id="channel"), options=options)
+    pending: list[Route] = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.route("**/static/**", serve_assets)
+        page.route("**/drawing/chzzk/channel", lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.route("**/drawing/chzzk/channel/background", lambda route: pending.append(route))
+        page.route("https://thumbnail.example/**", lambda route: route.fulfill(content_type="image/svg+xml",
+            body='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>'))
+        page.goto("http://localhost/drawing/chzzk/channel")
+        with page.expect_request("**/drawing/chzzk/channel/background"):
+            page.locator("#canvasBackgroundMode").select_option("live")
+        page.locator("#canvasBackgroundMode").select_option("color")
+        assert len(pending) == 1
+        pending[0].fulfill(json={"image_url": "https://thumbnail.example/image_720.jpg"})
+        page.wait_for_function("document.getElementById('liveBackgroundImage').naturalWidth > 0")
+        assert page.locator("#liveBackgroundImage").is_hidden()
+        assert page.locator("#liveBackgroundControls").is_hidden()
+        browser.close()
+
+
+@pytest.mark.parametrize("status_code,body", [(429, "<html>Too many requests</html>"),
+                                              (503, "<html>Service unavailable</html>"),
+                                              (429, ""), (503, "null")])
+def test_live_background_non_json_errors_keep_retry_after_and_can_be_retried(status_code, body):
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트", platform_channel_id="channel"), options=options)
+    requests = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.clock.install()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.route("**/static/**", serve_assets)
+        page.route("**/drawing/chzzk/channel", lambda route: route.fulfill(body=html, content_type="text/html"))
+        def background(route: Route):
+            requests.append(route.request.url)
+            if len(requests) == 1:
+                route.fulfill(status=status_code, body=body, content_type="text/html", headers={"Retry-After": "2"})
+            else:
+                route.fulfill(json={"image_url": None})
+        page.route("**/drawing/chzzk/channel/background", background)
+        page.goto("http://localhost/drawing/chzzk/channel")
+        page.locator("#drawingCanvas").click(position={"x": 30, "y": 30})
+        picture = page.locator("#drawingCanvas").evaluate("c => c.toDataURL()")
+        page.locator("#canvasBackgroundMode").select_option("live")
+        page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('2초 후')")
+        refresh = page.locator("#refreshLiveBackground")
+        assert "조회에 실패" in page.locator("#liveBackgroundStatus").inner_text()
+        assert refresh.is_disabled()
+        refresh.dispatch_event("click")
+        assert len(requests) == 1
+        page.clock.fast_forward(1000)
+        assert refresh.is_disabled()
+        page.clock.fast_forward(1100)
+        assert refresh.is_enabled()
+        refresh.click()
+        page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('이미지가 없어요')")
+        assert len(requests) == 2 and refresh.is_disabled()
+        assert page.locator("#drawingCanvas").evaluate("c => c.toDataURL()") == picture
+        page.clock.fast_forward(5100)
+        assert refresh.is_enabled()
+        assert not errors
+        browser.close()
+
+
+@pytest.mark.parametrize("mode", ["transparent", "live"])
+def test_initial_and_restored_background_mode_matches_controls(mode):
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트", platform_channel_id="channel"), options=options)
+    html = html.replace(f'<option value="{mode}">', f'<option value="{mode}" selected>')
+    requests = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.route("**/static/**", serve_assets)
+        page.route("**/drawing/chzzk/channel", lambda route: route.fulfill(body=html, content_type="text/html"))
+        def background(route: Route):
+            requests.append(route.request.url)
+            route.fulfill(json={"image_url": None})
+        page.route("**/drawing/chzzk/channel/background", background)
+        page.goto("http://localhost/drawing/chzzk/channel")
+        assert page.locator("#drawingCanvasStage").get_attribute("data-background-mode") == mode
+        assert page.locator("#backgroundColorControl").is_hidden()
+        assert page.locator("#liveBackgroundControls").is_visible() == (mode == "live")
+        if mode == "live":
+            page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('이미지가 없어요')")
+            assert len(requests) == 1
+        else:
+            assert not requests
+            assert "conic-gradient" in page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundImage")
+        page.evaluate("""() => {
+            document.getElementById('canvasBackgroundMode').value = 'color';
+            window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}));
+        }""")
+        assert page.locator("#drawingCanvasStage").get_attribute("data-background-mode") == "color"
+        assert page.locator("#backgroundColorControl").is_visible()
+        assert page.locator("#liveBackgroundControls").is_hidden()
+        assert page.locator("#liveBackgroundImage").is_hidden()
+        browser.close()

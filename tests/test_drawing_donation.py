@@ -32,6 +32,7 @@ from app.features.drawing_donation.service import DrawingDonationService, drawin
 from app.features.chat.handling import events
 from app.features.drawing_donation.cleanup import DrawingDonationCleanup
 from app.features.drawing_donation import limits
+from app.features.drawing_donation import live_background, router as drawing_routes
 from app.exception_handlers import register_exception_handlers
 
 
@@ -570,3 +571,80 @@ def test_proxy_ip_is_only_used_when_explicitly_trusted(monkeypatch):
     assert limits.client_address(request) == "203.0.113.1"
     invalid = Request({"type": "http", "client": ("172.18.0.2", 1), "headers": [(b"x-real-ip", b"spoofed")]})
     assert limits.client_address(invalid) == "172.18.0.2"
+
+
+@pytest.mark.parametrize("payload,expected", [
+    ({"content": {"liveImageUrl": "https://thumbnail.example/image_{type}.jpg"}}, "https://thumbnail.example/image_720.jpg"),
+    ({"content": {"liveImageUrl": "https://thumbnail.example/image_720.jpg"}}, "https://thumbnail.example/image_720.jpg"),
+    ({"content": None}, None),
+    ({"content": {"liveImageUrl": None}}, None),
+    ({"content": {"liveImageUrl": 123}}, None),
+    ({"content": {"liveImageUrl": "javascript:alert(1)"}}, None),
+    ({"content": {"liveImageUrl": "https://user:password@thumbnail.example/image.jpg"}}, None),
+    ([], None),
+])
+def test_live_background_uses_720_and_handles_missing_or_invalid_urls(monkeypatch, payload, expected):
+    def upstream(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://api.chzzk.naver.com/service/v3/channels/channel/live-detail"
+        assert request.headers["Origin"] == "https://chzzk.naver.com"
+        return httpx.Response(200, json=payload)
+    client_class = httpx.AsyncClient
+    monkeypatch.setattr(live_background.httpx, "AsyncClient", lambda **kwargs:
+                        client_class(transport=httpx.MockTransport(upstream), **kwargs))
+    assert asyncio.run(live_background.get_live_background_url("channel")) == expected
+
+
+@pytest.mark.parametrize("failure", ["timeout", "http", "json"])
+def test_live_background_upstream_failure_returns_no_image(monkeypatch, failure):
+    def upstream(request: httpx.Request) -> httpx.Response:
+        if failure == "timeout":
+            raise httpx.ReadTimeout("timeout", request=request)
+        return httpx.Response(502 if failure == "http" else 200, content=b"not-json")
+    client_class = httpx.AsyncClient
+    monkeypatch.setattr(live_background.httpx, "AsyncClient", lambda **kwargs:
+                        client_class(transport=httpx.MockTransport(upstream), **kwargs))
+    assert asyncio.run(live_background.get_live_background_url("channel")) is None
+
+
+def test_live_background_endpoint_enforces_channel_and_rate_limit(db, monkeypatch, save_redis):
+    fetch = AsyncMock(return_value="https://thumbnail.example/image_720.jpg")
+    monkeypatch.setattr(drawing_routes, "get_live_background_url", fetch)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=save_app(db)), base_url="http://test") as client:
+            assert (await client.get("/drawing/chzzk/missing/background")).status_code == 404
+            assert (await client.get("/drawing/chzzk/channel/background")).status_code == 403
+            fetch.assert_not_awaited()
+            await enabled(db)
+            await enabled(db, "other")
+            response = await client.get("/drawing/chzzk/channel/background")
+            assert response.status_code == 200
+            assert response.json()["image_url"] == fetch.return_value
+            assert response.headers["Cache-Control"] == "no-store"
+            responses = await asyncio.gather(*[client.get("/drawing/chzzk/other/background") for _ in range(3)])
+            for response in responses:
+                assert response.status_code == 429
+                assert 1 <= int(response.headers["Retry-After"]) <= 5
+                assert "방송 이미지" in response.json()["error"]
+            fetch.assert_awaited_once_with("channel")
+            assert not await save_redis.keys("drawing:save:*")
+            for key in await save_redis.keys("drawing:background:*"):
+                await save_redis.delete(key)
+            assert (await client.get("/drawing/chzzk/other/background")).status_code == 200
+            await save_redis.aclose()
+    asyncio.run(run())
+
+
+def test_live_background_limit_failure_does_not_call_upstream(db, monkeypatch):
+    fetch = AsyncMock()
+    monkeypatch.setattr(drawing_routes, "get_live_background_url", fetch)
+    monkeypatch.setattr(limits, "redis_client", Mock(eval=AsyncMock(side_effect=RedisConnectionError("unavailable"))))
+    async def run():
+        await enabled(db)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=save_app(db)), base_url="http://test") as client:
+            response = await client.get("/drawing/chzzk/channel/background")
+            assert response.status_code == 503
+            assert "방송 이미지" in response.json()["error"]
+            assert response.headers["Retry-After"] == "30"
+            assert (await client.get("/drawing/chzzk/channel")).status_code == 200
+        fetch.assert_not_awaited()
+    asyncio.run(run())
