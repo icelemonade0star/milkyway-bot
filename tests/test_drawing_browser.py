@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from jinja2 import Environment, FileSystemLoader
@@ -783,4 +784,156 @@ def test_recording_excludes_idle_and_undone_time_and_keeps_limit_and_failed_copy
         page.locator("#drawingResult").wait_for(state="visible")
         last = saved[2].recording.actions[-1]
         assert isinstance(last, Stroke) and last.points[0].t == 1000 and last.points[-1].t == 1500
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_dashboard_history_thumbnails_paging_replay_and_expiry(width, tmp_path):
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("dashboard_drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트 스트리머"), options=options,
+        drawing_url="/drawing/chzzk/channel", overlay_url="/drawing/overlay/test", preview_path="/drawing/overlay/test?preview=1")
+    now = datetime.now(timezone.utc)
+    nickname = '<img src=x onerror="alert(1)">'
+    def item(identity, name, *, drawing_id="shared-drawing", status="done"):
+        return {"id": str(identity), "drawing_id": drawing_id, "nickname": name, "amount": 12500,
+                "status": status, "played_at": now.isoformat(), "received_at": now.isoformat(),
+                "expires_at": (now + timedelta(hours=1)).isoformat(), "replay_status": None}
+    items = [item(3, nickname), item(2, "익명"), item(1, "재생 중인 후원자", drawing_id="another-drawing", status="playing")]
+    recording = {"width": 400, "height": 300, "actions": [{"type": "stroke", "tool": "pen", "color": "#246544",
+        "width": 20, "points": [{"x": 40, "y": 40, "t": 0}, {"x": 120, "y": 40, "t": 1000}]}]}
+    state = {"expired": False, "pending": False}
+    requests, preview_requests, replays, errors = [], [], [], []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 1100})
+        page.clock.install(time=now)
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.on("request", lambda request: requests.append(request.url))
+        page.route("**/static/**", serve_assets)
+        page.route("**/auth/dashboard/drawing", lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.route("**/drawing/overlay/test?preview=1", lambda route: route.fulfill(body="<html></html>", content_type="text/html"))
+        def history(route: Route):
+            if state["expired"]:
+                rows, cursor = [], None
+            elif "before=" in route.request.url:
+                rows, cursor = items[2:], None
+            else:
+                rows, cursor = items[:2], "2"
+            data = [{**row, "replay_status": "queued" if state["pending"] and row["id"] == "3" else None} for row in rows]
+            route.fulfill(json={"items": data, "next_cursor": cursor, "enabled": True,
+                                "server_now": (now + timedelta(hours=1, seconds=1) if state["expired"] else now).isoformat()})
+        page.route("**/auth/dashboard/drawing/history*", history)
+        def preview(route: Route):
+            preview_requests.append(route.request.url)
+            route.fulfill(json={"recording": recording})
+        page.route("**/auth/dashboard/drawing/history/*/recording", preview)
+        def replay(route: Route):
+            assert route.request.method == "POST"
+            replays.append(route.request.url)
+            if len(replays) == 1:
+                route.fulfill(status=503, json={"error": "재생 요청에 실패했어요. 다시 시도해주세요."})
+            else:
+                state["pending"] = True
+                route.fulfill(json={"id": "100", "status": "queued", "already_queued": False})
+        page.route("**/auth/dashboard/drawing/history/*/replay", replay)
+        page.goto("http://localhost/auth/dashboard/drawing")
+        page.wait_for_function("document.querySelectorAll('.drawing-history-item').length === 2")
+        cards = page.locator(".drawing-history-item")
+        assert cards.nth(0).locator("strong").inner_text() == nickname
+        assert "12,500원" in cards.nth(0).inner_text()
+        assert page.locator('img[src="x"]').count() == 0
+        for index in range(2):
+            cards.nth(index).scroll_into_view_if_needed()
+            cards.nth(index).locator("img").wait_for(state="visible")
+        assert len(preview_requests) == 1
+        expected = page.evaluate("""recording => {
+            const source = document.createElement('canvas'); source.width = recording.width; source.height = recording.height;
+            DrawingCanvas.render(source, recording, Infinity, true);
+            const preview = document.createElement('canvas'); preview.width = 240; preview.height = 180;
+            preview.getContext('2d').drawImage(source, 0, 0, 240, 180); return preview.toDataURL();
+        }""", recording)
+        assert cards.nth(0).locator("img").get_attribute("src") == expected
+        assert "conic-gradient" in cards.nth(0).locator(".drawing-history-picture").evaluate("e => getComputedStyle(e).backgroundImage")
+        page.locator("#moreDrawingHistory").click()
+        page.wait_for_function("document.querySelectorAll('.drawing-history-item').length === 3")
+        assert page.locator("#moreDrawingHistory").is_hidden()
+        assert cards.nth(2).get_by_role("button", name="재생 중인 후원자님의 후원 그림 방송에서 다시 재생").is_disabled()
+        button = cards.nth(0).get_by_role("button", name=f"{nickname}님의 후원 그림 방송에서 다시 재생")
+        button.click()
+        page.wait_for_function("document.getElementById('drawingHistoryStatus').textContent.includes('실패했어요')")
+        assert button.is_enabled()
+        button.click()
+        page.wait_for_function("document.getElementById('drawingHistoryStatus').textContent.includes('대기열에 추가했어요')")
+        assert button.is_disabled() and button.inner_text() == "다시 재생 대기 중"
+        button.dispatch_event("click")
+        assert len(replays) == 2
+        assert not any("/next" in url for url in requests)
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.locator(".drawing-history").screenshot(path=str(tmp_path / f"drawing-history-{width}.png"))
+        state["expired"] = True
+        page.clock.fast_forward(3601000)
+        page.wait_for_function("document.querySelectorAll('.drawing-history-item').length === 0")
+        assert page.locator("#drawingHistoryEmpty").is_visible()
+        assert not errors
+        browser.close()
+
+
+def test_dashboard_history_and_preview_failures_retry_and_expired_replay_is_removed():
+    options = DrawingDonationOptions(enabled=False)
+    html = templates.get_template("dashboard_drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트"), options=options,
+        drawing_url="/drawing/chzzk/channel", overlay_url="/drawing/overlay/test", preview_path="/drawing/overlay/test?preview=1")
+    now = datetime.now(timezone.utc)
+    item = {"id": "1", "drawing_id": "drawing", "nickname": "시청자", "amount": 1000, "status": "done",
+            "played_at": now.isoformat(), "expires_at": (now + timedelta(hours=1)).isoformat(), "replay_status": None}
+    requests, preview_requests, errors = [], [], []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.route("**/static/**", serve_assets)
+        def settings(route: Route):
+            if route.request.method == "GET":
+                route.fulfill(body=html, content_type="text/html")
+            else:
+                route.fulfill(json={"status": "success", "options": route.request.post_data_json})
+        page.route("**/auth/dashboard/drawing", settings)
+        page.route("**/drawing/overlay/test?preview=1", lambda route: route.fulfill(body="<html></html>", content_type="text/html"))
+        def history(route: Route):
+            requests.append(route.request.url)
+            if len(requests) == 1:
+                route.fulfill(status=503, body="<html>Unavailable</html>", content_type="text/html")
+            else:
+                route.fulfill(json={"items": [item], "next_cursor": None, "enabled": False, "server_now": now.isoformat()})
+        page.route("**/auth/dashboard/drawing/history", history)
+        def preview(route: Route):
+            preview_requests.append(route.request.url)
+            if len(preview_requests) == 1:
+                route.fulfill(status=502, body="Unavailable", content_type="text/html")
+            else:
+                route.fulfill(json={"recording": {"width": 800, "height": 600, "actions": [{"type": "stroke", "tool": "fill",
+                    "color": "#246544", "width": 1, "points": [{"x": 10, "y": 10, "t": 0}]}]}})
+        page.route("**/auth/dashboard/drawing/history/1/recording", preview)
+        page.route("**/auth/dashboard/drawing/history/1/replay", lambda route: route.fulfill(status=410, json={"error": "그림 보관 시간이 지났습니다."}))
+        page.goto("http://localhost/auth/dashboard/drawing")
+        page.wait_for_function("document.getElementById('drawingHistoryStatus').textContent.includes('처리하지 못했어요')")
+        assert page.locator("#refreshDrawingHistory").is_enabled()
+        assert page.locator("#drawingHistoryEmpty").is_hidden()
+        page.locator("#refreshDrawingHistory").click()
+        card = page.locator(".drawing-history-item")
+        card.wait_for(state="visible"); card.scroll_into_view_if_needed()
+        card.get_by_role("button", name="미리보기 다시 불러오기").click()
+        card.locator("img").wait_for(state="visible")
+        assert len(preview_requests) == 2
+        replay_button = card.get_by_role("button", name="시청자님의 후원 그림 방송에서 다시 재생")
+        assert replay_button.is_disabled()
+        page.locator('[name="enabled"]').check()
+        page.locator('#drawingSettings [type="submit"]').click()
+        page.wait_for_function("document.getElementById('settingsStatus').textContent === '설정을 저장했어요.'")
+        assert replay_button.is_enabled()
+        replay_button.click()
+        page.wait_for_function("document.getElementById('drawingHistoryStatus').textContent.includes('보관 시간이 지났습니다')")
+        assert card.count() == 0 and page.locator("#drawingHistoryEmpty").is_visible()
+        assert not errors
         browser.close()

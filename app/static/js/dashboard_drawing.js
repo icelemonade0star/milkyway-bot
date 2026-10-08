@@ -17,6 +17,7 @@
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error :
                 typeof data.detail === "string" ? data.detail : "설정 저장에 실패했습니다.");
             status.textContent = "설정을 저장했어요."; test();
+            window.dispatchEvent(new CustomEvent("drawing-settings-saved", {detail: data.options || options()}));
         } catch (error) { status.textContent = error.message; }
         finally { button.disabled = false; }
     });

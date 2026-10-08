@@ -382,6 +382,209 @@ def test_tag_matching_requires_complete_tag_and_ignores_duplicate_mentions():
     assert drawing_tags(None) == []
 
 
+def test_history_lists_only_unexpired_actual_donations_that_started_and_pages_by_id(db):
+    async def run():
+        service, setting = await enabled(db)
+        other_service, _ = await enabled(db, "other")
+        drawing = await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        original = await service.enqueue_donation("channel", donation(drawing.hashtag, donatorNickname="첫 후원", payAmount="2500"))
+        assert original is not None
+        await service.next_playback(setting.overlay_token)
+        original.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        await db.commit()
+        await service.next_playback(setting.overlay_token)
+        assert original.status == "done"
+        other_drawing = await other_service.save_drawing("other", DrawingSaveRequest.model_validate(save_payload()))
+        other = await other_service.enqueue_donation("other", donation(other_drawing.hashtag))
+        assert other is not None
+        other.status, other.started_at = "done", datetime.now(timezone.utc)
+        expired = await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        expired_job = await service.enqueue_donation("channel", donation(expired.hashtag))
+        assert expired_job is not None
+        expired_job.status, expired_job.started_at = "done", datetime.now(timezone.utc)
+        expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        playing = await service.enqueue_donation("channel", donation(drawing.hashtag, donatorNickname="두 번째 후원"))
+        assert playing is not None
+        await service.next_playback(setting.overlay_token)
+        queued = await service.enqueue_donation("channel", donation(drawing.hashtag))
+        assert queued is not None
+        replay, _ = await service.replay_donation("channel", original.id)
+        first = await service.history("channel", limit=1)
+        assert first["enabled"] is True
+        assert [item["id"] for item in first["items"]] == [str(playing.id)]
+        assert first["next_cursor"] == str(playing.id)
+        second = await service.history("channel", before=playing.id, limit=1)
+        assert second["next_cursor"] is None
+        item = second["items"][0]
+        assert item["id"] == str(original.id) and item["nickname"] == "첫 후원" and item["amount"] == 2500
+        assert item["drawing_id"] == str(drawing.id) and item["replay_status"] == "queued"
+        assert "recording" not in item and "final_png" not in item
+        assert (await service.history_drawing("channel", original.id))[1] is drawing
+        for job in [other, queued, replay]:
+            with pytest.raises(HTTPException) as error:
+                await service.history_drawing("channel", job.id)
+            assert error.value.status_code == 404
+        with pytest.raises(HTTPException) as error:
+            await service.history_drawing("channel", expired_job.id)
+        assert error.value.status_code == 410
+    asyncio.run(run())
+
+
+def test_manual_replay_preserves_real_donation_history_fifo_options_and_retention(db, monkeypatch):
+    async def run():
+        service, setting = await enabled(db)
+        drawing = await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        deadline = drawing.expires_at
+        original = await service.enqueue_donation("channel", donation(drawing.hashtag, donatorNickname="원래 후원자", payAmount="12345"))
+        assert original is not None
+        await service.next_playback(setting.overlay_token)
+        original.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        await db.commit()
+        await service.next_playback(setting.overlay_token)
+        original_started = original.started_at
+        queued = await service.enqueue_donation("channel", donation(drawing.hashtag, donatorNickname="다음 후원"))
+        assert queued is not None
+        execute, queries = db.execute, []
+        async def capture(query):
+            queries.append(str(query.compile(dialect=postgresql.dialect())))
+            return await execute(query)
+        monkeypatch.setattr(db, "execute", capture)
+        replay, already_queued = await service.replay_donation("channel", original.id)
+        assert not already_queued and replay.playback == {"replay_of": original.id}
+        repeated, already_queued = await service.replay_donation("channel", original.id)
+        assert already_queued and repeated.id == replay.id
+        assert any("FOR UPDATE OF v2_drawing_donation_settings" in query for query in queries)
+        assert any("FOR UPDATE OF v2_donation_drawings" in query for query in queries)
+        assert len(db.session.scalars(select(V2DrawingDonationQueue)).all()) == 3
+        assert (await service.next_playback(setting.overlay_token))["playback"]["nickname"] == "다음 후원"
+        queued.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        setting.options = {**setting.options, "replay_seconds": 3, "hold_seconds": 1}
+        await db.commit()
+        result = (await service.next_playback(setting.overlay_token))["playback"]
+        assert result["id"] == str(replay.id) and result["nickname"] == "원래 후원자" and result["amount"] == 12345
+        assert result["recording"] == drawing.recording
+        assert result["options"]["replay_seconds"] == 3 and "replay_of" not in result["options"]
+        assert replay.playback is not None and replay.playback["replay_of"] == original.id
+        assert (await service.replay_donation("channel", original.id))[0].id == replay.id
+        assert (await service.next_playback(setting.overlay_token, str(replay.id)))["playback"] is None
+        assert (await service.next_playback(setting.overlay_token))["playback"]["id"] == str(replay.id)
+        assert {item["id"] for item in (await service.history("channel"))["items"]} == {str(original.id), str(queued.id)}
+        replay.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        await db.commit()
+        await service.next_playback(setting.overlay_token)
+        again, existing = await service.replay_donation("channel", original.id)
+        assert not existing and again.id != replay.id
+        assert original.status == "done" and original.started_at == original_started
+        assert drawing.expires_at == deadline
+        drawing.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        assert (await service.history("channel"))["items"] == []
+        assert (await service.next_playback(setting.overlay_token))["current_id"] is None
+        with pytest.raises(HTTPException) as error:
+            await service.replay_donation("channel", original.id)
+        assert error.value.status_code == 410
+        assert await service.delete_expired_drawings() == 1
+        assert not db.session.scalars(select(V2DrawingDonationQueue)).all()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("donation_id", [2**31, 2**53 + 1, 2**63 - 3])
+def test_bigint_history_preview_and_replay_use_bigint_sql_and_preserve_ids(db, monkeypatch, donation_id):
+    monkeypatch.setattr(config, "ADMIN_TOKEN", "test-bigint-history-secret")
+    async def run():
+        service, setting = await enabled(db)
+        drawing = await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        original = await service.enqueue_donation("channel", donation(drawing.hashtag))
+        assert original is not None
+        await service.next_playback(setting.overlay_token)
+        original.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        await db.commit()
+        await service.next_playback(setting.overlay_token)
+        original.id = donation_id
+        await db.commit()
+        execute, queries = db.execute, []
+        async def capture(query):
+            queries.append(str(query.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})))
+            return await execute(query)
+        monkeypatch.setattr(db, "execute", capture)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=save_app(db)), base_url="http://test") as client:
+            client.cookies.set("dashboard_session", security.create_dashboard_session_token("channel"))
+            root = "/auth/dashboard/drawing/history"
+            path = f"{root}/{donation_id}"
+            listing = await client.get(root, params={"before": donation_id + 1})
+            assert listing.status_code == 200 and listing.json()["items"][0]["id"] == str(donation_id)
+            assert (await client.get(path + "/recording")).json()["recording"] == drawing.recording
+            replay = await client.post(path + "/replay")
+            assert replay.status_code == 200 and not replay.json()["already_queued"]
+            replay_id = replay.json()["id"]
+            assert int(replay_id) > donation_id
+            repeated = await client.post(path + "/replay")
+            assert repeated.json()["id"] == replay_id and repeated.json()["already_queued"]
+            listing = (await client.get(root)).json()
+            assert len(listing["items"]) == 1 and listing["items"][0]["replay_status"] == "queued"
+            result = (await service.next_playback(setting.overlay_token))["playback"]
+            assert result["id"] == replay_id and "replay_of" not in result["options"]
+            resumed = (await service.next_playback(setting.overlay_token))["playback"]
+            assert resumed["id"] == replay_id and resumed["options"] == result["options"]
+            assert (await client.get(root)).json()["items"][0]["replay_status"] == "playing"
+        replay_queries = [query for query in queries if "'replay_of'" in query]
+        assert replay_queries and all("AS INTEGER" not in query for query in replay_queries)
+        assert any("AS BIGINT" in query and " IN (" in query for query in replay_queries)
+        assert any("AS BIGINT" in query and f" = {donation_id}" in query for query in replay_queries)
+        assert any("->> 'replay_of') IS NULL" in query for query in replay_queries)
+    asyncio.run(run())
+
+
+def test_history_http_requires_owner_and_rejects_unplayed_disabled_or_expired_replay(db, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_TOKEN", "test-drawing-history-secret")
+    async def run():
+        service, setting = await enabled(db)
+        await enabled(db, "other")
+        drawing = await service.save_drawing("channel", DrawingSaveRequest.model_validate(save_payload()))
+        job = await service.enqueue_donation("channel", donation(drawing.hashtag))
+        assert job is not None
+        path = f"/auth/dashboard/drawing/history/{job.id}"
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=save_app(db)), base_url="http://test") as client:
+            assert (await client.get("/auth/dashboard/drawing/history")).status_code == 401
+            assert (await client.get(path + "/recording")).status_code == 401
+            assert (await client.post(path + "/replay")).status_code == 401
+            client.cookies.set("dashboard_session", security.create_dashboard_session_token("other"))
+            assert (await client.get(path + "/recording")).status_code == 404
+            assert (await client.post(path + "/replay")).status_code == 404
+            client.cookies.set("dashboard_session", security.create_dashboard_session_token("channel"))
+            assert (await client.get("/auth/dashboard/drawing/history")).json()["items"] == []
+            assert (await client.post(path + "/replay")).status_code == 404
+            await service.next_playback(setting.overlay_token)
+            assert (await client.post(path + "/replay")).status_code == 409
+            job.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+            await db.commit()
+            await service.next_playback(setting.overlay_token)
+            response = await client.get("/auth/dashboard/drawing/history")
+            assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+            assert response.json()["items"][0]["id"] == str(job.id)
+            recording = await client.get(path + "/recording")
+            assert recording.json()["recording"] == drawing.recording and recording.headers["Cache-Control"] == "no-store"
+            for query in ["?before=0", "?limit=51", "?before=9223372036854775808"]:
+                assert (await client.get("/auth/dashboard/drawing/history" + query)).status_code == 422
+            setting.options = {**setting.options, "enabled": False}
+            await db.commit()
+            assert (await client.get("/auth/dashboard/drawing/history")).json()["enabled"] is False
+            assert (await client.post(path + "/replay")).status_code == 403
+            setting.options = {**setting.options, "enabled": True}
+            await db.commit()
+            response = await client.post(path + "/replay")
+            assert response.status_code == 200 and response.json()["already_queued"] is False
+            assert (await client.post(path + "/replay")).json()["already_queued"] is True
+            drawing.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            await db.commit()
+            assert (await client.get("/auth/dashboard/drawing/history")).json()["items"] == []
+            assert (await client.get(path + "/recording")).status_code == 410
+            assert (await client.post(path + "/replay")).status_code == 410
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("field,value", [("x", 801), ("y", -1), ("t", 600001), ("x", float("nan"))])
 def test_invalid_recording_coordinates_are_rejected(field, value):
     data = save_payload()["recording"]

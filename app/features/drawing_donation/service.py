@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, overload
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import BigInteger, delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models import V2Channel, V2DrawingDonationSetting, V2DonationDrawing, V2DrawingDonationQueue
@@ -23,6 +23,13 @@ def drawing_tags(text) -> list[str]:
 
 def utc(dt):
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def playback_options(playback: dict | None) -> DrawingDonationOptions:
+    """대기열 JSON의 다시 재생 메타데이터를 제외하고 재생 설정을 검증한다."""
+    return DrawingDonationOptions.model_validate({
+        key: value for key, value in (playback or {}).items() if key != "replay_of"
+    })
 
 
 class DrawingDonationService:
@@ -141,6 +148,85 @@ class DrawingDonationService:
             raise HTTPException(404, "오버레이를 찾을 수 없습니다.")
         return setting
 
+    async def history(self, channel_id: str, *, before: int | None = None, limit: int = 20):
+        channel, setting = await self.setting(channel_id)
+        now = datetime.now(timezone.utc)
+        query = select(V2DrawingDonationQueue, V2DonationDrawing).join(V2DonationDrawing).where(
+            V2DrawingDonationQueue.channel_id == channel.id, V2DonationDrawing.channel_id == channel.id,
+            V2DrawingDonationQueue.started_at.is_not(None),
+            V2DrawingDonationQueue.status.in_(["playing", "done"]),
+            V2DrawingDonationQueue.playback["replay_of"].astext.is_(None),
+            V2DonationDrawing.expires_at > now,
+        )
+        if before is not None:
+            query = query.where(V2DrawingDonationQueue.id < before)
+        rows = (await self.db.execute(query.order_by(V2DrawingDonationQueue.id.desc()).limit(limit + 1))).all()
+        page = rows[:limit]
+        ids = [job.id for job, _ in page]
+        replays = (await self.db.execute(select(V2DrawingDonationQueue).where(
+            V2DrawingDonationQueue.channel_id == channel.id,
+            V2DrawingDonationQueue.status.in_(["queued", "playing"]),
+            V2DrawingDonationQueue.playback["replay_of"].astext.cast(BigInteger).in_(ids),
+        ))).scalars().all() if ids else []
+        replay_states = {job.playback["replay_of"]: job.status for job in replays if job.playback is not None}
+        return {
+            "items": [{
+                "id": str(job.id), "drawing_id": str(drawing.id), "nickname": job.nickname, "amount": job.amount,
+                "status": job.status, "received_at": utc(job.created_at).isoformat(),
+                "played_at": utc(job.started_at).isoformat(), "expires_at": utc(drawing.expires_at).isoformat(),
+                "replay_status": replay_states.get(job.id),
+            } for job, drawing in page],
+            "next_cursor": str(page[-1][0].id) if len(rows) > limit else None,
+            "server_now": now.isoformat(),
+            "enabled": DrawingDonationOptions.model_validate(setting.options).enabled if setting else False,
+        }
+
+    async def history_drawing(self, channel_id: str, donation_id: int, *, lock: bool = False):
+        channel, _ = await self.setting(channel_id)
+        query = select(V2DrawingDonationQueue, V2DonationDrawing).join(V2DonationDrawing).where(
+            V2DrawingDonationQueue.id == donation_id, V2DrawingDonationQueue.channel_id == channel.id,
+            V2DonationDrawing.channel_id == channel.id, V2DrawingDonationQueue.started_at.is_not(None),
+            V2DrawingDonationQueue.status.in_(["playing", "done"]),
+            V2DrawingDonationQueue.playback["replay_of"].astext.is_(None),
+        )
+        if lock:
+            query = query.with_for_update(of=V2DonationDrawing)
+        row = (await self.db.execute(query)).one_or_none()
+        if row is None:
+            raise HTTPException(404, "재생된 후원 그림을 찾을 수 없습니다.")
+        job, drawing = row
+        if utc(drawing.expires_at) <= datetime.now(timezone.utc):
+            raise HTTPException(410, "그림 보관 시간이 지났습니다.")
+        return job, drawing
+
+    async def replay_donation(self, channel_id: str, donation_id: int):
+        _, setting = await self.setting(channel_id)
+        if setting is None:
+            raise HTTPException(404, "그림 도네이션 설정을 찾을 수 없습니다.")
+        # OBS 재생 및 다른 다시 재생 요청과 같은 설정 행을 잠가 중복 추가를 막는다.
+        setting = await self.overlay_setting(setting.overlay_token, lock=True)
+        if not DrawingDonationOptions.model_validate(setting.options).enabled:
+            raise HTTPException(403, "그림 도네이션 받기를 켠 뒤 다시 재생해주세요.")
+        original, drawing = await self.history_drawing(channel_id, donation_id, lock=True)
+        if original.status != "done":
+            raise HTTPException(409, "현재 재생 중인 그림입니다. 재생이 끝난 뒤 다시 시도해주세요.")
+        existing = (await self.db.execute(select(V2DrawingDonationQueue).where(
+            V2DrawingDonationQueue.channel_id == original.channel_id,
+            V2DrawingDonationQueue.status.in_(["queued", "playing"]),
+            V2DrawingDonationQueue.playback["replay_of"].astext.cast(BigInteger) == original.id,
+        ))).scalar_one_or_none()
+        if existing is not None:
+            await self.db.commit()
+            return existing, True
+        replay = V2DrawingDonationQueue(
+            channel_id=original.channel_id, drawing_id=drawing.id, nickname=original.nickname, amount=original.amount,
+            # 원본 후원과 수동 다시 재생을 기존 JSON 컬럼에서 구분한다. 만료 시각은 연장하지 않는다.
+            playback={"replay_of": original.id},
+        )
+        self.db.add(replay)
+        await self.db.commit()
+        return replay, False
+
     async def next_playback(self, token, current_id=None):
         # 설정 행 잠금으로 여러 OBS/미리보기 연결이 같은 대기열을 동시에 넘기지 않게 한다.
         setting = await self.overlay_setting(token, lock=True)
@@ -158,8 +244,11 @@ class DrawingDonationService:
             for job in jobs:
                 if job.status == "queued":
                     job.status, job.started_at = "playing", now
+                    replay_of = (job.playback or {}).get("replay_of")
                     job.playback = options.model_dump()
-                playback = DrawingDonationOptions.model_validate(job.playback)
+                    if replay_of is not None:
+                        job.playback = {**job.playback, "replay_of": replay_of}
+                playback = playback_options(job.playback)
                 elapsed_ms = max(0, int((now - utc(job.started_at)).total_seconds() * 1000))
                 if elapsed_ms >= (playback.replay_seconds + playback.hold_seconds) * 1000:
                     job.status = "done"

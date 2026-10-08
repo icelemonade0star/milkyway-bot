@@ -32,7 +32,17 @@
                 <ol class="drawing-steps"><li>그림 페이지 링크를 시청자에게 공유하세요.</li><li>시청자가 그림을 저장하고 해시태그를 발급받습니다.</li><li>해시태그를 포함한 후원을 받으면 OBS에서 그리는 과정이 재생됩니다.</li></ol>
             </section>
         </div>
+        <section class="drawing-card drawing-history" aria-labelledby="drawingHistoryHeading">
+            <div class="preview-heading"><h2 id="drawingHistoryHeading">후원 그림 재생 이력</h2><button id="refreshDrawingHistory" type="button">새로고침</button></div>
+            <p class="help">실제 후원으로 재생된 그림입니다. 다시 재생하면 방송 대기열에 추가되며, OBS 연결 시 순서대로 재생됩니다. 그림 저장 후 1시간이 지나면 이력에서도 사라집니다.</p>
+            <p id="drawingHistoryStatus" class="status" role="status" aria-live="polite"></p>
+            <p id="drawingHistoryEmpty" class="help" hidden>아직 재생된 후원 그림이 없어요.</p>
+            <ul id="drawingHistoryList" class="drawing-history-list" aria-label="후원 그림 재생 이력"></ul>
+            <button id="moreDrawingHistory" type="button" hidden>이전 이력 더 보기</button>
+        </section>
     </main>
+    <script src="/static/js/drawing_canvas.js"></script>
     <script src="/static/js/dashboard_drawing.js"></script>
+    <script src="/static/js/drawing_history.js"></script>
 </body>
 </html>

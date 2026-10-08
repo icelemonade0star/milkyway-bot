@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +39,34 @@ async def drawing_page(channel_id: str, request: Request, db: AsyncSession = Dep
     channel, setting = await DrawingDonationService(db).setting(channel_id)
     options = DrawingDonationOptions.model_validate(setting.options) if setting else DrawingDonationOptions()
     return templates.TemplateResponse(request=request, name="drawing.html", context={"request": request, "channel": channel, "options": options})
+
+
+@drawing_router.get("/auth/dashboard/drawing/history")
+async def drawing_history(
+    before: int | None = Query(None, ge=1, le=9223372036854775807), limit: int = Query(20, ge=1, le=50),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    data = await DrawingDonationService(db).history(session["channel_id"], before=before, limit=limit)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
+@drawing_router.get("/auth/dashboard/drawing/history/{donation_id}/recording")
+async def history_recording(
+    donation_id: int = Path(ge=1, le=9223372036854775807),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    _, drawing = await DrawingDonationService(db).history_drawing(session["channel_id"], donation_id)
+    return JSONResponse({"recording": drawing.recording}, headers={"Cache-Control": "no-store"})
+
+
+@drawing_router.post("/auth/dashboard/drawing/history/{donation_id}/replay")
+async def replay_drawing_history(
+    donation_id: int = Path(ge=1, le=9223372036854775807),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    job, existing = await DrawingDonationService(db).replay_donation(session["channel_id"], donation_id)
+    return JSONResponse({"id": str(job.id), "status": job.status, "already_queued": existing},
+                        headers={"Cache-Control": "no-store"})
 
 
 @drawing_router.get("/drawing/chzzk/{channel_id}/background")

@@ -56,6 +56,19 @@ hr { border: 0; border-top: 1px solid #e0e8e1; margin: 26px 0; }
 .drawing-preview { border-radius: 12px; background: #243830; margin-top: 20px; overflow: hidden; aspect-ratio: 4/3; }
 .drawing-preview iframe { display: block; width: 100%; height: 100%; border: none; }
 .drawing-steps { padding-left: 18px; font-size: 13px; color: #68776f; line-height: 2; }
+.dashboard-drawing .drawing-history { margin-top: 24px; }
+.drawing-history-list { list-style: none; padding: 0; margin: 16px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.drawing-history-item { min-width: 0; border: 1px solid #dce5de; border-radius: 12px; overflow: hidden; }
+.drawing-history-picture { display: flex; position: relative; justify-content: center; align-items: center; flex-direction: column; gap: 8px; aspect-ratio: 16/9; padding: 12px; background-color: white; background-image: conic-gradient(#e1e5e1 25%, transparent 0 50%, #e1e5e1 0 75%, transparent 0); background-size: 20px 20px; }
+.drawing-history-picture img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+.drawing-history-picture span { font-size: 13px; background: #ffffffee; padding: 4px 8px; border-radius: 6px; }
+.drawing-history-details { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.drawing-history-donor { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+.drawing-history-donor strong { font-size: 15px; }
+.drawing-history-donor span { font-size: 14px; font-weight: 600; }
+.drawing-history-time, .drawing-history-state { font-size: 12px; color: #68776f; line-height: 1.6; }
+.drawing-history-time { margin: 0; }
+.drawing-history-item button:disabled { cursor: not-allowed; }
 .closed { padding: 40px; }
 body.drawing-overlay-page { background: transparent; margin: 0; overflow: hidden; font-family: Arial, "Malgun Gothic", sans-serif; }
 .drawing-overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; }
