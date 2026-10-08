@@ -97,6 +97,7 @@
         canvasStage.dataset.backgroundMode = backgroundMode.value;
         document.getElementById("liveBackgroundControls").hidden = !live;
         document.getElementById("backgroundColorControl").hidden = backgroundMode.value !== "color";
+        document.getElementById("drawingBackgroundHint").hidden = backgroundMode.value !== "color";
         liveImage.hidden = !live || !liveImage.complete || !liveImage.naturalWidth;
         if (live && !liveImage.getAttribute("src")) loadLiveBackground();
     }

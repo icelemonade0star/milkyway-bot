@@ -18,6 +18,7 @@ button:disabled { opacity: .55; cursor: wait; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #88bd96; outline-offset: 2px; }
 .drawing-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .drawing-background-tools { border-top: 1px solid #e0e8e1; padding-top: 18px; }
+.drawing-background-tools > .drawing-tools { flex: 1 1 420px; margin-bottom: 0; }
 .drawing-tools label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .drawing-tools select { border: 1px solid #d4dfd7; border-radius: 8px; padding: 8px; background: white; color: #2a4937; }
 .drawing-palette { display: flex; align-items: center; gap: 8px; }

@@ -46,11 +46,12 @@
                     <button type="button" class="palette-swatch" data-background-color="#ffffff" aria-label="배경 흰색" aria-pressed="true" style="--swatch-color: #ffffff"></button>
                     <label class="palette-custom"><input id="canvasBackgroundColor" type="color" value="#ffffff" aria-label="직접 배경색 선택" aria-describedby="drawingBackgroundHint"></label>
                 </div>
-            </div>
-            <div class="drawing-tools" id="liveBackgroundControls" role="group" aria-label="방송 배경 설정" hidden>
-                <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50" aria-describedby="drawingBackgroundHint"><output id="liveBackgroundTransparencyValue">50%</output></label>
-                <button type="button" id="refreshLiveBackground">방송 이미지 새로고침</button>
-                <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
+                <span class="help" id="drawingBackgroundHint">배경색은 함께 저장되지 않습니다.</span>
+                <div class="drawing-tools" id="liveBackgroundControls" role="group" aria-label="방송 배경 설정" hidden>
+                    <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50" aria-describedby="drawingBackgroundHint"><output id="liveBackgroundTransparencyValue">50%</output></label>
+                    <button type="button" id="refreshLiveBackground">방송 이미지 새로고침</button>
+                    <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
+                </div>
             </div>
             <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage"><img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div></div>
             <div class="drawing-footer"><span>{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스 · 마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
