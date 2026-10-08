@@ -1,3 +1,17 @@
+{% macro icon(name) -%}
+<svg class="drawing-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    {% if name == "pen" %}<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>
+    {% elif name == "eraser" %}<path d="M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/>
+    {% elif name == "fill" %}<path d="M4 11l7-7 7 7-7 7zM19.5 15s2 2.2 2 3.5a2 2 0 0 1-4 0c0-1.3 2-3.5 2-3.5z"/>
+    {% elif name == "undo" %}<path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/>
+    {% elif name == "redo" %}<path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/>
+    {% elif name == "refresh" %}<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>
+    {% elif name == "copy" %}<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>
+    {% elif name == "plus" %}<path d="M12 5v14M5 12h14"/>
+    {% endif %}
+</svg>
+{%- endmacro %}
+{% set palette = [("검정", "#171a18"), ("흰색", "#ffffff"), ("빨강", "#ef3b3f"), ("주황", "#f6a21a"), ("초록", "#18e94c"), ("파랑", "#2f6ee5"), ("보라", "#8b4db0")] %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -5,62 +19,93 @@
     <title>{{ channel.channel_name }} · 그림 도네이션</title>
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/drawing_donation.css">
+    <link rel="stylesheet" href="/static/css/drawing_editor.css">
 </head>
-<body class="drawing-page">
+<body class="drawing-page drawing-editor-page">
     <main class="drawing-shell">
-        <a class="brand" href="/">MILKYWAY BOT <span>그림 도네이션</span></a>
-        <header class="drawing-intro">
-            <p class="eyebrow">{{ channel.channel_name }}님에게 보내는 그림</p>
-            <h1>마음을 한 장에 그려보세요.</h1>
-            <p>그림을 저장한 뒤 발급된 해시태그를 치지직 후원 메시지에 넣으면, 그린 과정이 방송에서 재생됩니다.</p>
+        <header class="editor-topbar">
+            <a class="brand" href="/">MILKYWAY BOT <span>그림 도네이션</span></a>
+            <p class="drawing-recipient">받는 사람 <strong>{{ channel.channel_name }}</strong>님</p>
         </header>
+        <section class="drawing-intro" aria-labelledby="drawingHeading">
+            <h1 id="drawingHeading">마음을 한 장에 그려보세요.</h1>
+            {% if options.enabled %}
+            <ol class="drawing-steps-progress" aria-label="그림 도네이션 진행 단계">
+                {% for label in ["그리기", "저장하기", "해시태그 복사", "후원 메시지에 붙여넣기"] %}
+                <li data-step="{{ loop.index0 }}" {% if loop.first %}class="is-current" aria-current="step"{% endif %}><span class="step-number" aria-hidden="true">{{ loop.index }}</span><span>{{ label }}</span></li>
+                {% endfor %}
+            </ol>
+            {% endif %}
+        </section>
         {% if options.enabled %}
-        <section class="drawing-card">
-            <div class="drawing-tools" aria-label="그리기 도구">
-                <button type="button" data-tool="pen" aria-pressed="true">펜</button>
-                <button type="button" data-tool="eraser" aria-pressed="false">지우개</button>
-                <button type="button" data-tool="fill" aria-pressed="false">채우기</button>
-                <div class="drawing-palette" role="group" aria-label="색상 팔레트">
-                    <button type="button" class="palette-swatch" data-color="#171a18" aria-label="검정" aria-pressed="false" style="--swatch-color: #171a18"></button>
-                    <button type="button" class="palette-swatch" data-color="#18e94c" aria-label="초록" aria-pressed="false" style="--swatch-color: #18e94c"></button>
-                    <button type="button" class="palette-swatch" data-color="#ef3b3f" aria-label="빨강" aria-pressed="false" style="--swatch-color: #ef3b3f"></button>
-                    <button type="button" class="palette-swatch" data-color="#2f6ee5" aria-label="파랑" aria-pressed="false" style="--swatch-color: #2f6ee5"></button>
-                    <button type="button" class="palette-swatch" data-color="#f6a21a" aria-label="주황" aria-pressed="false" style="--swatch-color: #f6a21a"></button>
-                    <button type="button" class="palette-swatch" data-color="#8b4db0" aria-label="보라" aria-pressed="false" style="--swatch-color: #8b4db0"></button>
-                    <button type="button" class="palette-swatch" data-color="#ffffff" aria-label="흰색" aria-pressed="false" style="--swatch-color: #ffffff"></button>
-                    <label class="palette-custom"><input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
+        <section class="drawing-card editor-card" aria-label="그림 편집기">
+            <div class="drawing-tools editor-toolbar" role="group" aria-label="그리기 도구">
+                <div class="drawing-tool-switch" role="group" aria-label="도구 선택">
+                    <button type="button" data-tool="pen" aria-pressed="true">{{ icon("pen") }}펜</button>
+                    <button type="button" data-tool="eraser" aria-pressed="false">{{ icon("eraser") }}지우개</button>
+                    <button type="button" data-tool="fill" aria-pressed="false">{{ icon("fill") }}채우기</button>
                 </div>
-                <label>굵기 <input id="penWidth" type="range" min="1" max="60" value="6"><output id="widthValue">6</output></label>
-                <button type="button" id="undoDrawing">되돌리기</button>
-                <button type="button" id="clearDrawing">모두 지우기</button>
+                <div class="drawing-palette" role="group" aria-label="색상 팔레트">
+                    {% for name, hex in palette %}
+                    <button type="button" class="palette-swatch" data-color="{{ hex }}" aria-label="{{ name }}" aria-pressed="false" style="--swatch-color: {{ hex }}"></button>
+                    {% endfor %}
+                    <label class="palette-custom" title="직접 색상 선택">{{ icon("plus") }}<input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
+                </div>
+                <div class="brush-size-control">
+                    <label for="penWidth">굵기</label><input id="penWidth" type="range" min="1" max="60" value="6" aria-describedby="widthValue"><output id="widthValue" for="penWidth">6</output>
+                    <div class="brush-preview" id="brushPreview" title="굵기 6px" aria-hidden="true"><span id="brushPreviewDot"></span></div>
+                </div>
+                <div class="drawing-history" role="group" aria-label="편집 이력">
+                    <button type="button" class="icon-button" id="undoDrawing" aria-label="되돌리기" title="되돌리기 (Ctrl+Z)" disabled>{{ icon("undo") }}</button>
+                    <button type="button" class="icon-button" id="redoDrawing" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z / Ctrl+Y)" disabled>{{ icon("redo") }}</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" id="clearDrawing" disabled>모두 지우기</button>
+                </div>
             </div>
             <div class="drawing-tools drawing-background-tools" role="group" aria-label="배경 설정">
-                <label>배경 <select id="canvasBackgroundMode" aria-describedby="drawingBackgroundHint"><option value="color">배경색</option><option value="transparent">투명</option><option value="live">방송 이미지</option></select></label>
-                <div class="drawing-palette" id="backgroundColorControl" role="group" aria-label="배경 색상 팔레트">
-                    <button type="button" class="palette-swatch" data-background-color="#171a18" aria-label="배경 검정" aria-pressed="false" style="--swatch-color: #171a18"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#18e94c" aria-label="배경 초록" aria-pressed="false" style="--swatch-color: #18e94c"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#ef3b3f" aria-label="배경 빨강" aria-pressed="false" style="--swatch-color: #ef3b3f"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#2f6ee5" aria-label="배경 파랑" aria-pressed="false" style="--swatch-color: #2f6ee5"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#f6a21a" aria-label="배경 주황" aria-pressed="false" style="--swatch-color: #f6a21a"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#8b4db0" aria-label="배경 보라" aria-pressed="false" style="--swatch-color: #8b4db0"></button>
-                    <button type="button" class="palette-swatch" data-background-color="#ffffff" aria-label="배경 흰색" aria-pressed="true" style="--swatch-color: #ffffff"></button>
-                    <label class="palette-custom"><input id="canvasBackgroundColor" type="color" value="#ffffff" aria-label="직접 배경색 선택" aria-describedby="drawingBackgroundHint"></label>
+                <span class="background-caption" id="backgroundExplanation">배경은 그릴 때만 보이고, 저장과 방송에는 그림만 표시돼요.</span>
+                <select id="canvasBackgroundMode" aria-label="배경" hidden><option value="color">배경색</option><option value="transparent">투명</option><option value="live">방송 이미지</option></select>
+                <div class="background-mode-switch" role="group" aria-label="배경 선택" aria-describedby="backgroundExplanation">
+                    <button type="button" data-background-mode="color" aria-pressed="true">배경색</button>
+                    <button type="button" data-background-mode="transparent" aria-pressed="false">투명</button>
+                    <button type="button" data-background-mode="live" aria-pressed="false">방송 썸네일</button>
                 </div>
-                <span class="help" id="drawingBackgroundHint">배경색은 함께 저장되지 않습니다.</span>
+                <div class="drawing-palette" id="backgroundColorControl" role="group" aria-label="배경 색상 팔레트">
+                    {% for name, hex in palette + [("연회색", "#e9ebe8"), ("하늘", "#dbeafe"), ("분홍", "#fde2e4")] %}
+                    <button type="button" class="palette-swatch" data-background-color="{{ hex }}" aria-label="배경 {{ name }}" aria-pressed="{{ 'true' if hex == '#ffffff' else 'false' }}" style="--swatch-color: {{ hex }}"></button>
+                    {% endfor %}
+                    <label class="palette-custom" title="직접 배경색 선택">{{ icon("plus") }}<input id="canvasBackgroundColor" type="color" value="#ffffff" aria-label="직접 배경색 선택" aria-describedby="backgroundExplanation"></label>
+                </div>
                 <div class="drawing-tools" id="liveBackgroundControls" role="group" aria-label="방송 배경 설정" hidden>
-                    <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50" aria-describedby="drawingBackgroundHint"><output id="liveBackgroundTransparencyValue">50%</output></label>
-                    <button type="button" id="refreshLiveBackground">방송 이미지 새로고침</button>
+                    <label>방송 배경 투명도 <input id="liveBackgroundTransparency" type="range" min="0" max="100" value="50"><output id="liveBackgroundTransparencyValue">50%</output></label>
+                    <button type="button" class="icon-button" id="refreshLiveBackground" aria-label="방송 이미지 새로고침" title="방송 이미지 새로고침">{{ icon("refresh") }}</button>
                     <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
                 </div>
             </div>
-            <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage"><img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden><canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역"></canvas></div></div>
-            <div class="drawing-footer"><span>{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스 · 마우스·터치·펜으로 그릴 수 있어요. 최대 10분 동안 기록합니다.</span><button class="primary" id="saveDrawing" type="button">그림 저장하기</button></div>
+            <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage">
+                <img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden>
+                <canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역" tabindex="0"></canvas>
+                <p class="canvas-empty-hint" id="emptyDrawingHint">마우스·터치·펜으로 그려보세요.</p>
+            </div></div>
+            <div class="drawing-footer" id="drawingSaveControls">
+                <span class="canvas-size">{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스</span>
+                <button class="primary" id="saveDrawing" type="button" disabled>그림 저장하기</button>
+            </div>
+            <section class="drawing-result" id="drawingResult" aria-labelledby="drawingResultHeading" hidden>
+                <h2 id="drawingResultHeading">저장했어요! 이제 해시태그만 붙이면 돼요.</h2>
+                <p>아래 해시태그를 복사해서 치지직 후원 메시지에 넣어주세요. 후원이 들어가면 그린 과정이 방송에서 재생돼요.</p>
+                <div class="tag-copy"><input id="drawingTag" readonly aria-label="그림 해시태그"><button type="button" id="copyDrawingTag">{{ icon("copy") }}<span id="copyDrawingLabel">해시태그 복사</span></button></div>
+                <p class="drawing-conditions">최소 {{ "{:,}".format(options.minimum_amount) }}원 · 유효시간 1시간 · 유효기간 내 후원할 때마다 다시 재생됩니다.</p>
+                <button type="button" class="edit-again-button" id="editSavedDrawing">그림 더 고치기</button>
+            </section>
             <p class="status" id="drawingStatus" role="status" aria-live="polite"></p>
-        </section>
-        <section class="drawing-result" id="drawingResult" hidden>
-            <div><p class="eyebrow">그림을 저장했어요</p><h2>이 해시태그를 후원 메시지에 넣어주세요.</h2><p>최소 {{ "{:,}".format(options.minimum_amount) }}원 · 유효시간 1시간 · 같은 그림도 유효기간 내 후원할 때마다 다시 재생됩니다.</p></div>
-            <div class="tag-copy"><input id="drawingTag" readonly aria-label="그림 해시태그"><button type="button" id="copyDrawingTag">복사</button></div>
-            <img id="savedDrawingPreview" alt="저장한 그림 완성본">
+            <dialog class="clear-drawing-dialog" id="clearDrawingDialog" aria-labelledby="clearDrawingHeading" aria-describedby="clearDrawingDescription">
+                <form method="dialog">
+                    <h2 id="clearDrawingHeading">그림을 모두 지울까요?</h2>
+                    <p id="clearDrawingDescription">캔버스의 그림을 지웁니다. 지운 뒤에도 되돌리기로 다시 살릴 수 있어요.</p>
+                    <div class="dialog-actions"><button value="cancel" autofocus>취소</button><button class="danger" value="clear" id="confirmClearDrawing">모두 지우기</button></div>
+                </form>
+            </dialog>
         </section>
         <script id="drawingConfig" type="application/json">{{ {"save_path": "/drawing/chzzk/" + channel.platform_channel_id, "background_path": "/drawing/chzzk/" + channel.platform_channel_id + "/background"}|tojson }}</script>
         <script src="/static/js/drawing_canvas.js"></script>

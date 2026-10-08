@@ -1,0 +1,104 @@
+body.drawing-editor-page { background: #f3f4f1; color: #17201b; font-family: var(--font-sans); }
+.drawing-editor-page .drawing-shell { max-width: 1120px; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 28px; }
+.editor-topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.drawing-editor-page .brand { font-size: 14px; letter-spacing: .5px; color: #17201b; }
+.drawing-editor-page .brand span { margin-left: 6px; color: #5b6660; }
+.drawing-recipient { display: flex; align-items: center; gap: 6px; max-width: 100%; margin: 0; padding: 8px 14px; border: 1px solid #e1e5df; border-radius: 999px; background: #fff; color: #3c4741; font-size: 14px; }
+.drawing-recipient strong { color: #1f5f3f; overflow-wrap: anywhere; }
+.drawing-editor-page .drawing-intro { margin: 0; display: flex; flex-direction: column; gap: 20px; }
+.drawing-editor-page h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); line-height: 1.2; letter-spacing: -1.5px; }
+.drawing-steps-progress { display: flex; flex-wrap: wrap; gap: 8px 4px; padding: 0; margin: 0; list-style: none; }
+.drawing-steps-progress li { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; color: #6b756f; font-size: 14px; }
+.drawing-steps-progress li + li::before { content: ""; width: 24px; height: 2px; background: #d5dad3; margin-right: 4px; }
+.step-number { display: flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; border: 2px solid #e6e9e5; border-radius: 50%; background: #e6e9e5; font-size: 13px; font-weight: 700; }
+.drawing-steps-progress .is-current { background: white; color: #17201b; font-weight: 700; }
+.drawing-steps-progress .is-current .step-number { background: white; border-color: #1f5f3f; color: #1f5f3f; }
+.drawing-steps-progress .is-complete { color: #17201b; }
+.drawing-steps-progress .is-complete .step-number { background: #1f5f3f; border-color: #1f5f3f; color: white; }
+.drawing-steps-progress .is-complete::before, .drawing-steps-progress .is-current::before { background: #1f5f3f; }
+.drawing-editor-page .editor-card { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 20px; border-color: #e1e5df; box-shadow: none; }
+.drawing-editor-page button { min-height: 40px; font-size: 14px; }
+.drawing-editor-page button:disabled { cursor: not-allowed; }
+.drawing-editor-page .drawing-tools { margin-bottom: 0; gap: 12px 16px; }
+.drawing-editor-page .editor-toolbar { gap: 16px 20px; }
+.drawing-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.drawing-tool-switch { display: flex; padding: 4px; gap: 4px; border-radius: 12px; background: #eef0ec; }
+.drawing-tool-switch button { display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: #3c4741; }
+.drawing-tool-switch button[aria-pressed="true"] { background: #fff; color: #1f5f3f; box-shadow: 0 1px 2px #0000001f; }
+.drawing-editor-page .drawing-palette { flex-wrap: wrap; gap: 8px; max-width: 100%; }
+.drawing-editor-page .palette-swatch { flex: none; width: 32px; height: 32px; min-height: 0; border: 1px solid #0000002e; }
+.drawing-editor-page .palette-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1f5f3f; }
+.drawing-editor-page .palette-custom { position: relative; flex: none; width: 32px; height: 32px; border: 1px dashed #8a958f; border-radius: 50%; justify-content: center; color: #3c4741; }
+.drawing-editor-page .palette-custom .drawing-icon { width: 16px; height: 16px; }
+.drawing-editor-page .palette-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; }
+.drawing-editor-page .palette-custom:focus-within { outline: 3px solid #88bd96; outline-offset: 2px; }
+.drawing-editor-page .palette-custom.is-selected { box-shadow: 0 0 0 2px white, 0 0 0 4px #1f5f3f; }
+.brush-size-control { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #3c4741; }
+.brush-size-control input[type="range"] { width: 110px; }
+.brush-size-control output { min-width: 18px; font-family: var(--font-mono); font-size: 12px; }
+.brush-preview { display: flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; border-radius: 10px; background: #f3f4f1; }
+.brush-preview span { border-radius: 50%; width: 6px; height: 6px; background: #25453c; }
+.drawing-history { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.drawing-editor-page .icon-button { display: flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #17201b; }
+.drawing-editor-page .icon-button:hover { background: #eef0ec; }
+.drawing-history #clearDrawing { border: 0; background: transparent; color: #b42318; padding: 0 10px; }
+.drawing-history button:disabled { opacity: 1; color: #b7beb9; }
+.drawing-history #clearDrawing:disabled { color: #b7beb9; }
+.toolbar-divider { width: 1px; height: 24px; background: #e1e5df; margin: 0 6px; }
+.drawing-editor-page .drawing-background-tools { padding: 10px 14px; border: 0; border-radius: 12px; background: #f6f7f4; gap: 10px 14px; }
+.background-caption { font-size: 13px; color: #5b6660; line-height: 1.6; }
+.background-mode-switch { display: flex; flex-wrap: wrap; gap: 4px; }
+.background-mode-switch button { min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #5b6660; font-size: 13px; }
+.background-mode-switch button[aria-pressed="true"] { border-color: #d5dad3; background: white; color: #17201b; }
+.drawing-editor-page #backgroundColorControl { gap: 6px; }
+.drawing-editor-page #backgroundColorControl .palette-swatch, .drawing-editor-page #backgroundColorControl .palette-custom { width: 26px; height: 26px; border-radius: 6px; }
+.drawing-editor-page #liveBackgroundStatus { font-size: 12px; line-height: 1.6; }
+.drawing-editor-page .drawing-background-tools > .drawing-tools { flex: 1 1 320px; gap: 8px 12px; }
+.drawing-editor-page #liveBackgroundControls label { white-space: nowrap; gap: 8px; }
+.drawing-editor-page #refreshLiveBackground { width: 32px; height: 32px; min-height: 32px; }
+.drawing-editor-page #refreshLiveBackground .drawing-icon { width: 16px; height: 16px; }
+.drawing-editor-page .canvas-wrap { padding: 0; border: 1px solid #dfe3dd; border-radius: 12px; overflow: hidden; }
+.drawing-editor-page .canvas-stage { box-shadow: none; }
+.canvas-empty-hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); margin: 0; padding: 8px 14px; border-radius: 999px; background: #17201be0; color: white; font-size: 13px; text-align: center; line-height: 1.5; pointer-events: none; }
+.drawing-editor-page .drawing-footer { margin-top: 0; flex-wrap: wrap; gap: 16px; }
+.drawing-editor-page .canvas-size { font-size: 12px; color: #78867d; }
+.drawing-editor-page #saveDrawing { min-height: 48px; padding: 0 28px; border: 0; border-radius: 12px; background: #1f5f3f; font-size: 16px; }
+.drawing-editor-page #saveDrawing:disabled { opacity: 1; background: #e6e9e5; color: #6b756f; }
+.drawing-editor-page #drawingCanvas[aria-disabled="true"] { cursor: not-allowed; }
+.drawing-editor-page .drawing-result { margin: 0; padding: 20px; border-radius: 14px; background: #eef5f0; border-color: #cfe2d6; }
+.drawing-editor-page .drawing-result h2 { margin: 0 0 6px; font-size: 18px; }
+.drawing-editor-page .drawing-result p { margin: 0; font-size: 14px; color: #3c4741; }
+.drawing-editor-page .tag-copy { flex-wrap: wrap; align-items: stretch; gap: 10px; margin: 14px 0; }
+.drawing-editor-page .tag-copy input { flex: 1 1 240px; margin: 0; min-height: 52px; padding: 0 16px; background: white; border-color: #cfe2d6; font: 600 20px var(--font-mono); color: #1f5f3f; }
+.drawing-editor-page #copyDrawingTag { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 20px; border: 0; background: #1f5f3f; color: white; font-size: 16px; }
+.drawing-editor-page .drawing-result .drawing-conditions { font-size: 12px; color: #5b6660; }
+.drawing-editor-page .edit-again-button { min-height: 36px; margin-top: 8px; padding: 0; border: 0; background: transparent; color: #3c4741; text-decoration: underline; font-weight: 500; }
+.drawing-editor-page .status { margin: 0; min-height: 0; }
+.clear-drawing-dialog { width: min(380px, calc(100% - 32px)); border: 0; border-radius: 16px; padding: 24px; color: #17201b; box-shadow: 0 12px 60px #17201b30; }
+.clear-drawing-dialog::backdrop { background: #10151f88; }
+.clear-drawing-dialog h2 { margin: 0 0 8px; font-size: 20px; }
+.clear-drawing-dialog p { margin: 0; font-size: 14px; color: #5b6660; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.drawing-editor-page .dialog-actions button { min-height: 44px; }
+.drawing-editor-page .danger { border-color: #b42318; background: #b42318; color: white; }
+@media (max-width: 740px) {
+    .drawing-editor-page .drawing-shell { padding: 24px 14px 40px; gap: 24px; }
+    .drawing-editor-page .editor-card { padding: 16px; }
+    .drawing-editor-page .brand span { display: inline; }
+    .drawing-steps-progress { gap: 6px; }
+    .drawing-steps-progress li { font-size: 12px; padding: 4px 8px 4px 4px; gap: 6px; }
+    .drawing-steps-progress li + li::before { display: none; }
+    .step-number { width: 22px; height: 22px; font-size: 11px; }
+    .drawing-editor-page .editor-toolbar { gap: 14px; }
+    .drawing-tool-switch { max-width: 100%; }
+    .drawing-tool-switch button { padding: 0 10px; }
+    .drawing-history { margin-left: 0; }
+    .drawing-editor-page .drawing-background-tools { padding: 12px; }
+    .background-caption { flex-basis: 100%; }
+    .drawing-editor-page .drawing-background-tools > .drawing-tools { flex-basis: 100%; }
+    .canvas-empty-hint { top: 10px; padding: 6px 10px; font-size: 11px; border-radius: 10px; }
+    .drawing-editor-page .drawing-footer { flex-direction: row; }
+    .drawing-editor-page #saveDrawing { width: 100%; }
+    .drawing-editor-page .tag-copy input { font-size: 15px; }
+    .drawing-editor-page #copyDrawingTag { width: 100%; }
+}

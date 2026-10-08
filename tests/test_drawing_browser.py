@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingSaveRequest, Stroke
 
 pytest.importorskip("playwright.sync_api")
-from playwright.sync_api import Route, sync_playwright
+from playwright.sync_api import Page, Route, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 templates = Environment(loader=FileSystemLoader(ROOT / "app/templates"), autoescape=True)
 
@@ -15,6 +15,10 @@ templates = Environment(loader=FileSystemLoader(ROOT / "app/templates"), autoesc
 def serve_assets(route: Route):
     relative = route.request.url.split("/static/", 1)[1].split("?", 1)[0]
     route.fulfill(path=str(ROOT / "app/static" / relative))
+
+
+def choose_background(page: Page, mode: str) -> None:
+    page.locator(f'button[data-background-mode="{mode}"]').click()
 
 
 @pytest.mark.parametrize("size", [(800, 600), (1280, 720)])
@@ -54,6 +58,7 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
         page.locator("#undoDrawing").click()
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [37, 69, 60]
         page.locator("#clearDrawing").click()
+        page.locator("#confirmClearDrawing").click()
         page.locator('[data-tool="pen"]').click()
         draw((80, 140), (240, 260))
         page.locator("#saveDrawing").click()
@@ -136,12 +141,14 @@ def test_palette_fill_and_ctrl_z_are_editor_only():
         draw((80, 80), (360, 80))
         page.evaluate("window.drawingTestTimeOffset += 600001")
         page.locator("#clearDrawing").click()
+        page.locator("#confirmClearDrawing").click()
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
         page.keyboard.press("Control+z")
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [239, 59, 63]
         draw((80, 160), (360, 160))
-        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,160,1,1).data)")[3] == 0
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,160,1,1).data)")[3] == 255
         page.locator("#clearDrawing").click()
+        page.locator("#confirmClearDrawing").click()
         page.locator('[data-color="#2f6ee5"]').click()
         page.locator('[data-tool="fill"]').click()
         page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
@@ -340,16 +347,24 @@ def test_save_errors_from_application_handler_are_shown_and_can_be_retried(mode)
             page.route("**/drawing/overlay/**", lambda route: route.fulfill(body="<html></html>", content_type="text/html"))
         page.goto("http://localhost" + path)
         if editor:
+            live_status = page.locator("#drawingStatus")
+            assert live_status.get_attribute("role") == "status"
+            assert live_status.get_attribute("aria-live") == "polite"
+            assert live_status.inner_text() == ""
+            assert live_status.evaluate("e => getComputedStyle(e).display") != "none"
             page.locator("#drawingCanvas").click(position={"x": 50, "y": 50})
         button = page.locator("#saveDrawing" if editor else '#drawingSettings [type="submit"]')
         status_id = "drawingStatus" if editor else "settingsStatus"
         button.click()
         page.wait_for_function("([id, message]) => document.getElementById(id).textContent === message", arg=[status_id, message])
+        assert page.locator("#" + status_id).is_visible()
         assert button.is_enabled()
         button.click()
         if editor:
             page.wait_for_function("document.getElementById('drawingTag').value.startsWith('#mw-')")
             assert attempts[0]["save_key"] == attempts[1]["save_key"]
+            assert page.locator("#drawingStatus").inner_text() == ""
+            assert page.locator("#drawingStatus").evaluate("e => getComputedStyle(e).display") != "none"
         else:
             page.wait_for_function("document.getElementById('settingsStatus').textContent === '설정을 저장했어요.'")
         assert len(attempts) == 2
@@ -399,6 +414,7 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         status = page.locator("#liveBackgroundStatus")
         blank = canvas.evaluate("c => c.toDataURL()")
         assert mode.input_value() == "color" and not backgrounds
+        assert page.locator('button[data-background-mode="color"]').get_attribute("aria-pressed") == "true"
         assert page.locator("#liveBackgroundControls").is_hidden()
         page.locator('[data-tool="eraser"]').click()
         page.get_by_role("button", name="배경 파랑", exact=True).click()
@@ -408,12 +424,12 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(47, 110, 229)"
         page.locator("#canvasBackgroundColor").fill("#20362e")
         assert page.locator('[data-background-color][aria-pressed="true"]').count() == 0
-        mode.select_option("transparent")
+        choose_background(page, "transparent")
         assert "conic-gradient" in page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundImage")
         assert page.locator("#backgroundColorControl").is_hidden()
         assert canvas.evaluate("c => c.toDataURL()") == blank
         assert not backgrounds
-        mode.select_option("live")
+        choose_background(page, "live")
         assert "conic-gradient" in page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundImage")
         image.wait_for(state="visible")
         assert refresh.is_disabled()
@@ -432,10 +448,10 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         page.locator("#liveBackgroundTransparency").fill("0")
         assert image.evaluate("i => getComputedStyle(i).opacity") == "1"
         assert canvas.evaluate("c => c.toDataURL()") == picture
-        mode.select_option("color")
+        choose_background(page, "color")
         assert image.is_hidden()
         assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(32, 54, 46)"
-        mode.select_option("live")
+        choose_background(page, "live")
         assert image.is_visible() and len(backgrounds) == 1
         page.locator("#liveBackgroundTransparency").fill("50")
         page.locator("#saveDrawing").click()
@@ -445,13 +461,13 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         assert canvas.evaluate("c => c.getContext('2d').getImageData(700,500,1,1).data[3]") == 0
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(tmp_path / f"live-background-{width}.png"), full_page=True)
-        mode.select_option("transparent")
+        choose_background(page, "transparent")
         assert image.is_hidden()
         assert canvas.evaluate("c => c.toDataURL()") == picture
         assert page.locator("#drawingResult").is_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(tmp_path / f"transparent-background-{width}.png"), full_page=True)
-        mode.select_option("live")
+        choose_background(page, "live")
         page.clock.fast_forward(5100)
         assert refresh.is_enabled()
         refresh.click()
@@ -492,8 +508,8 @@ def test_live_background_loaded_after_switching_to_color_stays_hidden():
             body='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>'))
         page.goto("http://localhost/drawing/chzzk/channel")
         with page.expect_request("**/drawing/chzzk/channel/background"):
-            page.locator("#canvasBackgroundMode").select_option("live")
-        page.locator("#canvasBackgroundMode").select_option("color")
+            choose_background(page, "live")
+        choose_background(page, "color")
         assert len(pending) == 1
         pending[0].fulfill(json={"image_url": "https://thumbnail.example/image_720.jpg"})
         page.wait_for_function("document.getElementById('liveBackgroundImage').naturalWidth > 0")
@@ -528,7 +544,7 @@ def test_live_background_non_json_errors_keep_retry_after_and_can_be_retried(sta
         page.goto("http://localhost/drawing/chzzk/channel")
         page.locator("#drawingCanvas").click(position={"x": 30, "y": 30})
         picture = page.locator("#drawingCanvas").evaluate("c => c.toDataURL()")
-        page.locator("#canvasBackgroundMode").select_option("live")
+        choose_background(page, "live")
         page.wait_for_function("document.getElementById('liveBackgroundStatus').textContent.includes('2초 후')")
         refresh = page.locator("#refreshLiveBackground")
         assert "조회에 실패" in page.locator("#liveBackgroundStatus").inner_text()
@@ -567,6 +583,7 @@ def test_initial_and_restored_background_mode_matches_controls(mode):
         page.route("**/drawing/chzzk/channel/background", background)
         page.goto("http://localhost/drawing/chzzk/channel")
         assert page.locator("#drawingCanvasStage").get_attribute("data-background-mode") == mode
+        assert page.locator(f'button[data-background-mode="{mode}"]').get_attribute("aria-pressed") == "true"
         assert page.locator("#backgroundColorControl").is_hidden()
         assert page.locator("#liveBackgroundControls").is_visible() == (mode == "live")
         if mode == "live":
@@ -580,7 +597,190 @@ def test_initial_and_restored_background_mode_matches_controls(mode):
             window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}));
         }""")
         assert page.locator("#drawingCanvasStage").get_attribute("data-background-mode") == "color"
+        assert page.locator('button[data-background-mode="color"]').get_attribute("aria-pressed") == "true"
         assert page.locator("#backgroundColorControl").is_visible()
         assert page.locator("#liveBackgroundControls").is_hidden()
         assert page.locator("#liveBackgroundImage").is_hidden()
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_redesigned_editor_history_clear_confirmation_and_saved_editing(width, tmp_path):
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트 스트리머", platform_channel_id="channel"), options=options)
+    saved = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 1100})
+        page.clock.install()
+        page.add_init_script("""Object.defineProperty(navigator, 'clipboard', {value: {
+            writeText: async value => { window.copiedDrawingTag = value; }
+        }});""")
+        page.route("**/static/**", serve_assets)
+        def editor(route: Route):
+            if route.request.method == "GET":
+                route.fulfill(body=html, content_type="text/html")
+            else:
+                saved.append(DrawingSaveRequest.model_validate(route.request.post_data_json))
+                route.fulfill(json={"hashtag": "#mw-" + ("a" if len(saved) == 1 else "b") * 24})
+        page.route("**/drawing/chzzk/channel", editor)
+        page.goto("http://localhost/drawing/chzzk/channel")
+        canvas = page.locator("#drawingCanvas")
+        picture = lambda: canvas.evaluate("c => c.toDataURL()")
+        blank = picture()
+        assert page.locator("#saveDrawing").is_disabled()
+        assert page.locator("#undoDrawing").is_disabled() and page.locator("#redoDrawing").is_disabled()
+        assert page.locator("#emptyDrawingHint").is_visible()
+        page.locator("#penWidth").fill("18")
+        page.locator('[data-color="#f6a21a"]').click()
+        assert page.locator("#brushPreviewDot").evaluate("e => [e.style.width, e.style.backgroundColor]") == ["18px", "rgb(246, 162, 26)"]
+        canvas.click(position={"x": 30, "y": 80})
+        first = picture()
+        page.clock.fast_forward(1100)
+        assert page.locator("#recordingTime, #recordingProgress, #recordingState").count() == 0
+        assert page.locator("#emptyDrawingHint").is_hidden()
+        canvas.click(position={"x": 80, "y": 110})
+        before_clear = picture()
+        page.locator("#undoDrawing").click()
+        assert picture() == first
+        page.keyboard.press("Control+Shift+z")
+        assert picture() == before_clear
+        page.keyboard.press("Control+z")
+        assert picture() == first
+        page.keyboard.press("Control+y")
+        assert picture() == before_clear
+        page.locator("#clearDrawing").click()
+        assert page.get_by_role("dialog", name="그림을 모두 지울까요?").is_visible()
+        assert picture() == before_clear
+        assert page.locator("#saveDrawing").is_disabled()
+        page.keyboard.press("Escape")
+        page.wait_for_function("!document.getElementById('saveDrawing').disabled")
+        assert picture() == before_clear
+        page.locator("#clearDrawing").click()
+        page.locator("#confirmClearDrawing").click()
+        assert picture() == blank
+        assert page.locator("#saveDrawing").is_disabled()
+        canvas.click(position={"x": 100, "y": 120})
+        after_clear = picture()
+        page.clock.fast_forward(1100)
+        page.locator("#undoDrawing").click()
+        assert picture() == blank
+        page.locator("#undoDrawing").click()
+        assert picture() == before_clear
+        page.locator("#redoDrawing").click()
+        assert picture() == blank
+        page.locator("#redoDrawing").click()
+        assert picture() == after_clear
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        assert len(saved[0].recording.actions) == 1 and saved[0].final_png == after_clear
+        assert page.locator('[data-step="2"]').get_attribute("aria-current") == "step"
+        assert page.locator("#drawingSaveControls").is_hidden()
+        canvas.click(position={"x": 150, "y": 120})
+        page.keyboard.press("Control+z")
+        assert picture() == after_clear
+        page.locator("#copyDrawingTag").click()
+        page.wait_for_function("document.getElementById('copyDrawingLabel').textContent === '복사했어요'")
+        assert page.evaluate("window.copiedDrawingTag") == page.locator("#drawingTag").input_value()
+        assert page.locator('[data-step="3"]').get_attribute("aria-current") == "step"
+        page.screenshot(path=str(tmp_path / f"redesigned-saved-{width}.png"), full_page=True)
+        page.locator("#editSavedDrawing").click()
+        assert page.locator("#drawingResult").is_hidden()
+        assert page.locator("#drawingSaveControls").is_visible()
+        canvas.click(position={"x": 150, "y": 140})
+        edited = picture()
+        assert edited != after_clear and page.locator("#redoDrawing").is_disabled()
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        assert len(saved) == 2 and saved[1].save_key != saved[0].save_key
+        assert len(saved[1].recording.actions) == 2 and saved[1].final_png == edited
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        browser.close()
+
+
+def test_recording_excludes_idle_and_undone_time_and_keeps_limit_and_failed_copy():
+    options = DrawingDonationOptions(enabled=True)
+    html = templates.get_template("drawing.html").render(
+        channel=SimpleNamespace(channel_name="테스트", platform_channel_id="channel"), options=options)
+    saved = []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page()
+        page.clock.install()
+        page.add_init_script("""window.drawingTestTime = 0;
+            performance.now = () => window.drawingTestTime;
+            Object.defineProperty(navigator, 'clipboard', {value: {
+            writeText: async () => { throw new Error('denied'); }
+        }});""")
+        page.route("**/static/**", serve_assets)
+        def editor(route: Route):
+            if route.request.method == "GET":
+                route.fulfill(body=html, content_type="text/html")
+            else:
+                saved.append(DrawingSaveRequest.model_validate(route.request.post_data_json))
+                route.fulfill(json={"hashtag": "#mw-" + "c" * 24})
+        page.route("**/drawing/chzzk/channel", editor)
+        page.goto("http://localhost/drawing/chzzk/channel")
+        canvas = page.locator("#drawingCanvas")
+        def advance(duration: int) -> None:
+            page.evaluate("duration => { window.drawingTestTime += duration; }", duration)
+            page.clock.fast_forward(duration)
+
+        def draw(duration: int, y: int) -> None:
+            canvas.scroll_into_view_if_needed()
+            box = canvas.bounding_box()
+            assert box
+            page.mouse.move(box["x"] + 80, box["y"] + y)
+            page.mouse.down()
+            advance(duration)
+            page.mouse.move(box["x"] + 150, box["y"] + y)
+            page.mouse.up()
+
+        draw(1000, 80)
+        advance(600100)
+        assert canvas.get_attribute("aria-disabled") == "false"
+        assert page.locator("#recordingTime, #recordingProgress, #recordingState").count() == 0
+        draw(2000, 100)
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        actions = saved[0].recording.actions
+        assert len(actions) == 2 and all(isinstance(action, Stroke) for action in actions)
+        times = [[point.t for point in action.points] for action in actions if isinstance(action, Stroke)]
+        assert times == [[0, 1000], [1000, 3000]]
+        page.locator("#editSavedDrawing").click()
+        page.locator("#undoDrawing").click()
+        advance(600100)
+        draw(599100, 120)
+        picture = canvas.evaluate("c => c.toDataURL()")
+        assert canvas.get_attribute("aria-disabled") == "true"
+        assert "기록 한도" in page.locator("#drawingStatus").inner_text()
+        canvas.click(position={"x": 150, "y": 150})
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        page.locator("#undoDrawing").click()
+        assert canvas.get_attribute("aria-disabled") == "false"
+        page.locator("#redoDrawing").click()
+        assert canvas.get_attribute("aria-disabled") == "true"
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        assert page.locator("#saveDrawing").is_enabled()
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        assert len(saved[1].recording.actions) == 2 and saved[1].final_png == picture
+        last = saved[1].recording.actions[-1]
+        assert isinstance(last, Stroke) and last.points[0].t == 1000 and last.points[-1].t == 600000
+        page.locator("#copyDrawingTag").click()
+        page.wait_for_function("document.getElementById('drawingStatus').textContent.includes('직접 복사')")
+        assert page.locator("#copyDrawingLabel").inner_text() == "해시태그 복사"
+        assert page.locator('[data-step="2"]').get_attribute("aria-current") == "step"
+        assert page.locator("#drawingTag").evaluate("e => e.selectionStart === 0 && e.selectionEnd === e.value.length")
+        assert canvas.evaluate("c => c.toDataURL()") == picture
+        page.locator("#editSavedDrawing").click()
+        page.locator("#undoDrawing").click()
+        advance(1200000)
+        draw(500, 160)
+        assert page.locator("#redoDrawing").is_disabled()
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        last = saved[2].recording.actions[-1]
+        assert isinstance(last, Stroke) and last.points[0].t == 1000 and last.points[-1].t == 1500
         browser.close()
