@@ -116,6 +116,7 @@
                 item.replay_status = data.status;
                 status.textContent = data.already_queued ? "이미 다시 재생 대기 중이거나 재생 중인 그림이에요." :
                     "방송 대기열에 추가했어요. OBS 연결 시 순서대로 다시 재생됩니다.";
+                window.dispatchEvent(new Event("drawing-queue-changed"));
             } catch (error) {
                 status.textContent = error.message;
                 if (error.status === 410 || error.status === 404) { node.remove(); entries.delete(item.id); }
@@ -144,6 +145,11 @@
         receiving = Boolean(event.detail.enabled);
         for (const entry of entries.values()) updateEntry(entry);
     });
+    window.addEventListener("drawing-receiving-state", event => {
+        receiving = Boolean(event.detail.enabled);
+        for (const entry of entries.values()) updateEntry(entry);
+    });
+    window.addEventListener("drawing-queue-cancelled", () => load(true, false));
     window.addEventListener("pageshow", event => { if (event.persisted) load(); });
     setInterval(expireEntries, 1000);
     setInterval(() => { if (!expanded && !loading && !replaying && document.visibilityState === "visible") load(true, false); }, 30000);

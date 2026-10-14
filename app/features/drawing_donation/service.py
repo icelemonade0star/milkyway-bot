@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, overload
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, delete, select
+from sqlalchemy import BigInteger, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models import V2Channel, V2DrawingDonationSetting, V2DonationDrawing, V2DrawingDonationQueue
@@ -28,7 +28,7 @@ def utc(dt):
 def playback_options(playback: dict | None) -> DrawingDonationOptions:
     """대기열 JSON의 다시 재생 메타데이터를 제외하고 재생 설정을 검증한다."""
     return DrawingDonationOptions.model_validate({
-        key: value for key, value in (playback or {}).items() if key != "replay_of"
+        key: value for key, value in (playback or {}).items() if key not in {"replay_of", "manual_hashtag"}
     })
 
 
@@ -148,6 +148,69 @@ class DrawingDonationService:
             raise HTTPException(404, "오버레이를 찾을 수 없습니다.")
         return setting
 
+    async def queue(self, channel_id: str, *, offset: int = 0, limit: int = 20):
+        channel, setting = await self.setting(channel_id)
+        now = datetime.now(timezone.utc)
+        conditions = (
+            V2DrawingDonationQueue.channel_id == channel.id, V2DonationDrawing.channel_id == channel.id,
+            V2DrawingDonationQueue.status.in_(["queued", "playing"]), V2DonationDrawing.expires_at > now,
+        )
+        total, playing = (await self.db.execute(select(
+            func.count(), func.count().filter(V2DrawingDonationQueue.status == "playing"),
+        ).select_from(V2DrawingDonationQueue).join(V2DonationDrawing).where(*conditions))).one()
+        rows = (await self.db.execute(select(V2DrawingDonationQueue, V2DonationDrawing).join(V2DonationDrawing)
+            .where(*conditions).order_by(V2DrawingDonationQueue.created_at, V2DrawingDonationQueue.id)
+            .offset(offset).limit(limit))).all()
+        items = []
+        for index, (job, drawing) in enumerate(rows):
+            metadata = job.playback or {}
+            source = "hashtag" if metadata.get("manual_hashtag") else "replay" if metadata.get("replay_of") is not None else "donation"
+            playback = playback_options(job.playback) if job.status == "playing" else None
+            items.append({
+                "id": str(job.id), "drawing_id": str(drawing.id), "hashtag": drawing.hashtag,
+                "position": offset + index + 1, "status": job.status, "source": source,
+                "nickname": job.nickname, "amount": job.amount,
+                "received_at": utc(job.created_at).isoformat(),
+                "started_at": utc(job.started_at).isoformat() if job.started_at is not None else None,
+                "duration_ms": (playback.replay_seconds + playback.hold_seconds) * 1000 if playback is not None else None,
+                "expires_at": utc(drawing.expires_at).isoformat(),
+            })
+        return {
+            "items": items, "total_count": total, "playing_count": playing, "queued_count": total - playing,
+            "offset": offset, "limit": limit, "server_now": now.isoformat(),
+            "enabled": DrawingDonationOptions.model_validate(setting.options).enabled if setting else False,
+        }
+
+    async def queue_drawing(self, channel_id: str, donation_id: int):
+        channel, _ = await self.setting(channel_id)
+        row = (await self.db.execute(select(V2DrawingDonationQueue, V2DonationDrawing).join(V2DonationDrawing).where(
+            V2DrawingDonationQueue.id == donation_id, V2DrawingDonationQueue.channel_id == channel.id,
+            V2DonationDrawing.channel_id == channel.id, V2DrawingDonationQueue.status.in_(["queued", "playing"]),
+        ))).one_or_none()
+        if row is None:
+            raise HTTPException(404, "재생 대기 중인 그림을 찾을 수 없습니다.")
+        job, drawing = row
+        if utc(drawing.expires_at) <= datetime.now(timezone.utc):
+            raise HTTPException(410, "그림 사용 시간이 지났습니다.")
+        return job, drawing
+
+    async def cancel_queue(self, channel_id: str, donation_id: int):
+        channel, setting = await self.setting(channel_id)
+        if setting is None:
+            raise HTTPException(404, "그림 도네이션 설정을 찾을 수 없습니다.")
+        # OBS와 같은 설정 행을 잠근 뒤 삭제하여 취소된 항목이 새로 재생되는 경쟁을 막는다.
+        await self.overlay_setting(setting.overlay_token, lock=True)
+        job = (await self.db.execute(select(V2DrawingDonationQueue).where(
+            V2DrawingDonationQueue.id == donation_id, V2DrawingDonationQueue.channel_id == channel.id,
+            V2DrawingDonationQueue.status.in_(["queued", "playing"]),
+        ).with_for_update())).scalar_one_or_none()
+        if job is None:
+            raise HTTPException(404, "이미 재생이 끝났거나 취소된 그림입니다.")
+        was_playing = job.status == "playing"
+        await self.db.execute(delete(V2DrawingDonationQueue).where(V2DrawingDonationQueue.id == job.id))
+        await self.db.commit()
+        return {"id": str(donation_id), "status": "cancelled", "was_playing": was_playing}
+
     async def history(self, channel_id: str, *, before: int | None = None, limit: int = 20):
         channel, setting = await self.setting(channel_id)
         now = datetime.now(timezone.utc)
@@ -156,6 +219,7 @@ class DrawingDonationService:
             V2DrawingDonationQueue.started_at.is_not(None),
             V2DrawingDonationQueue.status.in_(["playing", "done"]),
             V2DrawingDonationQueue.playback["replay_of"].astext.is_(None),
+            V2DrawingDonationQueue.playback["manual_hashtag"].astext.is_(None),
             V2DonationDrawing.expires_at > now,
         )
         if before is not None:
@@ -188,6 +252,7 @@ class DrawingDonationService:
             V2DonationDrawing.channel_id == channel.id, V2DrawingDonationQueue.started_at.is_not(None),
             V2DrawingDonationQueue.status.in_(["playing", "done"]),
             V2DrawingDonationQueue.playback["replay_of"].astext.is_(None),
+            V2DrawingDonationQueue.playback["manual_hashtag"].astext.is_(None),
         )
         if lock:
             query = query.with_for_update(of=V2DonationDrawing)
@@ -227,6 +292,40 @@ class DrawingDonationService:
         await self.db.commit()
         return replay, False
 
+    async def replay_hashtag(self, channel_id: str, hashtag: str):
+        tag = hashtag.strip().lower()
+        if TAG_PATTERN.fullmatch(tag) is None:
+            raise HTTPException(422, "#mw-로 시작하는 그림 해시태그 하나를 입력해주세요.")
+        channel, setting = await self.setting(channel_id)
+        if setting is None:
+            raise HTTPException(404, "그림 도네이션 설정을 찾을 수 없습니다.")
+        # OBS 및 수동 재생 요청과 같은 행을 잠가 중복 대기 항목을 막는다.
+        setting = await self.overlay_setting(setting.overlay_token, lock=True)
+        if not DrawingDonationOptions.model_validate(setting.options).enabled:
+            raise HTTPException(403, "그림 도네이션 받기를 켜고 설정을 저장한 뒤 재생해주세요.")
+        drawing = (await self.db.execute(select(V2DonationDrawing).where(
+            V2DonationDrawing.channel_id == channel.id, V2DonationDrawing.hashtag == tag,
+        ).with_for_update())).scalar_one_or_none()
+        if drawing is None:
+            raise HTTPException(404, "이 채널에서 저장한 그림을 찾을 수 없습니다. 해시태그를 확인해주세요.")
+        if utc(drawing.expires_at) <= datetime.now(timezone.utc):
+            raise HTTPException(410, "그림 사용 시간이 지났습니다. 새 그림을 저장해주세요.")
+        existing = (await self.db.execute(select(V2DrawingDonationQueue).where(
+            V2DrawingDonationQueue.channel_id == channel.id, V2DrawingDonationQueue.drawing_id == drawing.id,
+            V2DrawingDonationQueue.status.in_(["queued", "playing"]),
+            V2DrawingDonationQueue.playback["manual_hashtag"].as_boolean().is_(True),
+        ))).scalar_one_or_none()
+        if existing is not None:
+            await self.db.commit()
+            return existing, True
+        job = V2DrawingDonationQueue(
+            channel_id=channel.id, drawing_id=drawing.id, nickname="스트리머 수동 재생", amount=0,
+            playback={"manual_hashtag": True},
+        )
+        self.db.add(job)
+        await self.db.commit()
+        return job, False
+
     async def next_playback(self, token, current_id=None):
         # 설정 행 잠금으로 여러 OBS/미리보기 연결이 같은 대기열을 동시에 넘기지 않게 한다.
         setting = await self.overlay_setting(token, lock=True)
@@ -245,9 +344,12 @@ class DrawingDonationService:
                 if job.status == "queued":
                     job.status, job.started_at = "playing", now
                     replay_of = (job.playback or {}).get("replay_of")
+                    manual_hashtag = (job.playback or {}).get("manual_hashtag")
                     job.playback = options.model_dump()
                     if replay_of is not None:
                         job.playback = {**job.playback, "replay_of": replay_of}
+                    if manual_hashtag:
+                        job.playback = {**job.playback, "manual_hashtag": True, "show_donor": False}
                 playback = playback_options(job.playback)
                 elapsed_ms = max(0, int((now - utc(job.started_at)).total_seconds() * 1000))
                 if elapsed_ms >= (playback.replay_seconds + playback.hold_seconds) * 1000:

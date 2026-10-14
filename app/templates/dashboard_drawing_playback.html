@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>그림 도네이션 재생 관리 · Milkyway Bot</title>
+    <link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/drawing_donation.css">
+</head>
+<body class="drawing-page">
+    <main class="drawing-shell dashboard-drawing playback-dashboard">
+        {% set drawing_section = 'playback' %}{% include '_drawing_dashboard_nav.html' %}
+        <header class="drawing-intro"><p class="eyebrow">{{ channel.channel_name }}</p><h1>재생 관리</h1><p>방송 중인 그림과 다음 재생 순서를 확인하세요.</p></header>
+        <aside id="drawingSetupNotice" class="broadcast-notice" {% if options.enabled %}hidden{% endif %}>
+            <strong>방송 재생 전에 오버레이 설정을 확인하세요.</strong>
+            <p>그림 도네이션 받기가 꺼져 있어요. <a href="/auth/dashboard/drawing">오버레이 설정으로 이동</a>하여 수신을 켜고 설정을 저장해주세요.</p>
+        </aside>
+        {% include '_drawing_queue_panel.html' %}
+        <section class="drawing-card broadcast-replay" aria-labelledby="hashtagReplayHeading">
+            <h2 id="hashtagReplayHeading">해시태그로 방송에서 재생</h2>
+            <p class="broadcast-notice">실제 방송 대기열에 추가됩니다. OBS가 연결되어 있으면 방송에 송출돼요.</p>
+            <p id="drawingReceivingNotice" class="help" {% if options.enabled %}hidden{% endif %}>현재 그림 도네이션 받기가 꺼져 있어요. <a href="/auth/dashboard/drawing">오버레이 설정</a>에서 켜고 저장해주세요.</p>
+            <form id="drawingHashtagReplay">
+                <label for="replayHashtag">그림 해시태그</label>
+                <input id="replayHashtag" type="text" placeholder="#mw-…" maxlength="64" required autocomplete="off" spellcheck="false" aria-describedby="hashtagReplayHelp">
+                <p id="hashtagReplayHelp" class="help">이 채널에서 저장한 유효한 그림 해시태그를 입력하세요. 그림 저장 후 1시간 동안 사용할 수 있어요.</p>
+                <button class="primary broadcast-button" type="submit" {% if not options.enabled %}disabled{% endif %}>방송에서 재생</button>
+                <p id="hashtagReplayStatus" class="status" role="status" aria-live="polite"></p>
+            </form>
+        </section>
+        <section class="drawing-card drawing-history" aria-labelledby="drawingHistoryHeading">
+            <div class="preview-heading"><h2 id="drawingHistoryHeading">후원 그림 재생 이력</h2><button id="refreshDrawingHistory" type="button">새로고침</button></div>
+            <p class="help">실제 후원으로 재생된 그림입니다. 다시 재생하면 방송 대기열에 추가되며, OBS 연결 시 순서대로 재생됩니다. 그림 저장 후 1시간이 지나면 이력에서도 사라집니다.</p>
+            <p id="drawingHistoryStatus" class="status" role="status" aria-live="polite"></p>
+            <p id="drawingHistoryEmpty" class="help" hidden>아직 재생된 후원 그림이 없어요.</p>
+            <ul id="drawingHistoryList" class="drawing-history-list" aria-label="후원 그림 재생 이력"></ul>
+            <button id="moreDrawingHistory" type="button" hidden>이전 이력 더 보기</button>
+        </section>
+    </main>
+    <script src="/static/js/drawing_canvas.js"></script>
+    <script src="/static/js/drawing_broadcast.js"></script>
+    <script src="/static/js/drawing_queue.js"></script>
+    <script src="/static/js/drawing_history.js"></script>
+</body>
+</html>

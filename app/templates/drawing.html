@@ -39,6 +39,10 @@
         </section>
         {% if options.enabled %}
         <section class="drawing-card editor-card" aria-label="그림 편집기">
+            <div id="drawingDraftPrompt" class="drawing-draft-prompt" hidden role="region" aria-label="임시 그림 복원">
+                <p id="drawingDraftMessage">이 기기에 저장된 그림이 있어요. 이어서 그릴까요?</p>
+                <div><button type="button" class="primary" id="restoreDrawingDraft">이어서 그리기</button><button type="button" id="discardDrawingDraft">새로 그리기</button></div>
+            </div>
             <div class="drawing-tools editor-toolbar" role="group" aria-label="그리기 도구">
                 <div class="drawing-tool-switch" role="group" aria-label="도구 선택">
                     <button type="button" data-tool="pen" aria-pressed="true">{{ icon("pen") }}펜</button>
@@ -51,10 +55,13 @@
                     {% endfor %}
                     <label class="palette-custom" title="직접 색상 선택">{{ icon("plus") }}<input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
                 </div>
-                <div class="brush-size-control">
-                    <label for="penWidth">굵기</label><input id="penWidth" type="range" min="1" max="60" value="6" aria-describedby="widthValue"><output id="widthValue" for="penWidth">6</output>
-                    <div class="brush-preview" id="brushPreview" title="굵기 6px" aria-hidden="true"><span id="brushPreviewDot"></span></div>
+                <div class="brush-size-control" id="penSizeControl">
+                    <label for="penWidth">펜 굵기</label><input id="penWidth" type="range" min="1" max="60" value="6" aria-describedby="widthValue"><output id="widthValue" for="penWidth">6</output>
                 </div>
+                <div class="brush-size-control" id="eraserSizeControl" hidden>
+                    <label for="eraserWidth">지우개 굵기</label><input id="eraserWidth" type="range" min="1" max="60" value="20" aria-describedby="eraserWidthValue"><output id="eraserWidthValue" for="eraserWidth">20</output>
+                </div>
+                <div class="brush-preview" id="brushPreview" title="펜 굵기 6px" aria-hidden="true"><span id="brushPreviewDot"></span></div>
                 <div class="drawing-history" role="group" aria-label="편집 이력">
                     <button type="button" class="icon-button" id="undoDrawing" aria-label="되돌리기" title="되돌리기 (Ctrl+Z)" disabled>{{ icon("undo") }}</button>
                     <button type="button" class="icon-button" id="redoDrawing" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z / Ctrl+Y)" disabled>{{ icon("redo") }}</button>
@@ -62,6 +69,8 @@
                     <button type="button" id="clearDrawing" disabled>모두 지우기</button>
                 </div>
             </div>
+            <details id="drawingBackgroundSettings" class="drawing-background-settings">
+                <summary>배경 설정 <span>방송에는 그림만 표시돼요</span></summary>
             <div class="drawing-tools drawing-background-tools" role="group" aria-label="배경 설정">
                 <span class="background-caption" id="backgroundExplanation">배경은 그릴 때만 보이고, 저장과 방송에는 그림만 표시돼요.</span>
                 <select id="canvasBackgroundMode" aria-label="배경" hidden><option value="color">배경색</option><option value="transparent">투명</option><option value="live">방송 이미지</option></select>
@@ -82,11 +91,20 @@
                     <span class="help" id="liveBackgroundStatus" role="status" aria-live="polite"></span>
                 </div>
             </div>
-            <div class="canvas-wrap"><div class="canvas-stage" id="drawingCanvasStage">
+            </details>
+            <div class="drawing-view-tools" role="group" aria-label="캔버스 보기">
+                <button type="button" id="zoomOutDrawing" aria-label="축소">−</button><output id="drawingZoom" aria-live="polite">100%</output><button type="button" id="zoomInDrawing" aria-label="확대">+</button>
+                <button type="button" id="fitDrawing">화면에 맞추기</button>
+                <button type="button" id="panDrawing" aria-pressed="false">이동 모드</button>
+                <button type="button" id="focusDrawing" aria-pressed="false">집중 모드</button>
+            </div>
+            <div class="canvas-wrap" id="drawingViewport" tabindex="0" aria-label="캔버스 보기 영역" aria-describedby="drawingViewHelp"><div class="canvas-stage" id="drawingCanvasStage">
                 <img id="liveBackgroundImage" alt="" aria-hidden="true" referrerpolicy="no-referrer" hidden>
                 <canvas id="drawingCanvas" width="{{ options.canvas_width }}" height="{{ options.canvas_height }}" aria-label="그림 그리는 영역" tabindex="0"></canvas>
                 <p class="canvas-empty-hint" id="emptyDrawingHint">마우스·터치·펜으로 그려보세요.</p>
             </div></div>
+            <div id="drawingBrushCursor" class="drawing-brush-cursor" hidden aria-hidden="true"></div>
+            <p class="drawing-view-help" id="drawingViewHelp">확대 후 이동 모드에서 드래그해 화면을 옮기세요. 화면에 맞추기로 처음 보기로 돌아갑니다.</p>
             <div class="drawing-footer" id="drawingSaveControls">
                 <span class="canvas-size">{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스</span>
                 <button class="primary" id="saveDrawing" type="button" disabled>그림 저장하기</button>
@@ -99,6 +117,7 @@
                 <button type="button" class="edit-again-button" id="editSavedDrawing">그림 더 고치기</button>
             </section>
             <p class="status" id="drawingStatus" role="status" aria-live="polite"></p>
+            <p class="status draft-status" id="drawingDraftStatus" role="status" aria-live="polite"></p>
             <dialog class="clear-drawing-dialog" id="clearDrawingDialog" aria-labelledby="clearDrawingHeading" aria-describedby="clearDrawingDescription">
                 <form method="dialog">
                     <h2 id="clearDrawingHeading">그림을 모두 지울까요?</h2>
@@ -109,6 +128,8 @@
         </section>
         <script id="drawingConfig" type="application/json">{{ {"save_path": "/drawing/chzzk/" + channel.platform_channel_id, "background_path": "/drawing/chzzk/" + channel.platform_channel_id + "/background"}|tojson }}</script>
         <script src="/static/js/drawing_canvas.js"></script>
+        <script src="/static/js/drawing_view.js"></script>
+        <script src="/static/js/drawing_draft.js"></script>
         <script src="/static/js/drawing_editor.js"></script>
         {% else %}
         <section class="drawing-card closed"><h2>지금은 그림 도네이션을 쉬고 있어요.</h2><p>스트리머가 그림 도네이션을 활성화하면 여기에서 그림을 그릴 수 있습니다.</p></section>

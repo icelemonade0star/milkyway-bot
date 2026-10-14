@@ -121,6 +121,14 @@
     const undoStack = [], redoStack = [];
     let tool = "pen", current = null, pointer = null, strokeStarted = 0, pointCount = 0;
     let saveKey = crypto.randomUUID(), saving = false, finished = false, copied = false;
+    let draftPending = true, storedDraft = null, draftTimer = 0, draftWrites = 0, draftFailed = false, draftRevision = 0;
+    const draft = new DrawingDraft(config.save_path);
+    const draftPrompt = document.getElementById("drawingDraftPrompt"), draftStatus = document.getElementById("drawingDraftStatus");
+    const view = new DrawingView(canvas, {
+        width: brushWidth, tool: () => tool, locked: () => paintLocked() || reachedLimit(),
+        busy: () => saving || clearDialog.open || draftPending || current !== null,
+        drawing: () => current !== null, changed: updateEditor
+    });
     DrawingCanvas.render(canvas, recording, Infinity, true);
     function recordedDuration() { return recording.actions.at(-1)?.points.at(-1).t ?? 0; }
     function timestamp() {
@@ -130,7 +138,7 @@
     function reachedLimit() {
         return pointCount >= 25000 || recording.actions.length >= 2000 || recordedDuration() >= 600000;
     }
-    function paintLocked() { return saving || finished || clearDialog.open; }
+    function paintLocked() { return saving || finished || clearDialog.open || draftPending; }
     function updateSteps() {
         const phase = finished ? (copied ? 3 : 2) : saving ? 1 : 0;
         document.querySelectorAll("[data-step]").forEach(item => {
@@ -142,28 +150,36 @@
             item.querySelector(".step-number").textContent = step < phase ? "✓" : String(step + 1);
         });
     }
+    function brushWidth() {
+        return Number(document.getElementById(tool === "eraser" ? "eraserWidth" : "penWidth").value);
+    }
     function updateBrushPreview() {
-        const width = Number(document.getElementById("penWidth").value);
+        const width = brushWidth();
         const color = document.getElementById("penColor").value;
         const dot = document.getElementById("brushPreviewDot");
         dot.style.width = dot.style.height = `${Math.min(36, Math.max(2, width))}px`;
         dot.style.backgroundColor = tool === "eraser" ? "#ffffff" : color;
         dot.style.border = tool === "eraser" || color === "#ffffff" ? "1px solid #8a958f" : "0";
-        document.getElementById("brushPreview").title = `굵기 ${width}px`;
-        document.getElementById("widthValue").value = width;
+        document.getElementById("brushPreview").title = `${tool === "eraser" ? "지우개" : "펜"} 굵기 ${width}px`;
+        document.getElementById("penSizeControl").hidden = tool !== "pen";
+        document.getElementById("eraserSizeControl").hidden = tool !== "eraser";
+        document.getElementById("brushPreview").hidden = tool === "fill";
+        document.getElementById("widthValue").value = document.getElementById("penWidth").value;
+        document.getElementById("eraserWidthValue").value = document.getElementById("eraserWidth").value;
         document.querySelectorAll("[data-color]").forEach(item =>
             item.setAttribute("aria-pressed", String(tool !== "eraser" && item.dataset.color === color)));
         document.getElementById("penColor").parentElement.classList.toggle("is-selected",
             tool !== "eraser" && !Array.from(document.querySelectorAll("[data-color]")).some(item => item.dataset.color === color));
+        view.updateCursor();
     }
     function updateEditor() {
-        const locked = paintLocked(), busy = locked || current !== null;
+        const locked = paintLocked(), busy = locked || current !== null || Boolean(view.drag);
         save.disabled = busy || !recording.actions.length;
         save.textContent = saving ? "그림을 저장하고 있어요…" : "그림 저장하기";
         undo.disabled = busy || !undoStack.length;
         redo.disabled = busy || !redoStack.length;
         clear.disabled = busy || !recording.actions.length;
-        document.querySelectorAll("[data-tool], [data-color], #penColor, #penWidth").forEach(item => { item.disabled = busy; });
+        document.querySelectorAll("[data-tool], [data-color], #penColor, #penWidth, #eraserWidth").forEach(item => { item.disabled = busy; });
         canvas.setAttribute("aria-disabled", String(locked || reachedLimit()));
         result.hidden = !finished;
         saveControls.hidden = finished;
@@ -172,6 +188,7 @@
             status.textContent = "기록 한도에 도달했어요. 지금 그림을 저장해주세요.";
         copyLabel.textContent = copied ? "복사했어요" : "해시태그 복사";
         updateSteps();
+        view.update();
     }
     function changed() {
         saveKey = crypto.randomUUID(); finished = false; copied = false; status.textContent = "";
@@ -190,20 +207,21 @@
         return true;
     }
     canvas.addEventListener("pointerdown", event => {
-        if (pointer !== null || (event.pointerType === "mouse" && event.button !== 0) || !canRecord()) return;
+        if (view.pan || pointer !== null || (event.pointerType === "mouse" && event.button !== 0) || !canRecord()) return;
         strokeStarted = performance.now();
         changed(); redoStack.length = 0;
         const first = point(event), color = document.getElementById("penColor").value;
         if (tool === "fill") {
             const action = {type: "stroke", tool, color, width: 1, points: [first]};
             recording.actions.push(action); undoStack.push({type: "stroke", action});
-            pointCount++; DrawingCanvas.fill(ctx, first.x, first.y, color); updateEditor(); return;
+            pointCount++; DrawingCanvas.fill(ctx, first.x, first.y, color); updateEditor(); persistDraft(); return;
         }
         pointer = event.pointerId; canvas.setPointerCapture(pointer);
-        current = {type: "stroke", tool, color, width: Number(document.getElementById("penWidth").value), points: [first]};
+        current = {type: "stroke", tool, color, width: brushWidth(), points: [first]};
         recording.actions.push(current); pointCount++;
         undoStack.push({type: "stroke", action: current});
         DrawingCanvas.stroke(ctx, current, true); updateEditor();
+        queueDraft();
     });
     canvas.addEventListener("pointermove", event => {
         if (event.pointerId !== pointer || !current || !canRecord()) return;
@@ -211,15 +229,17 @@
         if (next.t - previous.t < 12 && Math.hypot(next.x - previous.x, next.y - previous.y) < 3) return;
         current.points.push(next); pointCount++;
         DrawingCanvas.stroke(ctx, {...current, points: [previous, next]}, true);
+        queueDraft();
         if (reachedLimit()) updateEditor();
     });
     function end(event) {
         if (event.pointerId !== pointer) return;
         if (canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
-        current = null; pointer = null; updateEditor();
+        current = null; pointer = null; updateEditor(); view.layout(); persistDraft();
     }
     canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
     function setTool(nextTool) {
+        view.setPan(false);
         tool = nextTool;
         document.querySelectorAll("[data-tool]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.tool === tool)));
         updateBrushPreview();
@@ -233,6 +253,7 @@
         if (tool === "eraser") setTool("pen"); else updateBrushPreview();
     });
     document.getElementById("penWidth").addEventListener("input", updateBrushPreview);
+    document.getElementById("eraserWidth").addEventListener("input", updateBrushPreview);
     function refreshPointCount() {
         pointCount = recording.actions.reduce((count, action) => count + action.points.length, 0);
     }
@@ -264,6 +285,7 @@
             redoStack.length = 0; recording.actions.length = 0;
         } else return;
         refreshPointCount(); changed(); DrawingCanvas.render(canvas, recording, Infinity, true); updateEditor();
+        persistDraft();
     }
     undo.addEventListener("click", () => edit("undo"));
     redo.addEventListener("click", () => edit("redo"));
@@ -287,23 +309,31 @@
     save.addEventListener("click", async () => {
         if (current || paintLocked()) return;
         if (!recording.actions.length) { status.textContent = "먼저 그림을 그려주세요."; return; }
+        view.setFocus(false);
         saving = true; status.textContent = "그림을 저장하고 있어요…"; updateEditor();
+        let retryWithNewKey = false;
         try {
             const finalPng = canvas.toDataURL("image/png");
             const response = await fetch(config.save_path, {method: "POST", headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({save_key: saveKey, recording, final_png: finalPng})});
             const data = await response.json();
+            if (response.status === 410) {
+                saveKey = crypto.randomUUID(); retryWithNewKey = true;
+                throw new Error("이전 저장의 유효기간이 지났어요. 그림은 유지됩니다. 그림 저장하기를 다시 눌러주세요.");
+            }
             if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error :
                 typeof data?.detail === "string" ? data.detail : "그림 저장에 실패했습니다.");
             if (typeof data?.hashtag !== "string" || !data.hashtag) throw new Error("그림 해시태그를 받지 못했어요. 다시 저장해주세요.");
             document.getElementById("drawingTag").value = data.hashtag;
             finished = true; copied = false; status.textContent = "";
+            clearTimeout(draftTimer); removeDraft();
             updateEditor(); result.scrollIntoView({behavior: "smooth", block: "nearest"});
         } catch (error) { status.textContent = error instanceof Error ? error.message : "그림 저장에 실패했습니다."; }
-        finally { saving = false; updateEditor(); }
+        finally { saving = false; updateEditor(); if (retryWithNewKey) persistDraft(); }
     });
     document.getElementById("editSavedDrawing").addEventListener("click", () => {
         finished = false; copied = false; status.textContent = ""; updateEditor();
+        persistDraft();
         canvas.focus({preventScroll: true});
     });
     document.getElementById("copyDrawingTag").addEventListener("click", async () => {
@@ -316,5 +346,91 @@
             input.focus(); input.select(); status.textContent = "해시태그를 선택했어요. 직접 복사해주세요.";
         } finally { button.disabled = false; updateEditor(); }
     });
+    function queueDraft() {
+        if (draftTimer) return;
+        draftTimer = setTimeout(() => { draftTimer = 0; persistDraft(); }, 500);
+    }
+    function draftError() {
+        draftFailed = true;
+        draftStatus.textContent = "이 브라우저에서 임시 저장을 하지 못했어요. 페이지를 닫기 전에 그림 저장하기를 눌러주세요.";
+    }
+    async function removeDraft() {
+        const revision = ++draftRevision; draftWrites++;
+        try {
+            await draft.remove();
+            if (revision === draftRevision) { draftFailed = false; draftStatus.textContent = ""; }
+        } catch { draftError(); }
+        finally { draftWrites--; }
+    }
+    async function persistDraft() {
+        clearTimeout(draftTimer); draftTimer = 0;
+        if (draftPending || finished || saving) return;
+        if (!recording.actions.length) { await removeDraft(); return; }
+        const revision = ++draftRevision;
+        const snapshot = structuredClone({version: 1, recording, saveKey,
+            ui: {tool, penWidth: document.getElementById("penWidth").value,
+                eraserWidth: document.getElementById("eraserWidth").value, color: document.getElementById("penColor").value,
+                backgroundMode: backgroundMode.value, backgroundColor: backgroundColor.value, transparency: transparency.value}});
+        draftWrites++;
+        try {
+            await draft.write(snapshot);
+            if (revision === draftRevision) { draftFailed = false; draftStatus.textContent = "이 기기에 임시 저장했어요. 해시태그 발급은 그림 저장하기를 눌러주세요."; }
+        } catch { if (revision === draftRevision) draftError(); }
+        finally { draftWrites--; }
+    }
+    function applyDraftUI(ui = {}) {
+        if (!ui || typeof ui !== "object") ui = {};
+        for (const [id, value] of [["penWidth", ui.penWidth], ["eraserWidth", ui.eraserWidth]]) {
+            if (Number.isFinite(Number(value)) && Number(value) >= 1 && Number(value) <= 60) document.getElementById(id).value = value;
+        }
+        if (/^#[a-f0-9]{6}$/i.test(ui.color)) document.getElementById("penColor").value = ui.color;
+        if (/^#[a-f0-9]{6}$/i.test(ui.backgroundColor)) backgroundColor.value = ui.backgroundColor;
+        if (["color", "transparent", "live"].includes(ui.backgroundMode)) backgroundMode.value = ui.backgroundMode;
+        if (Number.isFinite(Number(ui.transparency)) && Number(ui.transparency) >= 0 && Number(ui.transparency) <= 100) transparency.value = ui.transparency;
+        updateBackgroundColor(); updateBackgroundTransparency(); updateBackgroundMode();
+        setTool(["pen", "eraser", "fill"].includes(ui.tool) ? ui.tool : "pen");
+    }
+    document.getElementById("restoreDrawingDraft").addEventListener("click", () => {
+        if (!storedDraft || storedDraft.recording.width !== canvas.width || storedDraft.recording.height !== canvas.height) return;
+        recording.actions.push(...storedDraft.recording.actions);
+        saveKey = storedDraft.saveKey;
+        undoStack.push(...recording.actions.map(action => ({type: "stroke", action})));
+        refreshPointCount(); DrawingCanvas.render(canvas, recording, Infinity, true);
+        draftPending = false; draftPrompt.hidden = true;
+        applyDraftUI(storedDraft.ui); storedDraft = null; updateEditor();
+        draftStatus.textContent = "임시 그림을 복원했어요. 계속 그리거나 그림을 저장할 수 있어요.";
+        canvas.focus({preventScroll: true});
+    });
+    document.getElementById("discardDrawingDraft").addEventListener("click", async () => {
+        const button = document.getElementById("discardDrawingDraft"); button.disabled = true;
+        document.getElementById("restoreDrawingDraft").disabled = true;
+        await removeDraft();
+        storedDraft = null; draftPending = false; draftPrompt.hidden = true; updateEditor();
+        canvas.focus({preventScroll: true});
+    });
+    for (const selector of ["#penWidth", "#eraserWidth", "#penColor", "#canvasBackgroundColor", "#liveBackgroundTransparency", "[data-color]", "[data-background-color]", "[data-background-mode]", "[data-tool]"]) {
+        document.querySelectorAll(selector).forEach(item => item.addEventListener(item.tagName === "BUTTON" ? "click" : "input", () => {
+            if (recording.actions.length) queueDraft();
+        }));
+    }
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistDraft(); });
+    window.addEventListener("pagehide", () => persistDraft());
+    window.addEventListener("beforeunload", event => {
+        if (!draftPending && !finished && recording.actions.length && (draftFailed || draftWrites || current)) {
+            event.preventDefault(); event.returnValue = "";
+        }
+    });
+    draft.read().then(value => {
+        if (value) {
+            storedDraft = DrawingDraft.valid(value) ? value : null;
+            const compatible = storedDraft && storedDraft.recording.width === canvas.width && storedDraft.recording.height === canvas.height;
+            document.getElementById("restoreDrawingDraft").disabled = !compatible;
+            document.getElementById("drawingDraftMessage").textContent = !storedDraft ?
+                "임시 그림을 읽을 수 없어요. 새로 그리기를 눌러 시작해주세요." : compatible ?
+                "이 기기에 저장된 그림이 있어요. 이어서 그릴까요?" : "캔버스 크기가 바뀌어 임시 그림을 복원할 수 없어요. 새로 그리기를 눌러 시작해주세요.";
+            draftPrompt.hidden = false;
+        } else draftPending = false;
+        updateEditor(); view.layout();
+    }).catch(() => { draftPending = false; draftError(); updateEditor(); view.layout(); });
     updateBrushPreview(); updateEditor();
 })();

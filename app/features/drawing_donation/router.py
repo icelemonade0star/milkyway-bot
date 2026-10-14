@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import TEMPLATE_DIR, PUBLIC_SITE_URL
 from app.core.database import get_async_db
 from app.features.dashboard.router import get_dashboard_session
-from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingSaveRequest
+from app.features.drawing_donation.schemas import DrawingDonationOptions, DrawingHashtagReplayRequest, DrawingSaveRequest
 from app.features.drawing_donation.service import DrawingDonationService
 from app.features.drawing_donation.limits import limit_save_requests, limit_save_bytes, limit_live_background_requests
 from app.features.drawing_donation.live_background import get_live_background_url
@@ -26,6 +26,14 @@ async def dashboard_drawing(request: Request, session=Depends(get_dashboard_sess
     })
 
 
+@drawing_router.get("/auth/dashboard/drawing/playback", response_class=HTMLResponse)
+async def dashboard_drawing_playback(request: Request, session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db)):
+    channel, setting = await DrawingDonationService(db).setting(session["channel_id"], create=True)
+    return templates.TemplateResponse(request=request, name="dashboard_drawing_playback.html", context={
+        "request": request, "channel": channel, "options": DrawingDonationOptions.model_validate(setting.options),
+    })
+
+
 @drawing_router.post("/auth/dashboard/drawing")
 async def save_drawing_options(options: DrawingDonationOptions, session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db)):
     _, setting = await DrawingDonationService(db).setting(session["channel_id"], create=True)
@@ -34,11 +42,48 @@ async def save_drawing_options(options: DrawingDonationOptions, session=Depends(
     return {"status": "success", "options": options.model_dump()}
 
 
+@drawing_router.post("/auth/dashboard/drawing/replay")
+async def replay_drawing_hashtag(
+    payload: DrawingHashtagReplayRequest,
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    job, existing = await DrawingDonationService(db).replay_hashtag(session["channel_id"], payload.hashtag)
+    return JSONResponse({"id": str(job.id), "status": job.status, "already_queued": existing},
+                        headers={"Cache-Control": "no-store"})
+
+
 @drawing_router.get("/drawing/chzzk/{channel_id}", response_class=HTMLResponse)
 async def drawing_page(channel_id: str, request: Request, db: AsyncSession = Depends(get_async_db)):
     channel, setting = await DrawingDonationService(db).setting(channel_id)
     options = DrawingDonationOptions.model_validate(setting.options) if setting else DrawingDonationOptions()
     return templates.TemplateResponse(request=request, name="drawing.html", context={"request": request, "channel": channel, "options": options})
+
+
+@drawing_router.get("/auth/dashboard/drawing/queue")
+async def drawing_queue(
+    offset: int = Query(0, ge=0, le=2147483647), limit: int = Query(20, ge=1, le=50),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    data = await DrawingDonationService(db).queue(session["channel_id"], offset=offset, limit=limit)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
+@drawing_router.get("/auth/dashboard/drawing/queue/{donation_id}/recording")
+async def queue_recording(
+    donation_id: int = Path(ge=1, le=9223372036854775807),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    _, drawing = await DrawingDonationService(db).queue_drawing(session["channel_id"], donation_id)
+    return JSONResponse({"recording": drawing.recording}, headers={"Cache-Control": "no-store"})
+
+
+@drawing_router.delete("/auth/dashboard/drawing/queue/{donation_id}")
+async def cancel_drawing_queue(
+    donation_id: int = Path(ge=1, le=9223372036854775807),
+    session=Depends(get_dashboard_session), db: AsyncSession = Depends(get_async_db),
+):
+    data = await DrawingDonationService(db).cancel_queue(session["channel_id"], donation_id)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @drawing_router.get("/auth/dashboard/drawing/history")

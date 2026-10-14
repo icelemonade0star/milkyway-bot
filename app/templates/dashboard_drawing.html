@@ -7,8 +7,9 @@
 </head>
 <body class="drawing-page">
     <main class="drawing-shell dashboard-drawing">
-        <nav class="drawing-nav"><a class="brand" href="/auth/dashboard">MILKYWAY BOT</a><a href="/guide/drawing-donation">사용 방법</a><a href="/auth/dashboard">대시보드로 돌아가기</a></nav>
+        {% set drawing_section = 'settings' %}{% include '_drawing_dashboard_nav.html' %}
         <header class="drawing-intro"><p class="eyebrow">{{ channel.channel_name }}</p><h1>그림 도네이션</h1><p>시청자의 한 획 한 획을 방송에 담아보세요.</p></header>
+        <a class="drawing-queue-shortcut" href="/auth/dashboard/drawing/playback">재생 관리로 이동 <span id="drawingQueueNavSummary">대기열 확인 · 재생 취소</span></a>
         <div class="drawing-settings-grid">
             <section class="drawing-card">
                 <h2>수신 및 재생 설정</h2>
@@ -19,10 +20,11 @@
                     <div class="field-pair"><label>그림 가로 크기 (px)<input type="number" name="canvas_width" min="320" max="1920" value="{{ options.canvas_width }}" required></label><label>그림 세로 크기 (px)<input type="number" name="canvas_height" min="180" max="1080" value="{{ options.canvas_height }}" required></label></div>
                     <p class="help">시청자가 그리는 캔버스 크기입니다. 방송에서는 그림 비율을 유지하며 OBS 화면에 맞춰 표시합니다. 16:9 그림은 1280 × 720 또는 1920 × 1080으로 설정하세요.</p>
                     <label class="check-row"><input type="checkbox" name="show_donor" {% if options.show_donor %}checked{% endif %}> 후원자와 금액 표시</label>
+                    <p id="drawingSettingsDirty" class="settings-dirty" role="status" hidden>변경한 설정이 아직 저장되지 않았어요. 실제 방송에는 마지막으로 저장한 설정이 적용됩니다.</p>
                     <button class="primary" type="submit">설정 저장</button><p class="status" id="settingsStatus" role="status"></p>
                 </form>
-                <hr><label>시청자에게 공유할 그림 페이지<input readonly value="{{ drawing_url }}" id="drawingPageLink"></label><button type="button" data-copy="drawingPageLink">그림 페이지 링크 복사</button>
-                <label>OBS 브라우저 소스 URL<input readonly value="{{ overlay_url }}" id="drawingOverlayLink"></label><button type="button" data-copy="drawingOverlayLink">OBS 링크 복사</button>
+                <hr><label>시청자에게 공유할 그림 페이지<input readonly value="{{ drawing_url }}" id="drawingPageLink"></label><button type="button" data-copy="drawingPageLink">그림 페이지 링크 복사</button><p id="drawingPageLinkStatus" class="status" role="status" aria-live="polite"></p>
+                <label>OBS 브라우저 소스 URL<input readonly value="{{ overlay_url }}" id="drawingOverlayLink"></label><button type="button" data-copy="drawingOverlayLink">OBS 링크 복사</button><p id="drawingOverlayLinkStatus" class="status" role="status" aria-live="polite"></p>
                 <p class="help">OBS 브라우저 소스의 가로·세로를 방송 해상도와 같게 설정하세요. 오버레이 URL은 방송용으로만 사용하세요.</p>
             </section>
             <section class="drawing-card preview-card">
@@ -32,17 +34,8 @@
                 <ol class="drawing-steps"><li>그림 페이지 링크를 시청자에게 공유하세요.</li><li>시청자가 그림을 저장하고 해시태그를 발급받습니다.</li><li>해시태그를 포함한 후원을 받으면 OBS에서 그리는 과정이 재생됩니다.</li></ol>
             </section>
         </div>
-        <section class="drawing-card drawing-history" aria-labelledby="drawingHistoryHeading">
-            <div class="preview-heading"><h2 id="drawingHistoryHeading">후원 그림 재생 이력</h2><button id="refreshDrawingHistory" type="button">새로고침</button></div>
-            <p class="help">실제 후원으로 재생된 그림입니다. 다시 재생하면 방송 대기열에 추가되며, OBS 연결 시 순서대로 재생됩니다. 그림 저장 후 1시간이 지나면 이력에서도 사라집니다.</p>
-            <p id="drawingHistoryStatus" class="status" role="status" aria-live="polite"></p>
-            <p id="drawingHistoryEmpty" class="help" hidden>아직 재생된 후원 그림이 없어요.</p>
-            <ul id="drawingHistoryList" class="drawing-history-list" aria-label="후원 그림 재생 이력"></ul>
-            <button id="moreDrawingHistory" type="button" hidden>이전 이력 더 보기</button>
-        </section>
     </main>
     <script src="/static/js/drawing_canvas.js"></script>
     <script src="/static/js/dashboard_drawing.js"></script>
-    <script src="/static/js/drawing_history.js"></script>
 </body>
 </html>

@@ -34,6 +34,11 @@ class DrawingDonationOptions(BaseModel):
         return value
 
 
+class DrawingHashtagReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hashtag: str = Field(min_length=1, max_length=64)
+
+
 class Point(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     x: float = Field(ge=0, le=MAX_CANVAS_WIDTH)

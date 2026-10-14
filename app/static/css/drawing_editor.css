@@ -38,6 +38,26 @@ body.drawing-editor-page { background: #f3f4f1; color: #17201b; font-family: var
 .brush-size-control output { min-width: 18px; font-family: var(--font-mono); font-size: 12px; }
 .brush-preview { display: flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; border-radius: 10px; background: #f3f4f1; }
 .brush-preview span { border-radius: 50%; width: 6px; height: 6px; background: #25453c; }
+.drawing-background-settings summary { cursor: pointer; font-size: 13px; color: #3c4741; padding: 8px 0; }
+.drawing-background-settings summary span { margin-left: 8px; color: #6b756f; font-size: 12px; }
+.drawing-view-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.drawing-view-tools output { min-width: 52px; text-align: center; font-size: 13px; }
+.drawing-view-tools button { min-height: 44px; padding: 0 10px; }
+.drawing-view-help { margin: 0; font-size: 12px; color: #5b6660; }
+.drawing-brush-cursor { position: fixed; z-index: 100; border: 1px solid #17201b; outline: 1px solid white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.drawing-editor-page .canvas-wrap { position: relative; overflow: auto; overscroll-behavior: contain; background: #e6e9e5; }
+.drawing-editor-page .canvas-stage { margin: 0 auto; }
+.drawing-editor-page #drawingCanvas.brush-cursor-active { cursor: none; }
+.drawing-editor-page #drawingCanvas[data-pan="true"] { cursor: grab; }
+.drawing-editor-page #drawingCanvas[data-panning="true"] { cursor: grabbing; }
+.drawing-draft-prompt { padding: 16px; border: 1px solid #cfe2d6; background: #eef5f0; border-radius: 12px; }
+.drawing-draft-prompt p { margin: 0 0 10px; font-size: 14px; }
+.drawing-draft-prompt > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.drawing-editor-page .draft-status { color: #5b6660; font-size: 12px; }
+body.drawing-focus { overflow: hidden; }
+.drawing-focus .editor-card { position: fixed; inset: 0; z-index: 50; margin: 0; border: 0; border-radius: 0; padding: 16px; gap: 10px; overflow: auto; }
+.drawing-focus #drawingViewport { flex: 1 1 0; min-height: 140px; height: auto !important; }
+.drawing-focus .drawing-view-help, .drawing-focus .canvas-size { display: none; }
 .drawing-history { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .drawing-editor-page .icon-button { display: flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #17201b; }
 .drawing-editor-page .icon-button:hover { background: #eef0ec; }
@@ -57,7 +77,7 @@ body.drawing-editor-page { background: #f3f4f1; color: #17201b; font-family: var
 .drawing-editor-page #liveBackgroundControls label { white-space: nowrap; gap: 8px; }
 .drawing-editor-page #refreshLiveBackground { width: 32px; height: 32px; min-height: 32px; }
 .drawing-editor-page #refreshLiveBackground .drawing-icon { width: 16px; height: 16px; }
-.drawing-editor-page .canvas-wrap { padding: 0; border: 1px solid #dfe3dd; border-radius: 12px; overflow: hidden; }
+.drawing-editor-page .canvas-wrap { padding: 0; border: 1px solid #dfe3dd; border-radius: 12px; overflow: auto; }
 .drawing-editor-page .canvas-stage { box-shadow: none; }
 .canvas-empty-hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); margin: 0; padding: 8px 14px; border-radius: 999px; background: #17201be0; color: white; font-size: 13px; text-align: center; line-height: 1.5; pointer-events: none; }
 .drawing-editor-page .drawing-footer { margin-top: 0; flex-wrap: wrap; gap: 16px; }
@@ -90,6 +110,12 @@ body.drawing-editor-page { background: #f3f4f1; color: #17201b; font-family: var
     .drawing-steps-progress li + li::before { display: none; }
     .step-number { width: 22px; height: 22px; font-size: 11px; }
     .drawing-editor-page .editor-toolbar { gap: 14px; }
+    .drawing-editor-page .drawing-intro { gap: 10px; }
+    .drawing-editor-page h1 { font-size: 25px; }
+    .drawing-editor-page .editor-toolbar { position: sticky; top: 0; z-index: 2; background: white; padding: 8px 0; }
+    .drawing-focus .editor-toolbar { position: static; gap: 8px; }
+    .drawing-focus .editor-card { padding: 10px; }
+    .drawing-focus .drawing-background-settings summary span { display: none; }
     .drawing-tool-switch { max-width: 100%; }
     .drawing-tool-switch button { padding: 0 10px; }
     .drawing-history { margin-left: 0; }

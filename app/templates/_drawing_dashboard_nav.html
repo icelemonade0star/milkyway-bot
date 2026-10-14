@@ -1,0 +1,5 @@
+<nav class="drawing-nav"><a class="brand" href="/auth/dashboard">MILKYWAY BOT</a><a href="/guide/drawing-donation">사용 방법</a><a href="/auth/dashboard">대시보드로 돌아가기</a></nav>
+<nav class="drawing-tabs" aria-label="그림 도네이션 메뉴">
+    <a href="/auth/dashboard/drawing/playback" {% if drawing_section == 'playback' %}aria-current="page"{% endif %}>재생 관리</a>
+    <a href="/auth/dashboard/drawing" {% if drawing_section == 'settings' %}aria-current="page"{% endif %}>오버레이 설정</a>
+</nav>
