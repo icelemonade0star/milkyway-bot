@@ -17,7 +17,6 @@
         <section class="drawing-card broadcast-replay" aria-labelledby="hashtagReplayHeading">
             <h2 id="hashtagReplayHeading">해시태그로 방송에서 재생</h2>
             <p class="broadcast-notice">실제 방송 대기열에 추가됩니다. OBS가 연결되어 있으면 방송에 송출돼요.</p>
-            <p id="drawingReceivingNotice" class="help" {% if options.enabled %}hidden{% endif %}>현재 그림 도네이션 받기가 꺼져 있어요. <a href="/auth/dashboard/drawing">오버레이 설정</a>에서 켜고 저장해주세요.</p>
             <form id="drawingHashtagReplay">
                 <label for="replayHashtag">그림 해시태그</label>
                 <input id="replayHashtag" type="text" placeholder="#mw-…" maxlength="64" required autocomplete="off" spellcheck="false" aria-describedby="hashtagReplayHelp">

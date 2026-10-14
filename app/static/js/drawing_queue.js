@@ -112,8 +112,10 @@
             if (entry.busy || dialog.open) return;
             selected = entry;
             const target = entry.item, manual = target.source === "hashtag";
-            document.getElementById("cancelDrawingQueueHeading").textContent = target.status === "playing" && entry.enabled ?
+            const stopping = target.status === "playing" && entry.enabled;
+            document.getElementById("cancelDrawingQueueHeading").textContent = stopping ?
                 "재생을 중단할까요?" : "이 그림의 재생을 취소할까요?";
+            confirm.textContent = stopping ? "재생 중단 확인" : "재생 취소 확인";
             document.getElementById("cancelDrawingQueueTarget").textContent = `${target.position}번 · ${manual ? "스트리머 수동 재생" : target.nickname + "님 · " + Number(target.amount).toLocaleString("ko-KR") + "원"}`;
             document.getElementById("cancelDrawingQueueTag").textContent = target.hashtag;
             document.getElementById("cancelDrawingQueueDescription").textContent = target.source === "donation" ?
@@ -196,7 +198,8 @@
         const entry = selected, id = entry.item.id;
         cancellingNow = entry.busy = true;
         dialog.querySelectorAll("button").forEach(button => { button.disabled = true; });
-        confirm.textContent = "취소하고 있어요…";
+        const confirmLabel = confirm.textContent;
+        confirm.textContent = confirmLabel === "재생 중단 확인" ? "중단하고 있어요…" : "취소하고 있어요…";
         try {
             const data = await request(`${root}/${encodeURIComponent(id)}`, "DELETE");
             cancelled.add(id); observer.unobserve(entry.picture); entry.node.remove(); entries.delete(id);
@@ -207,7 +210,7 @@
         finally {
             cancellingNow = entry.busy = false;
             dialog.querySelectorAll("button").forEach(button => { button.disabled = false; });
-            confirm.textContent = "재생 취소 확인";
+            confirm.textContent = confirmLabel;
             if (entry.node.isConnected) updateEntry(entry, entry.item, entry.enabled);
             dialog.close();
         }

@@ -1,11 +1,11 @@
 (() => {
     "use strict";
     const form = document.getElementById("drawingHashtagReplay"), button = form.querySelector('[type="submit"]');
-    const status = document.getElementById("hashtagReplayStatus"), notice = document.getElementById("drawingReceivingNotice");
+    const status = document.getElementById("hashtagReplayStatus");
     const setupNotice = document.getElementById("drawingSetupNotice");
     let receiving = !button.disabled, busy = false;
     function setReceiving(enabled) {
-        receiving = enabled; notice.hidden = enabled; button.disabled = busy || !enabled;
+        receiving = enabled; button.disabled = busy || !enabled;
         setupNotice.hidden = enabled;
     }
     window.addEventListener("drawing-receiving-state", event => setReceiving(Boolean(event.detail.enabled)));

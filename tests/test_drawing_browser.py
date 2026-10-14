@@ -616,6 +616,7 @@ def test_queue_confirmation_freezes_pending_refresh_and_cancels_only_selected_id
         cards.nth(0).get_by_role("button", name="재생 중단").click()
         dialog = page.locator("#cancelDrawingQueueDialog")
         assert dialog.get_by_role("heading", name="재생을 중단할까요?").is_visible()
+        assert dialog.get_by_role("button", name="재생 중단 확인", exact=True).is_visible()
         assert "첫 후원자" in dialog.inner_text() and "재생 이력에서도 삭제" in dialog.inner_text()
         page.keyboard.press("Escape")
         assert not deletes
@@ -635,6 +636,7 @@ def test_queue_confirmation_freezes_pending_refresh_and_cancels_only_selected_id
         page.mouse.up()
         dialog.wait_for(state="visible")
         assert dialog.get_by_role("heading", name="이 그림의 재생을 취소할까요?").is_visible()
+        assert dialog.get_by_role("button", name="재생 취소 확인", exact=True).is_visible()
         assert "선택한 후원자" in dialog.inner_text() and "2번" in dialog.inner_text()
         reads_before = len(reads)
         page.clock.fast_forward(6100)
@@ -733,7 +735,8 @@ def test_playback_progress_disabled_receiving_and_single_page_navigation_are_cle
         page.wait_for_function("document.querySelectorAll('.drawing-queue-item').length === 1")
         assert page.locator("#drawingQueueHeading").evaluate("e => e.getBoundingClientRect().top") < 500
         assert page.locator("#drawingQueuePages").is_hidden()
-        assert page.locator("#drawingHashtagReplay button").is_disabled() and page.locator("#drawingReceivingNotice").is_visible()
+        assert page.locator("#drawingHashtagReplay button").is_disabled()
+        assert page.locator("#drawingReceivingNotice").count() == 0
         assert page.locator("#drawingSetupNotice").is_visible()
         assert page.locator("#drawingSetupNotice a").get_attribute("href") == "/auth/dashboard/drawing"
         assert page.locator(".drawing-queue-progress").is_hidden()
