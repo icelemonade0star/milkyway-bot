@@ -69,7 +69,7 @@
                     <button type="button" id="clearDrawing" disabled>모두 지우기</button>
                 </div>
             </div>
-            <details id="drawingBackgroundSettings" class="drawing-background-settings">
+            <details id="drawingBackgroundSettings" class="drawing-background-settings" open>
                 <summary>배경 설정 <span>방송에는 그림만 표시돼요</span></summary>
             <div class="drawing-tools drawing-background-tools" role="group" aria-label="배경 설정">
                 <span class="background-caption" id="backgroundExplanation">배경은 그릴 때만 보이고, 저장과 방송에는 그림만 표시돼요.</span>
@@ -104,7 +104,7 @@
                 <p class="canvas-empty-hint" id="emptyDrawingHint">마우스·터치·펜으로 그려보세요.</p>
             </div></div>
             <div id="drawingBrushCursor" class="drawing-brush-cursor" hidden aria-hidden="true"></div>
-            <p class="drawing-view-help" id="drawingViewHelp">확대 후 이동 모드에서 드래그해 화면을 옮기세요. 화면에 맞추기로 처음 보기로 돌아갑니다.</p>
+            <p class="drawing-view-help" id="drawingViewHelp">확대 후 이동 모드 또는 마우스 휠 버튼을 누른 채 드래그해 화면을 옮기세요. 화면에 맞추기로 처음 보기로 돌아갑니다.</p>
             <div class="drawing-footer" id="drawingSaveControls">
                 <span class="canvas-size">{{ options.canvas_width }} × {{ options.canvas_height }} 캔버스</span>
                 <button class="primary" id="saveDrawing" type="button" disabled>그림 저장하기</button>

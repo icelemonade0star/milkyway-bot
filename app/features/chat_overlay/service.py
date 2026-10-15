@@ -377,6 +377,18 @@ class PresetDeleteResult(str, Enum):
     PRESET_NOT_FOUND = "preset_not_found"
 
 
+def resolve_overlay_css(setting) -> str:
+    """옵션 모드는 저장된 CSS 대신 현재 생성 규칙으로 다시 만들어 CSS 생성 로직 변경을 즉시 반영합니다."""
+    if setting.style_mode == "custom":
+        return setting.custom_css
+    config = OVERLAY_KIND_CONFIG[setting.overlay_kind]
+    try:
+        options = config.style_options_cls.model_validate(setting.style_options or {})
+    except ValidationError:
+        options = config.default_options
+    return config.build_css(options)
+
+
 class ChatOverlayService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -391,7 +403,7 @@ class ChatOverlayService:
             options = config.default_options
         broadcaster = timer_overlay_broadcaster if setting.overlay_kind == "timer" else chat_overlay_broadcaster
         await broadcaster.publish_settings(
-            channel.platform_channel_id, setting.custom_css, options.model_dump(), preset_name=preset_name,
+            channel.platform_channel_id, resolve_overlay_css(setting), options.model_dump(), preset_name=preset_name,
             uses_default_settings=uses_default_settings,
         )
 

@@ -12,7 +12,7 @@ from app.core.database import get_async_db
 from app.features.chat_overlay.broadcaster import chat_overlay_broadcaster, timer_overlay_broadcaster
 from app.features.chat_overlay.overlay_manager import overlay_manager
 from app.features.chat_overlay.schemas import ChatOverlayStyleOptions, TimerOverlayStyleOptions
-from app.features.chat_overlay.service import ChatOverlayService
+from app.features.chat_overlay.service import ChatOverlayService, resolve_overlay_css
 from app.features.chat_overlay.timer import overlay_timer_manager
 from app.platforms.constants import PLATFORM_CHZZK
 
@@ -41,7 +41,7 @@ def overlay_template_context(request: Request, channel, setting, options: ChatOv
     return {
         "request": request,
         "channel": channel,
-        "setting": setting,
+        "overlay_css": resolve_overlay_css(setting),
         "overlay_message_ttl_ms": options.message_ttl_seconds * 1000,
         "overlay_name_color_mode": options.name_color_mode,
         "overlay_name_color_palette": ",".join(options.name_color_palette),
@@ -99,7 +99,7 @@ async def timer_overlay_by_channel(
         {
             "request": request,
             "channel": channel,
-            "timer_css": setting.custom_css,
+            "timer_css": resolve_overlay_css(setting),
             "timer_options": options.model_dump(),
             "overlay_websocket_path": f"/overlay/ws/timer/chzzk/{platform_channel_id}",
         },
@@ -129,7 +129,7 @@ async def chat_overlay_ws_by_channel(
         platform_channel_id = channel.platform_channel_id
 
     await connect_overlay_websocket(
-        websocket, platform_channel_id, options, display_setting.custom_css, preset,
+        websocket, platform_channel_id, options, resolve_overlay_css(display_setting), preset,
         uses_default_settings=display_setting is setting,
     )
 
@@ -173,7 +173,7 @@ async def timer_overlay_ws_by_channel(websocket: WebSocket, platform_channel_id:
         options = safe_timer_overlay_options(setting.style_options)
         platform_channel_id = channel.platform_channel_id
 
-    await connect_timer_overlay_websocket(websocket, platform_channel_id, options, setting.custom_css)
+    await connect_timer_overlay_websocket(websocket, platform_channel_id, options, resolve_overlay_css(setting))
 
 
 async def connect_timer_overlay_websocket(

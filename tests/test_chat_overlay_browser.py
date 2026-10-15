@@ -21,7 +21,7 @@ def test_separate_names_keep_text_column_stable(width, position, font_size):
     template = Environment(loader=FileSystemLoader(ROOT / "app/templates")).get_template("chat_overlay.html")
     html = template.render(
         channel=SimpleNamespace(channel_name="Layout Test"),
-        setting=SimpleNamespace(custom_css=build_overlay_css(options)),
+        overlay_css=build_overlay_css(options),
         overlay_message_ttl_ms=60000,
         overlay_name_color_mode="fixed",
         overlay_name_color_palette="#ffffff",

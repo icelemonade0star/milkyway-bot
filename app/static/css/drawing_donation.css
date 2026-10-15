@@ -15,6 +15,7 @@ button { border: 1px solid #d4dfd7; background: #fff; border-radius: 8px; color:
 button:hover { background: #eef5ee; }
 button[aria-pressed="true"], button.primary { color: white; background: #246544; border-color: #246544; }
 button:disabled { opacity: .55; cursor: wait; }
+.dashboard-drawing button.refresh-lock:disabled { opacity: 1; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #88bd96; outline-offset: 2px; }
 .drawing-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .drawing-background-tools { border-top: 1px solid #e0e8e1; padding-top: 18px; }

@@ -130,12 +130,13 @@
         previous.disabled ||= offset <= 0;
         next.disabled ||= offset + pageSize >= total;
         document.getElementById("drawingQueuePage").textContent = total ? `${Math.floor(offset / pageSize) + 1} / ${Math.ceil(total / pageSize)} 페이지` : "";
-        empty.hidden = entries.size > 0 || loading || !loaded;
+        empty.hidden = entries.size > 0 || !loaded;
         document.getElementById("drawingQueuePages").hidden = total <= pageSize;
     }
     async function load(announce = false) {
         if (frozen()) { reloadRequested = true; return; }
         if (loading) { reloadRequested = true; return; }
+        for (const button of [refresh, previous, next]) button.classList.toggle("refresh-lock", loaded && !announce && !button.disabled);
         loading = true; controls();
         if (announce) status.textContent = "재생 대기열을 불러오고 있어요…";
         try {
@@ -173,6 +174,7 @@
             window.dispatchEvent(new CustomEvent("drawing-receiving-state", {detail: {enabled: data.enabled}}));
         } catch (error) { loadError = true; status.textContent = error.message; }
         finally {
+            for (const button of [refresh, previous, next]) button.classList.remove("refresh-lock");
             loading = false; controls();
             if (reloadRequested && !frozen()) { reloadRequested = false; load(); }
         }

@@ -61,7 +61,7 @@ def test_brush_cursor_active_controls_focus_zoom_pan_and_original_saved_coordina
         page.on("pageerror", lambda error: errors.append(str(error)))
         open_ux_editor(page, saved)
         canvas, viewport = page.locator("#drawingCanvas"), page.locator("#drawingViewport")
-        assert not page.locator("#drawingBackgroundSettings").evaluate("e => e.open")
+        assert page.locator("#drawingBackgroundSettings").evaluate("e => e.open")
         assert page.locator("#penSizeControl").is_visible() and page.locator("#eraserSizeControl").is_hidden()
         page.locator("#penWidth").fill("24")
         canvas.scroll_into_view_if_needed()
@@ -126,6 +126,141 @@ def test_brush_cursor_active_controls_focus_zoom_pan_and_original_saved_coordina
         point = saved[0].recording.actions[1].points[0]
         assert (point.x, point.y) == pytest.approx(expected, abs=1)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert not errors
+        browser.close()
+
+
+@pytest.mark.parametrize("tool", ["pen", "eraser", "fill"])
+def test_middle_mouse_drag_pans_temporarily_without_recording_or_changing_selected_tool(tool):
+    saved, errors = [], []
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1000})
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        open_ux_editor(page, saved)
+        canvas, viewport = page.locator("#drawingCanvas"), page.locator("#drawingViewport")
+        assert page.locator("#drawingBackgroundSettings").evaluate("element => element.open")
+        canvas.click(position={"x": 80, "y": 80})
+        page.locator(f'[data-tool="{tool}"]').click()
+        page.locator("#zoomInDrawing").click()
+        page.locator("#zoomInDrawing").click()
+        viewport.scroll_into_view_if_needed()
+        bounds = viewport.bounding_box()
+        assert bounds is not None
+        x, y = bounds["x"] + bounds["width"] / 2, bounds["y"] + bounds["height"] / 2
+        picture = canvas.evaluate("element => element.toDataURL()")
+        before = viewport.evaluate("element => [element.scrollLeft, element.scrollTop]")
+        page.mouse.move(x, y)
+        page.mouse.down(button="middle")
+        assert canvas.get_attribute("data-panning") == "true"
+        assert page.locator("#drawingBrushCursor").is_hidden() and page.locator("#saveDrawing").is_disabled()
+        page.mouse.move(x - 35, y - 25, steps=5)
+        page.mouse.up(button="middle")
+        assert viewport.evaluate("element => [element.scrollLeft, element.scrollTop]") != before
+        assert canvas.get_attribute("data-panning") == "false"
+        assert page.locator("#panDrawing").get_attribute("aria-pressed") == "false"
+        assert page.locator(f'[data-tool="{tool}"]').get_attribute("aria-pressed") == "true"
+        assert canvas.evaluate("element => element.toDataURL()") == picture
+        # 다른 버튼이 남아 있어도 휠 버튼을 놓으면 이동을 끝낸다.
+        page.mouse.move(x, y)
+        page.mouse.down(button="middle")
+        page.mouse.down(button="left")
+        page.mouse.up(button="middle")
+        page.mouse.move(x - 10, y - 10)
+        assert canvas.get_attribute("data-panning") == "false"
+        page.mouse.up(button="left")
+        assert canvas.evaluate("element => element.toDataURL()") == picture
+        page.locator("#panDrawing").click()
+        page.mouse.move(x, y)
+        page.mouse.down(button="middle")
+        page.mouse.move(x + 20, y + 20, steps=3)
+        page.mouse.up(button="middle")
+        assert page.locator("#panDrawing").get_attribute("aria-pressed") == "true"
+        assert canvas.evaluate("element => element.toDataURL()") == picture
+        page.locator(f'[data-tool="{tool}"]').click()
+        page.mouse.click(x, y)
+        page.locator("#saveDrawing").click()
+        page.locator("#drawingResult").wait_for(state="visible")
+        assert len(saved) == 1
+        assert [action.tool for action in saved[0].recording.actions] == ["pen", tool]
+        assert not errors
+        browser.close()
+
+
+@pytest.mark.parametrize("populated", [False, True])
+def test_background_refresh_preserves_list_height_preview_nodes_and_button_appearance(populated):
+    html = templates.get_template("dashboard_drawing_playback.html").render(
+        channel=SimpleNamespace(channel_name="테스트 스트리머"), options=DrawingDonationOptions(enabled=True))
+    now = datetime.now(timezone.utc)
+    recording = {"width": 400, "height": 300, "actions": [{"type": "stroke", "tool": "pen", "color": "#246544",
+        "width": 20, "points": [{"x": 40, "y": 40, "t": 0}, {"x": 120, "y": 40, "t": 1000}]}]}
+    item = {"id": "1", "drawing_id": "1", "nickname": "시청자", "amount": 1000,
+        "expires_at": (now + timedelta(hours=1)).isoformat(), "hashtag": "#mw-" + "a" * 24}
+    pending, reads, previews, errors = {}, [], [], []
+    hold = False
+    def data(kind):
+        if kind == "queue":
+            return {"items": [{**item, "status": "queued", "position": 1, "source": "donation"}] if populated else [],
+                "total_count": int(populated), "playing_count": 0, "queued_count": int(populated), "enabled": True, "server_now": now.isoformat()}
+        return {"items": [{**item, "status": "done", "played_at": now.isoformat(), "replay_status": None}] if populated else [],
+            "enabled": True, "next_cursor": None, "server_now": now.isoformat()}
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1000})
+        page.clock.install(time=now)
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.route("**/static/**", serve_assets)
+        page.route("**/auth/dashboard/drawing/playback", lambda route: route.fulfill(body=html, content_type="text/html"))
+        def metadata(route: Route):
+            kind = "queue" if "/queue" in route.request.url else "history"
+            reads.append(kind)
+            if hold:
+                pending[kind] = route
+            else:
+                route.fulfill(json=data(kind))
+        page.route("**/auth/dashboard/drawing/queue*", metadata)
+        page.route("**/auth/dashboard/drawing/history*", metadata)
+        def preview(route: Route):
+            previews.append(route.request.url)
+            route.fulfill(json={"recording": recording})
+        page.route("**/auth/dashboard/drawing/*/*/recording", preview)
+        page.goto("http://localhost/auth/dashboard/drawing/playback")
+        if populated:
+            for selector in [".drawing-queue-item", ".drawing-history-item"]:
+                page.locator(selector).scroll_into_view_if_needed()
+                page.locator(selector + " img").wait_for(state="visible")
+            page.locator(".drawing-history-item .drawing-history-details > button").focus()
+            page.evaluate("""() => {
+                window.queueCard = document.querySelector('.drawing-queue-item');
+                window.historyCard = document.querySelector('.drawing-history-item');
+                window.historyImage = document.querySelector('.drawing-history-item img');
+                window.historyReplay = document.querySelector('.drawing-history-item .drawing-history-details > button');
+            }""")
+        else:
+            page.locator("#drawingQueueEmpty").wait_for(state="visible")
+            page.locator("#drawingHistoryEmpty").wait_for(state="visible")
+        heights = page.evaluate("Array.from(document.querySelectorAll('.drawing-queue, .drawing-history'), element => element.getBoundingClientRect().height)")
+        hold = True
+        page.clock.fast_forward(30100)
+        page.wait_for_function("document.getElementById('refreshDrawingQueue').disabled && document.getElementById('refreshDrawingHistory').disabled")
+        assert set(pending) == {"queue", "history"}
+        during = page.evaluate("Array.from(document.querySelectorAll('.drawing-queue, .drawing-history'), element => element.getBoundingClientRect().height)")
+        assert during == heights
+        for selector in ["#refreshDrawingQueue", "#refreshDrawingHistory"]:
+            assert page.locator(selector).evaluate("element => getComputedStyle(element).opacity") == "1"
+        if not populated:
+            assert page.locator("#drawingQueueEmpty").is_visible() and page.locator("#drawingHistoryEmpty").is_visible()
+        for kind, route in list(pending.items()):
+            route.fulfill(json=data(kind))
+        hold = False
+        page.wait_for_function("!document.getElementById('refreshDrawingQueue').disabled && !document.getElementById('refreshDrawingHistory').disabled")
+        assert page.evaluate("Array.from(document.querySelectorAll('.drawing-queue, .drawing-history'), element => element.getBoundingClientRect().height)") == heights
+        if populated:
+            assert page.evaluate("""() => window.queueCard === document.querySelector('.drawing-queue-item') &&
+                window.historyCard === document.querySelector('.drawing-history-item') &&
+                window.historyImage === document.querySelector('.drawing-history-item img') &&
+                !window.historyImage.hidden && window.historyReplay === document.activeElement""")
+            assert len(previews) == 2
         assert not errors
         browser.close()
 

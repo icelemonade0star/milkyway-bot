@@ -46,7 +46,7 @@
         for (const [id, entry] of entries) if (Date.parse(entry.item.expires_at) <= now) {
             observer.unobserve(entry.picture); entry.node.remove(); entries.delete(id);
         }
-        empty.hidden = entries.size > 0 || loading || !loaded;
+        empty.hidden = entries.size > 0 || !loaded;
         const drawingIds = new Set(Array.from(entries.values(), entry => entry.item.drawing_id));
         for (const id of thumbnails.keys()) if (!drawingIds.has(id)) thumbnails.delete(id);
     }
@@ -113,7 +113,7 @@
             entry.busy = true; replaying++; updateEntry(entry);
             try {
                 const data = await request(`${root}/${encodeURIComponent(item.id)}/replay`, "POST");
-                item.replay_status = data.status;
+                entry.item.replay_status = data.status;
                 status.textContent = data.already_queued ? "이미 다시 재생 대기 중이거나 재생 중인 그림이에요." :
                     "방송 대기열에 추가했어요. OBS 연결 시 순서대로 다시 재생됩니다.";
                 window.dispatchEvent(new Event("drawing-queue-changed"));
@@ -125,19 +125,37 @@
     }
     async function load(reset = true, announce = true) {
         if (loading) return;
+        for (const button of [refresh, more]) button.classList.toggle("refresh-lock", loaded && !announce && !button.disabled);
         loading = true; refresh.disabled = more.disabled = true;
         if (announce) status.textContent = "후원 그림 이력을 불러오고 있어요…";
         try {
             const data = await request(root + (!reset && cursor ? `?before=${encodeURIComponent(cursor)}` : ""));
             if (!Array.isArray(data.items)) throw new Error("후원 그림 이력을 확인하지 못했어요.");
             serverOffset = Date.parse(data.server_now) - Date.now(); receiving = Boolean(data.enabled); loaded = true;
-            if (reset) { observer.disconnect(); previewTasks.length = 0; list.replaceChildren(); entries.clear(); expanded = false; }
+            if (reset) {
+                const incoming = new Set(data.items.map(item => item.id));
+                for (const [id, entry] of entries) if (!incoming.has(id)) {
+                    observer.unobserve(entry.picture); entry.node.remove(); entries.delete(id);
+                }
+                expanded = false;
+            }
             else expanded = true;
-            for (const item of data.items) addEntry(item);
+            let index = 0;
+            for (const item of data.items) {
+                if (entries.has(item.id)) {
+                    const entry = entries.get(item.id); entry.item = item; updateEntry(entry);
+                } else addEntry(item);
+                const node = entries.get(item.id).node;
+                if (reset && list.children[index] !== node) list.insertBefore(node, list.children[index] || null);
+                index++;
+            }
             cursor = data.next_cursor; more.hidden = !cursor;
             if (announce) status.textContent = "";
         } catch (error) { status.textContent = error.message; }
-        finally { loading = false; refresh.disabled = more.disabled = false; expireEntries(); }
+        finally {
+            for (const button of [refresh, more]) button.classList.remove("refresh-lock");
+            loading = false; refresh.disabled = more.disabled = false; expireEntries();
+        }
     }
     refresh.addEventListener("click", () => load());
     more.addEventListener("click", () => load(false));

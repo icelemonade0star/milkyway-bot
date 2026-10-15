@@ -23,9 +23,12 @@ window.DrawingView = class {
             if (event.key === "Escape" && !document.querySelector("dialog[open]") && !this.state.busy()) this.setFocus(false);
         });
         canvas.addEventListener("pointerdown", event => {
-            if (!this.pan || this.drag || this.state.busy() || (event.pointerType === "mouse" && event.button !== 0)) return;
+            const middle = event.pointerType === "mouse" && event.button === 1;
+            if (middle) event.preventDefault();
+            if ((!this.pan && !middle) || this.drag || this.state.busy() ||
+                (event.pointerType === "mouse" && event.button !== 0 && !middle)) return;
             event.preventDefault();
-            this.drag = {id: event.pointerId, x: event.clientX, y: event.clientY,
+            this.drag = {id: event.pointerId, pointerType: event.pointerType, button: event.button, buttons: middle ? 4 : 1, x: event.clientX, y: event.clientY,
                 left: this.viewport.scrollLeft, top: this.viewport.scrollTop};
             canvas.setPointerCapture(event.pointerId); canvas.dataset.panning = "true";
             this.state.changed();
@@ -33,6 +36,7 @@ window.DrawingView = class {
         canvas.addEventListener("pointermove", event => {
             this.hover = {x: event.clientX, y: event.clientY, type: event.pointerType};
             if (this.drag?.id === event.pointerId) {
+                if (event.pointerType === "mouse" && !(event.buttons & this.drag.buttons)) { end(event); return; }
                 this.viewport.scrollLeft = this.drag.left + this.drag.x - event.clientX;
                 this.viewport.scrollTop = this.drag.top + this.drag.y - event.clientY;
             }
@@ -47,6 +51,10 @@ window.DrawingView = class {
             if (event.pointerType === "touch") this.hideCursor();
         };
         canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+        canvas.addEventListener("mouseup", event => {
+            if (this.drag?.pointerType === "mouse" && event.button === this.drag.button) end({pointerId: this.drag.id, pointerType: "mouse"});
+        });
+        canvas.addEventListener("auxclick", event => { if (event.button === 1) event.preventDefault(); });
         canvas.addEventListener("lostpointercapture", end);
         canvas.addEventListener("pointerleave", () => { this.hover = null; this.hideCursor(); });
         this.viewport.addEventListener("scroll", () => this.hideCursor());
@@ -94,7 +102,7 @@ window.DrawingView = class {
     updateCursor() {
         const point = this.hover, rect = this.canvas.getBoundingClientRect();
         const viewportRect = this.viewport.getBoundingClientRect();
-        if (!point || point.type === "touch" || this.pan || this.state.locked() ||
+        if (!point || point.type === "touch" || this.pan || this.drag || this.state.locked() ||
             this.state.tool() === "fill" || point.x < Math.max(rect.left, viewportRect.left) ||
             point.x > Math.min(rect.right, viewportRect.right) || point.y < Math.max(rect.top, viewportRect.top) ||
             point.y > Math.min(rect.bottom, viewportRect.bottom)) {

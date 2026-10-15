@@ -207,7 +207,7 @@
         return true;
     }
     canvas.addEventListener("pointerdown", event => {
-        if (view.pan || pointer !== null || (event.pointerType === "mouse" && event.button !== 0) || !canRecord()) return;
+        if (view.pan || view.drag || pointer !== null || (event.pointerType === "mouse" && event.button !== 0) || !canRecord()) return;
         strokeStarted = performance.now();
         changed(); redoStack.length = 0;
         const first = point(event), color = document.getElementById("penColor").value;

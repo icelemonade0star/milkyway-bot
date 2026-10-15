@@ -10,7 +10,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 from app.features.chat_overlay import router
 from app.features.chat_overlay.broadcaster import ChatOverlayBroadcaster
 from app.features.chat_overlay.schemas import ChatOverlayStyleOptions, TimerOverlayStyleOptions
-from app.features.chat_overlay.service import ChatOverlayService
+from app.features.chat_overlay.service import (
+    ChatOverlayService, build_overlay_css, build_timer_overlay_css, resolve_overlay_css,
+)
 from app.features.chat_overlay.timer import OverlayTimerManager, TimerState
 
 
@@ -151,3 +153,62 @@ def test_save_publishes_committed_settings(kind, options):
     service._publish_settings = AsyncMock(side_effect=check_publish)
     asyncio.run(service.update_setting("chzzk", "channel", kind, "", True, style_options=options))
     service._publish_settings.assert_awaited_once_with(channel, setting)
+
+
+@pytest.mark.parametrize("kind,options,build", [
+    ("chat", ChatOverlayStyleOptions(name_mode="separate"), build_overlay_css),
+    ("timer", TimerOverlayStyleOptions(), build_timer_overlay_css),
+])
+def test_options_mode_rebuilds_css_instead_of_stale_saved_css(kind, options, build):
+    setting = SimpleNamespace(
+        overlay_kind=kind, style_mode="options", style_options=options.model_dump(), custom_css="stale css",
+    )
+    assert resolve_overlay_css(setting) == build(options)
+
+
+def test_custom_mode_keeps_saved_css():
+    setting = SimpleNamespace(
+        overlay_kind="chat", style_mode="custom", style_options={}, custom_css=".chat-text { color: red; }",
+    )
+    assert resolve_overlay_css(setting) == ".chat-text { color: red; }"
+
+
+def test_invalid_options_fall_back_to_default_css():
+    setting = SimpleNamespace(
+        overlay_kind="chat", style_mode="options", style_options={"font_size": 999}, custom_css="stale css",
+    )
+    assert resolve_overlay_css(setting) == build_overlay_css(ChatOverlayStyleOptions())
+
+
+def test_preset_websocket_sends_rebuilt_css(monkeypatch):
+    options = ChatOverlayStyleOptions(name_mode="separate")
+    channel = SimpleNamespace(platform_channel_id="channel")
+    setting = SimpleNamespace(overlay_kind="chat", style_mode="options", style_options={}, custom_css="default css")
+    preset = SimpleNamespace(
+        overlay_kind="chat", style_mode="options", style_options=options.model_dump(), custom_css="stale preset css",
+    )
+
+    class FakeService:
+        def __init__(self, db):
+            pass
+
+        async def get_setting_by_channel(self, *args):
+            return channel, setting
+
+        async def get_preset_by_name(self, *args):
+            return preset
+
+    class FakeSessionFactory:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *args):
+            return False
+
+    connect = AsyncMock()
+    monkeypatch.setattr(router, "ChatOverlayService", FakeService)
+    monkeypatch.setattr(router, "connect_overlay_websocket", connect)
+    websocket = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(SessionLocal=FakeSessionFactory)))
+    asyncio.run(router.chat_overlay_ws_by_channel(cast(WebSocket, websocket), "channel", preset="preset"))
+    assert connect.await_args is not None
+    assert connect.await_args.args[3] == build_overlay_css(options)
