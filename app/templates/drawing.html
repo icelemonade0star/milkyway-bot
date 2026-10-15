@@ -55,18 +55,22 @@
                     {% endfor %}
                     <label class="palette-custom" title="직접 색상 선택">{{ icon("plus") }}<input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
                 </div>
-                <div class="brush-size-control" id="penSizeControl">
-                    <label for="penWidth">펜 굵기</label><input id="penWidth" type="range" min="1" max="60" value="6" aria-describedby="widthValue"><output id="widthValue" for="penWidth">6</output>
-                </div>
-                <div class="brush-size-control" id="eraserSizeControl" hidden>
-                    <label for="eraserWidth">지우개 굵기</label><input id="eraserWidth" type="range" min="1" max="60" value="20" aria-describedby="eraserWidthValue"><output id="eraserWidthValue" for="eraserWidth">20</output>
-                </div>
-                <div class="brush-preview" id="brushPreview" title="펜 굵기 6px" aria-hidden="true"><span id="brushPreviewDot"></span></div>
-                <div class="drawing-history" role="group" aria-label="편집 이력">
-                    <button type="button" class="icon-button" id="undoDrawing" aria-label="되돌리기" title="되돌리기 (Ctrl+Z)" disabled>{{ icon("undo") }}</button>
-                    <button type="button" class="icon-button" id="redoDrawing" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z / Ctrl+Y)" disabled>{{ icon("redo") }}</button>
-                    <span class="toolbar-divider" aria-hidden="true"></span>
-                    <button type="button" id="clearDrawing" disabled>모두 지우기</button>
+                <div class="editor-toolbar-row">
+                    <div class="brush-settings">
+                        <div class="brush-size-control" id="penSizeControl">
+                            <label for="penWidth">펜 굵기</label><input id="penWidth" type="range" min="1" max="60" value="6" aria-describedby="widthValue"><output id="widthValue" for="penWidth">6</output>
+                        </div>
+                        <div class="brush-size-control" id="eraserSizeControl" hidden>
+                            <label for="eraserWidth">지우개 굵기</label><input id="eraserWidth" type="range" min="1" max="60" value="20" aria-describedby="eraserWidthValue"><output id="eraserWidthValue" for="eraserWidth">20</output>
+                        </div>
+                        <div class="brush-preview" id="brushPreview" title="펜 굵기 6px" aria-hidden="true"><span id="brushPreviewDot"></span></div>
+                    </div>
+                    <div class="drawing-history" role="group" aria-label="편집 이력">
+                        <button type="button" class="icon-button" id="undoDrawing" aria-label="되돌리기" title="되돌리기 (Ctrl+Z)" disabled>{{ icon("undo") }}</button>
+                        <button type="button" class="icon-button" id="redoDrawing" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z / Ctrl+Y)" disabled>{{ icon("redo") }}</button>
+                        <span class="toolbar-divider" aria-hidden="true"></span>
+                        <button type="button" id="clearDrawing" disabled>모두 지우기</button>
+                    </div>
                 </div>
             </div>
             <details id="drawingBackgroundSettings" class="drawing-background-settings" open>

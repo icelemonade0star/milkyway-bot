@@ -33,6 +33,9 @@ body.drawing-editor-page { background: #f3f4f1; color: #17201b; font-family: var
 .drawing-editor-page .palette-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; }
 .drawing-editor-page .palette-custom:focus-within { outline: 3px solid #88bd96; outline-offset: 2px; }
 .drawing-editor-page .palette-custom.is-selected { box-shadow: 0 0 0 2px white, 0 0 0 4px #1f5f3f; }
+/* 굵기 조절과 편집 이력을 한 줄에 묶어 색상 줄 아래에 둡니다. */
+.editor-toolbar-row { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.brush-settings { display: flex; align-items: center; gap: 12px 16px; }
 .brush-size-control { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #3c4741; }
 .brush-size-control input[type="range"] { width: 110px; }
 .brush-size-control output { min-width: 18px; font-family: var(--font-mono); font-size: 12px; }
