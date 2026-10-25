@@ -53,7 +53,7 @@
                     {% for name, hex in palette %}
                     <button type="button" class="palette-swatch" data-color="{{ hex }}" aria-label="{{ name }}" aria-pressed="false" style="--swatch-color: {{ hex }}"></button>
                     {% endfor %}
-                    <label class="palette-custom" title="직접 색상 선택">{{ icon("plus") }}<input id="penColor" type="color" value="#25453c" aria-label="직접 색상 선택"></label>
+                    <label class="palette-custom" title="직접 색상 선택">{{ icon("plus") }}<input id="penColor" type="color" value="#171a18" aria-label="직접 색상 선택"></label>
                 </div>
                 <div class="editor-toolbar-row">
                     <div class="brush-settings">
@@ -117,6 +117,7 @@
                 <h2 id="drawingResultHeading">저장했어요! 이제 해시태그만 붙이면 돼요.</h2>
                 <p>아래 해시태그를 복사해서 치지직 후원 메시지에 넣어주세요. 후원이 들어가면 그린 과정이 방송에서 재생돼요.</p>
                 <div class="tag-copy"><input id="drawingTag" readonly aria-label="그림 해시태그"><button type="button" id="copyDrawingTag">{{ icon("copy") }}<span id="copyDrawingLabel">해시태그 복사</span></button></div>
+                <p class="drawing-conditions">팁: 괄호 안 내용을 읽지 않는 TTS에서는 <code>(#mw-…)</code>처럼 해시태그를 괄호로 감싸면 음성으로 읽히지 않아요. 그림은 그대로 재생돼요.</p>
                 <p class="drawing-conditions">최소 {{ "{:,}".format(options.minimum_amount) }}원 · 유효시간 1시간 · 유효기간 내 후원할 때마다 다시 재생됩니다.</p>
                 <button type="button" class="edit-again-button" id="editSavedDrawing">그림 더 고치기</button>
             </section>

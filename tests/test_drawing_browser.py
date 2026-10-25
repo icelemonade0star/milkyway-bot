@@ -1223,7 +1223,7 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         page.get_by_role("button", name="배경 파랑", exact=True).click()
         assert page.locator("#canvasBackgroundColor").input_value() == "#2f6ee5"
         assert page.locator('[data-tool="eraser"]').get_attribute("aria-pressed") == "true"
-        assert page.locator("#penColor").input_value() == "#25453c"
+        assert page.locator("#penColor").input_value() == "#171a18"
         assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(47, 110, 229)"
         page.locator("#canvasBackgroundColor").fill("#20362e")
         assert page.locator('[data-background-color][aria-pressed="true"]').count() == 0
