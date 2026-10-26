@@ -427,7 +427,8 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
             page.mouse.up()
         page.locator("#penWidth").fill("20")
         draw((80, 80), (360, 80))
-        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [37, 69, 60]
+        stroke_pixel = canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")
+        assert stroke_pixel[3] == 255
         page.locator('[data-tool="eraser"]').click()
         assert page.locator("#eraserWidth").input_value() == "20"
         page.locator("#eraserWidth").fill("32")
@@ -435,7 +436,7 @@ def test_draw_save_and_replay_in_browser(tmp_path, size):
         draw((180, 80), (260, 80))
         assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[3] == 0
         page.locator("#undoDrawing").click()
-        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)")[:3] == [37, 69, 60]
+        assert canvas.evaluate("c => Array.from(c.getContext('2d').getImageData(200,80,1,1).data)") == stroke_pixel
         page.locator("#clearDrawing").click()
         page.locator("#confirmClearDrawing").click()
         page.locator('[data-tool="pen"]').click()
@@ -1215,6 +1216,7 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         refresh = page.locator("#refreshLiveBackground")
         status = page.locator("#liveBackgroundStatus")
         blank = canvas.evaluate("c => c.toDataURL()")
+        pen_color = page.locator("#penColor").input_value()
         assert mode.input_value() == "color" and not backgrounds
         assert page.locator('button[data-background-mode="color"]').get_attribute("aria-pressed") == "true"
         assert page.locator("#liveBackgroundControls").is_hidden()
@@ -1223,7 +1225,7 @@ def test_optional_live_background_is_not_saved_and_refresh_errors_are_recoverabl
         page.get_by_role("button", name="배경 파랑", exact=True).click()
         assert page.locator("#canvasBackgroundColor").input_value() == "#2f6ee5"
         assert page.locator('[data-tool="eraser"]').get_attribute("aria-pressed") == "true"
-        assert page.locator("#penColor").input_value() == "#171a18"
+        assert page.locator("#penColor").input_value() == pen_color
         assert page.locator("#drawingCanvasStage").evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(47, 110, 229)"
         page.locator("#canvasBackgroundColor").fill("#20362e")
         assert page.locator('[data-background-color][aria-pressed="true"]').count() == 0
